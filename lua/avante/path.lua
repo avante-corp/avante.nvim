@@ -209,6 +209,7 @@ function History.new(bufnr)
     tags = {},
     filename = filepath_to_filename(filepath),
     working_directory = vim.fn.getcwd(),
+    avante_mode = nil,
   }
   return history
 end
@@ -292,7 +293,16 @@ end
 P.history = History
 
 ---@return table[] List of projects with their information
+---@type { data: table[]|nil, timestamp: number }
+local _projects_cache = { data = nil, timestamp = 0 }
+local PROJECTS_CACHE_TTL = 30 -- seconds
+
 function P.list_projects()
+  local now = vim.uv.now() / 1000
+  if _projects_cache.data and (now - _projects_cache.timestamp) < PROJECTS_CACHE_TTL then
+    return _projects_cache.data
+  end
+
   local projects_dir = Path:new(Config.history.storage_path):joinpath("projects")
   if not projects_dir:exists() then return {} end
 
@@ -337,6 +347,9 @@ function P.list_projects()
 
   -- Sort by history count (most active projects first)
   table.sort(projects, function(a, b) return a.history_count > b.history_count end)
+
+  _projects_cache.data = projects
+  _projects_cache.timestamp = now
 
   return projects
 end

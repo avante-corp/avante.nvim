@@ -656,44 +656,15 @@ end
 ---@param update avante.acp.AvailableCommandsUpdate
 function AcpThread:_handle_available_commands(update)
   local commands = update.availableCommands
+  self.available_commands = commands
+
   if self.callbacks.on_available_commands then
     vim.schedule(function()
       self.callbacks.on_available_commands(commands)
     end)
   end
 
-  -- Also update cmp source if available
-  local has_cmp, cmp = pcall(require, "cmp")
-  if has_cmp then
-    local slash_commands_id = require("avante").slash_commands_id
-    if slash_commands_id ~= nil then cmp.unregister_source(slash_commands_id) end
-    -- Store on thread for per-session tracking
-    self.available_commands = commands
-
-    for _, command in ipairs(commands) do
-      local exists = false
-      for _, command_ in ipairs(Config.slash_commands) do
-        if command_.name == command.name then
-          -- Update existing entry to mark as ACP-sourced
-          command_.source = "acp"
-          command_.description = command.description
-          command_.details = command.description
-          exists = true
-          break
-        end
-      end
-      if not exists then
-        table.insert(Config.slash_commands, {
-          name = command.name,
-          description = command.description,
-          details = command.description,
-          source = "acp",
-        })
-      end
-    end
-    local avante = require("avante")
-    avante.slash_commands_id = cmp.register_source("avante_commands", require("cmp_avante.commands"):new())
-  end
+  Utils.register_acp_commands(commands)
 end
 
 --- Emit messages to the callback, handling chunk extraction for streaming

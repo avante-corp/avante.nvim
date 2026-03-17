@@ -261,12 +261,17 @@ M._defaults = {
     },
     ["claude-code"] = {
       command = "npx",
-      args = { "-y", "@zed-industries/claude-code-acp" },
+      args = (function()
+        local config_path = debug.getinfo(1, "S").source:sub(2)
+        local plugin_root = vim.fn.fnamemodify(config_path, ":h:h:h")
+        local wrapper = plugin_root .. "/scripts/acp-wrapper.mjs"
+        return { "-y", "--package", "@zed-industries/claude-code-acp", "node", wrapper }
+      end)(),
       env = {
         NODE_NO_WARNINGS = "1",
         ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY"),
         ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL"),
-        ACP_PATH_TO_CLAUDE_CODE_EXECUTABLE = vim.fn.exepath("claude"),
+        CLAUDE_CODE_EXECUTABLE = vim.fn.exepath("claude"),
         ACP_PERMISSION_MODE = "bypassPermissions",
       },
       envOverrides = {},
@@ -863,12 +868,35 @@ M._defaults = {
   disabled_tools = {}, ---@type string[]
   ---@type AvanteLLMToolPublic[] | fun(): AvanteLLMToolPublic[]
   custom_tools = {},
+  ---@type AvanteMode[]
+  avante_modes = {
+    {
+      name = "plan",
+      description = "Build a detailed plan before executing",
+      prompt = nil, -- nil = uses built-in get_plan_mode_prompt()
+      additional_files = {},
+    },
+    {
+      name = "one-shot",
+      description = "Quick fix or single task, minimal overhead",
+      prompt = "Focus on completing the requested task directly and efficiently. Do not over-plan or over-explain. Make the change and be done.",
+      additional_files = {},
+    },
+    {
+      name = "review",
+      description = "Review changes and provide feedback",
+      prompt = "You are in code review mode. Analyze the provided code carefully. Provide specific, actionable feedback on code quality, potential bugs, and improvements. Do not make changes unless asked.",
+      additional_files = {},
+    },
+  },
+  ---@type string|nil Default avante mode for new chats (nil = show picker)
+  default_avante_mode = nil,
   ---@type AvanteSlashCommand[]
   slash_commands = {},
   ---@type boolean Enable passthrough of unknown slash commands to ACP agent
   enable_acp_command_passthrough = true,
   ---@type string[] Commands that should only be handled locally (never sent to ACP)
-  local_only_commands = { "clear", "new", "help", "init", "compact" },
+  local_only_commands = { "clear", "new", "help", "init", "compact", "avante-modes" },
   ---@type boolean Auto-clear input buffer after slash command is submitted
   auto_clear_slash_commands = true,
   ---@type string | nil Path to directory containing .mdx shortcut files

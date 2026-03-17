@@ -524,24 +524,22 @@ function M.generate_prompts(opts)
     .. "</workspace_context>"
   system_prompt = system_prompt .. workspace_context
 
-  -- Add plan mode prompt if enabled via config or current mode
-  local in_plan_mode = Config.plan_only_mode or false
-  
-  -- Check if current mode is plan mode (via ACP session mode)
-  if is_acp_provider and not in_plan_mode then
+  -- Inject avante mode prompt into system prompt (for non-ACP providers)
+  -- ACP providers handle mode injection in _continue_stream_acp via <system_context> blocks
+  if not is_acp_provider then
     local sidebar = require("avante").get()
-    if sidebar and sidebar.current_mode_id and sidebar.acp_client then
-      local mode = sidebar.acp_client:mode_by_id(sidebar.current_mode_id)
-      if mode and (mode.name:lower():match("plan") or mode.id:lower():match("plan")) then
-        in_plan_mode = true
-        Utils.debug("Plan mode detected from ACP session mode: " .. mode.name)
+    local avante_mode_name = sidebar and sidebar.current_avante_mode or nil
+    -- Fallback: check legacy Config.plan_only_mode
+    if not avante_mode_name and Config.plan_only_mode then
+      avante_mode_name = "plan"
+    end
+    if avante_mode_name then
+      local mode_prompt = M._get_avante_mode_prompt(avante_mode_name)
+      if mode_prompt then
+        system_prompt = system_prompt .. "\n\n" .. mode_prompt
+        Utils.debug("Avante mode system prompt injected: " .. avante_mode_name)
       end
     end
-  end
-  
-  if in_plan_mode then
-    system_prompt = system_prompt .. "\n\n" .. Prompts.get_plan_mode_prompt()
-    Utils.debug("Plan mode system prompt injected")
   end
 
   ---@type AvantePromptOptions
@@ -552,6 +550,33 @@ function M.generate_prompts(opts)
     tools = tools,
     pending_compaction_history_messages = pending_compaction_history_messages,
   }
+end
+
+--- Look up an avante mode by name and return its prompt text.
+--- Returns nil if mode not found or has no prompt.
+---@param mode_name string
+---@return string|nil
+function M._get_avante_mode_prompt(mode_name)
+  local Prompts = require("avante.utils.prompts")
+  for _, m in ipairs(Config.avante_modes or {}) do
+    if m.name == mode_name then
+      if m.prompt == nil and m.name == "plan" then
+        return Prompts.get_plan_mode_prompt()
+      end
+      return m.prompt
+    end
+  end
+  return nil
+end
+
+--- Look up an avante mode definition by name.
+---@param mode_name string
+---@return AvanteMode|nil
+function M._find_avante_mode(mode_name)
+  for _, m in ipairs(Config.avante_modes or {}) do
+    if m.name == mode_name then return m end
+  end
+  return nil
 end
 
 ---Extract task summary from message history
@@ -1342,35 +1367,8 @@ function M._stream_acp(opts)
 
           end
 
-          if update.sessionUpdate == "available_commands_update" then
-            local commands = update.availableCommands
-            local has_cmp, cmp = pcall(require, "cmp")
-            if has_cmp then
-              local slash_commands_id = require("avante").slash_commands_id
-              if slash_commands_id ~= nil then cmp.unregister_source(slash_commands_id) end
-              for _, command in ipairs(commands) do
-                local exists = false
-                for _, command_ in ipairs(Config.slash_commands) do
-                  if command_.name == command.name then
-                    command_.source = "acp"
-                    command_.description = command.description
-                    command_.details = command.description
-                    exists = true
-                    break
-                  end
-                end
-                if not exists then
-                  table.insert(Config.slash_commands, {
-                    name = command.name,
-                    description = command.description,
-                    details = command.description,
-                    source = "acp",
-                  })
-                end
-              end
-              local avante = require("avante")
-              avante.slash_commands_id = cmp.register_source("avante_commands", require("cmp_avante.commands"):new())
-            end
+          if update.sessionUpdate == "available_commands_update" and update.availableCommands then
+            Utils.register_acp_commands(update.availableCommands)
           end
         end,
 
@@ -1437,12 +1435,88 @@ function M._stream_acp(opts)
             return
           end
 
-          -- Surface question text for AskUserQuestion tool calls
+          -- Handle AskUserQuestion interactively.
+          -- The ACP wrapper (acp-wrapper.mjs) patches canUseTool to read the `answers`
+          -- field from the permission response and merge it into the tool's updatedInput.
+          -- We collect answers via inline buttons, then approve with answers attached.
           local is_ask_question = tool_call.title and tool_call.title:match("AskUserQuestion")
           if is_ask_question and tool_call.rawInput then
-            local q_text = tool_call.rawInput.question or tool_call.rawInput.text
-            if q_text then
+            local raw = tool_call.rawInput
+            local questions = raw.questions or {}
+            -- Also support flat question/text field
+            if #questions == 0 and (raw.question or raw.text) then
+              questions = { { question = raw.question or raw.text, options = raw.options or {} } }
+            end
+
+            local acp_mapped_options = ACPConfirmAdapter.map_acp_options(options)
+            local approve_id = acp_mapped_options.yes or acp_mapped_options.all
+
+            -- Collect answer then approve with answers in the permission response
+            local function handle_answer(q_text, answer_text)
+              permission_answers[tool_call.toolCallId] = answer_text
+              -- Include answers map in the permission result — the ACP wrapper shim
+              -- reads this and merges into updatedInput for the tool
+              callback(approve_id, { answers = { [q_text] = answer_text } })
+              sidebar.permission_question_text = nil
+              sidebar.scroll = true
+              sidebar._history_cache_invalidated = true
+              sidebar:update_content("")
+            end
+
+            if #questions > 0 then
+              local q = questions[1]
+              local q_text = q.question or "(no question)"
               sidebar.permission_question_text = q_text
+
+              local q_options = q.options or {}
+              if #q_options > 0 then
+                -- Build buttons from question options
+                local button_items = {}
+                for i, opt in ipairs(q_options) do
+                  local label = type(opt) == "table" and (opt.label or opt.name or opt.value) or tostring(opt)
+                  table.insert(button_items, {
+                    id = "q_opt_" .. i,
+                    name = label,
+                    icon = "",
+                    description = type(opt) == "table" and opt.description or nil,
+                  })
+                end
+                table.insert(button_items, {
+                  id = "q_opt_other",
+                  name = "Other",
+                  icon = "✏",
+                })
+
+                sidebar.permission_button_options = button_items
+                sidebar.permission_handler = function(id)
+                  sidebar.permission_button_options = nil
+                  sidebar.permission_handler = nil
+
+                  if id == "q_opt_other" then
+                    vim.ui.input({ prompt = q_text .. ": " }, function(answer)
+                      handle_answer(q_text, answer or "(no answer)")
+                    end)
+                  else
+                    local idx = tonumber(id:match("q_opt_(%d+)"))
+                    local selected = idx and q_options[idx]
+                    local answer = selected and (type(selected) == "table" and (selected.label or selected.value) or tostring(selected)) or id
+                    handle_answer(q_text, answer)
+                  end
+                end
+                sidebar.scroll = true
+                sidebar._history_cache_invalidated = true
+                sidebar:update_content("")
+                return
+              else
+                -- No options — show free-text input
+                sidebar.scroll = true
+                sidebar._history_cache_invalidated = true
+                sidebar:update_content("")
+                vim.ui.input({ prompt = q_text .. ": " }, function(answer)
+                  handle_answer(q_text, answer or "(no answer)")
+                end)
+                return
+              end
             end
           end
 
@@ -1593,13 +1667,62 @@ end
 function M._continue_stream_acp(opts, acp_client, session_id)
   local prompt = {}
 
-  -- Add plan mode instructions at the beginning of the prompt if enabled
-  if Config.plan_only_mode then
-    local Prompts = require("avante.utils.prompts")
+  -- Inject avante mode context at the beginning of the prompt
+  local sidebar = require("avante").get()
+  local avante_mode_name = sidebar and sidebar.current_avante_mode or nil
+  -- Fallback: check legacy Config.plan_only_mode
+  if not avante_mode_name and Config.plan_only_mode then
+    avante_mode_name = "plan"
+  end
+
+  if avante_mode_name then
+    local mode_def = M._find_avante_mode(avante_mode_name)
+    if mode_def then
+      local parts = {}
+
+      -- 1. Transition message (one-shot, consumed after sending)
+      if sidebar and sidebar._pending_mode_transition then
+        local t = sidebar._pending_mode_transition
+        table.insert(parts, "We are now changing agent modes from " .. t.from .. " -> " .. t.to .. ".")
+        sidebar._pending_mode_transition = nil
+      end
+
+      -- 2. Mode prompt text
+      local prompt_text = M._get_avante_mode_prompt(avante_mode_name)
+      if prompt_text then
+        table.insert(parts, prompt_text)
+      end
+
+      -- 3. Additional file contents
+      if mode_def.additional_files then
+        for _, file_path in ipairs(mode_def.additional_files) do
+          local expanded = vim.fn.expand(file_path)
+          local ok, content = pcall(function()
+            local p = require("plenary.path"):new(expanded)
+            if p:exists() then return p:read() end
+            return nil
+          end)
+          if ok and content then
+            table.insert(parts, '<additional_context file="' .. expanded .. '">\n' .. content .. "\n</additional_context>")
+          end
+        end
+      end
+
+      if #parts > 0 then
+        table.insert(prompt, {
+          type = "text",
+          text = "<system_context>\n" .. table.concat(parts, "\n\n") .. "\n</system_context>",
+        })
+      end
+    end
+  elseif sidebar and sidebar._pending_mode_transition then
+    -- Switching TO "none" mode: still send the transition message
+    local t = sidebar._pending_mode_transition
     table.insert(prompt, {
       type = "text",
-      text = "<system_context>" .. Prompts.get_plan_mode_prompt() .. "</system_context>",
+      text = "<system_context>\nWe are now changing agent modes from " .. t.from .. " -> " .. t.to .. ".\n</system_context>",
     })
+    sidebar._pending_mode_transition = nil
   end
 
   local donot_use_builtin_system_prompt = opts.history_messages ~= nil and #opts.history_messages > 0
@@ -1790,47 +1913,30 @@ function M._continue_stream_acp(opts, acp_client, session_id)
         })
       end
     else
-      -- Continuation of existing session: add context tags
-      local recovery_config = Config.session_recovery or {}
-      local include_history_count = recovery_config.include_history_count or 5
-      local user_messages_added = 0
-
+      -- Continuation of existing ACP session — the agent already has the full
+      -- conversation context (either from being the same process that created
+      -- the session, or from replaySessionHistory during load). Only send the
+      -- last user message (the one just typed).
+      local last_user_msg = nil
       for i = #history_messages, 1, -1 do
-        local message = history_messages[i]
-        if message.message.role == "user" and user_messages_added < include_history_count then
-          local content = message.message.content
-          if type(content) == "table" then
-            for _, item in ipairs(content) do
-              if type(item) == "string" then
-                table.insert(prompt, {
-                  type = "text",
-                  text = "<previous_user_message>" .. item .. "</previous_user_message>",
-                })
-              elseif type(item) == "table" and item.type == "text" then
-                table.insert(prompt, {
-                  type = "text",
-                  text = "<previous_user_message>" .. item.text .. "</previous_user_message>",
-                })
-              end
-            end
-          elseif type(content) == "string" then
-            table.insert(prompt, {
-              type = "text",
-              text = "<previous_user_message>" .. content .. "</previous_user_message>",
-            })
-          end
-          user_messages_added = user_messages_added + 1
+        if history_messages[i].message.role == "user" then
+          last_user_msg = history_messages[i]
+          break
         end
       end
-
-      -- Add context about session recovery
-      if user_messages_added > 0 then
-        table.insert(prompt, {
-          type = "text",
-          text = "<system_context>Continuing from previous session with "
-            .. user_messages_added
-            .. " recent user messages</system_context>",
-        })
+      if last_user_msg then
+        local content = last_user_msg.message.content
+        if type(content) == "table" then
+          for _, item in ipairs(content) do
+            if type(item) == "string" then
+              table.insert(prompt, { type = "text", text = item })
+            elseif type(item) == "table" and item.type == "text" then
+              table.insert(prompt, { type = "text", text = item.text })
+            end
+          end
+        elseif type(content) == "string" then
+          table.insert(prompt, { type = "text", text = content })
+        end
       end
     end
   else

@@ -134,6 +134,8 @@ function Sidebar:new(id)
     current_mode_id = nil,
     available_modes = {},
     acp_thread = nil,
+    current_avante_mode = nil,
+    _pending_mode_transition = nil,
     _context_panel_visible = false,
     _plan_bufnr = nil,
     _plan_path = nil,
@@ -186,15 +188,32 @@ end
 
 ---@class SidebarOpenOptions: AskOptions
 ---@field selection? avante.SelectionResult
+---@field new_chat? boolean
 
 ---@param opts SidebarOpenOptions
 function Sidebar:open(opts)
   opts = opts or {}
   self.show_logo = opts.show_logo
+  self._skip_history_load = opts.new_chat == true
+  -- Set an empty placeholder history so render() never sees old todos/messages
+  -- and create_input_container() won't reload old history (it reloads when chat_history is nil)
+  if opts.new_chat then
+    self.chat_history = {
+      title = "untitled",
+      timestamp = "",
+      entries = {},
+      messages = {},
+      todos = {},
+      tags = {},
+      filename = "",
+    }
+    self.current_avante_mode = nil
+  end
   local in_visual_mode = Utils.in_visual_mode() and self:in_code_win()
   if not self:is_open() then
     self:reset()
     self:initialize()
+    self._skip_history_load = false
     if opts.selection then self.code.selection = opts.selection end
     self:render(opts)
     self:focus()
@@ -203,6 +222,7 @@ function Sidebar:open(opts)
       self:close()
       self:reset()
       self:initialize()
+      self._skip_history_load = false
       if opts.selection then self.code.selection = opts.selection end
       self:render(opts)
       return self
@@ -543,7 +563,11 @@ function Sidebar:connect_acp(opts)
 
   -- Placeholder handlers — will be replaced by llm.lua before sending prompts
   local handlers = {
-    on_session_update = function(_update) end,
+    on_session_update = function(update)
+      if update.sessionUpdate == "available_commands_update" and update.availableCommands then
+        Utils.register_acp_commands(update.availableCommands)
+      end
+    end,
     on_request_permission = function(_tool_call, _options, _callback) end,
     on_read_file = function(path, _line, _limit, callback, error_callback)
       local abs_path = Utils.to_absolute_path(path)
@@ -607,20 +631,29 @@ function Sidebar:connect_acp(opts)
       local can_load = acp_client.agent_capabilities and acp_client.agent_capabilities.loadSession
 
       if can_load then
-        -- Agent supports session/load — use it
-        local project_root = Utils.root.get()
-        Utils.info("Loading ACP session: " .. existing_session_id)
-        acp_client:load_session(existing_session_id, project_root, {}, function(_result, err)
+        -- Use the session's working_directory for cwd so the ACP wrapper can find
+        -- the session file under the correct project path in ~/.claude/projects/
+        local session_cwd = (self.chat_history and self.chat_history.working_directory) or Utils.root.get()
+        Utils.debug("Attempting session/load for: " .. existing_session_id .. " cwd: " .. session_cwd)
+        acp_client:load_session(existing_session_id, session_cwd, {}, function(result, err)
           if (self._acp_session_generation or 0) ~= my_generation then return end
           if err then
-            -- session/load failed — keep the existing session ID and proceed anyway.
-            -- The agent process may still have this session active; we'll find out
-            -- when we send the first prompt.
-            Utils.warn("Failed to load ACP session: " .. vim.inspect(err) .. " — will try existing session")
-          else
-            Utils.info("ACP session loaded: " .. existing_session_id)
+            -- session/load failed — the new process cannot restore this session.
+            -- Create a new session immediately rather than keeping a stale ID that
+            -- will fail on the first prompt with "Session not found".
+            Utils.debug("session/load failed (code=" .. tostring(err.code) .. "), creating new session")
+            self:_create_acp_session(acp_client, my_generation, opts)
+            return
           end
 
+          -- Update session ID if the agent returned a different one
+          local loaded_session_id = result and result.sessionId or existing_session_id
+          if self.chat_history then
+            self.chat_history.acp_session_id = loaded_session_id
+            Path.history.save(self.code.bufnr, self.chat_history)
+          end
+
+          Utils.info("ACP session resumed: " .. loaded_session_id)
           vim.schedule(function()
             if (self._acp_session_generation or 0) ~= my_generation then return end
             self:initialize_modes({ skip_set_default_mode = true })
@@ -631,17 +664,10 @@ function Sidebar:connect_acp(opts)
           end)
         end)
       else
-        -- Agent doesn't support session/load — just keep the existing session ID
-        -- and proceed. The session may still be active in the agent process.
-        Utils.info("Resuming ACP session: " .. existing_session_id)
-        vim.schedule(function()
-          if (self._acp_session_generation or 0) ~= my_generation then return end
-          self:initialize_modes({ skip_set_default_mode = true })
-          self:ensure_acp_thread()
-          self:render_result()
-          self:show_input_hint()
-          if opts.on_ready then opts.on_ready() end
-        end)
+        -- Agent doesn't support session/load — the new process has no way to
+        -- restore the old session. Create a new session immediately.
+        Utils.debug("Agent does not support session/load, creating new session")
+        self:_create_acp_session(acp_client, my_generation, opts)
       end
     else
       -- No existing session or force_new — create a new one
@@ -697,11 +723,18 @@ end
 --- Create a new thread, resetting the sidebar for a fresh conversation.
 --- Auto-tags the thread with provider and project info.
 --- Connects ACP with force_new to create a fresh session.
-function Sidebar:new_thread()
+---@param opts? { avante_mode?: string }
+function Sidebar:new_thread(opts)
+  opts = opts or {}
+
   -- Reset sidebar state
   self.acp_thread = nil
   self.current_mode_id = nil
   self.available_modes = {}
+  self._pending_mode_transition = nil
+
+  -- Set avante mode
+  self.current_avante_mode = opts.avante_mode or nil
 
   -- Reset file selector to clean state
   if self.file_selector then
@@ -718,6 +751,7 @@ function Sidebar:new_thread()
 
   -- Create fresh history (no acp_session_id — connect_acp will create new)
   self.chat_history = Path.history.new(self.code.bufnr)
+  self.chat_history.avante_mode = self.current_avante_mode
 
   -- Auto-tag with provider info
   local provider = Config.provider or "unknown"
@@ -773,6 +807,10 @@ function Sidebar:load_thread(opts)
   self.acp_thread = nil
   self.current_mode_id = nil
   self.available_modes = {}
+  self._pending_mode_transition = nil
+
+  -- Restore avante mode from history
+  self.current_avante_mode = self.chat_history and self.chat_history.avante_mode or nil
 
   -- Update UI
   self:render_result()
@@ -2482,7 +2520,13 @@ function Sidebar:initialize()
     end
   end
 
-  self:reload_chat_history()
+  -- Skip loading old history when we're about to create a new thread — new_thread() handles it
+  if not self._skip_history_load then
+    self:reload_chat_history()
+
+    -- Restore avante mode from persisted chat history
+    self.current_avante_mode = self.chat_history and self.chat_history.avante_mode or nil
+  end
 
   return self
 end
@@ -3050,11 +3094,15 @@ function Sidebar:compact_history_messages(args, cb)
   end)
 end
 
-function Sidebar:new_chat(args, cb)
+function Sidebar:new_chat(args, cb, opts)
+  opts = opts or {}
+
   -- Reset mode state
   self.current_mode_id = nil
   self.available_modes = {}
   self.acp_thread = nil
+  self._pending_mode_transition = nil
+  self.current_avante_mode = opts.avante_mode or nil
 
   -- Reset file selector to clean state
   if self.file_selector then
@@ -3070,6 +3118,7 @@ function Sidebar:new_chat(args, cb)
   end
 
   local history = Path.history.new(self.code.bufnr)
+  history.avante_mode = self.current_avante_mode
   -- Auto-detect worktree name if cwd is inside a git worktree
   local wd = history.working_directory or vim.fn.getcwd()
   local git_path = wd .. "/.git"
@@ -3377,6 +3426,11 @@ function Sidebar:show_input_hint()
     end
   end
 
+  -- Avante mode indicator
+  if self.current_avante_mode then
+    table.insert(parts, "[" .. self.current_avante_mode:upper() .. "]")
+  end
+
   -- 2. Following status indicator
   if config.show_following_status then
     local is_following = self.follow_mode
@@ -3623,6 +3677,7 @@ end
 
 function Sidebar:reload_chat_history()
   self.token_count = nil
+  if self._skip_history_load then return end
   if not self.code.bufnr or not api.nvim_buf_is_valid(self.code.bufnr) then return end
   self.chat_history = Path.history.load(self.code.bufnr)
   self._history_cache_invalidated = true
@@ -4783,9 +4838,9 @@ function Sidebar:create_plan_container()
     return
   end
 
-  local history = Path.history.load(self.code.bufnr)
-  Utils.debug("Loaded history from disk, todos count=" .. #history.todos)
-  if #history.todos == 0 then
+  local history = self.chat_history or Path.history.load(self.code.bufnr)
+  Utils.debug("Plan container: todos count=" .. #(history.todos or {}))
+  if not history.todos or #history.todos == 0 then
     Utils.debug("No todos, unmounting plan container")
     if self.containers.plan and Utils.is_valid_container(self.containers.plan) then
       self.containers.plan:unmount()

@@ -320,9 +320,13 @@ function M:parse_curl_args(prompt_opts)
   local headers = {
     ["Content-Type"] = "application/json",
     ["anthropic-version"] = "2023-06-01",
-    ["anthropic-beta"] = Config.plan_only_mode
-      and "prompt-caching-2024-07-31,interleaved-thinking-2025-05-14"
-      or "prompt-caching-2024-07-31",
+    ["anthropic-beta"] = (function()
+      local sidebar = require("avante").get()
+      local in_plan_mode = sidebar and sidebar.current_avante_mode == "plan"
+      return in_plan_mode
+        and "prompt-caching-2024-07-31,interleaved-thinking-2025-05-14"
+        or "prompt-caching-2024-07-31"
+    end)(),
   }
 
   if P.env.require_api_key(provider_conf) then
@@ -422,7 +426,8 @@ function M:parse_curl_args(prompt_opts)
   }, request_body)
 
   -- Enable extended thinking for plan mode
-  if Config.plan_only_mode then
+  local sidebar = require("avante").get()
+  if sidebar and sidebar.current_avante_mode == "plan" then
     body.thinking = {
       type = "enabled",
       budget_tokens = 10000,  -- Allow substantial thinking for planning

@@ -1812,7 +1812,7 @@ function M.get_commands()
     { description = "Show plan file in chat window", name = "view-plan" },
     { description = "Open plan file in a buffer", name = "open-plan" },
     { description = "Toggle full-screen mode", name = "toggle-full-screen" },
-    { description = "Toggle plan-only mode", name = "toggle-plan-mode" },
+    { description = "Switch avante mode (plan, one-shot, review, etc.)", name = "avante-modes" },
     { description = "Toggle follow agent edits", name = "toggle-follow" },
     {
       shorthelp = "Paste image from clipboard",
@@ -2019,27 +2019,54 @@ Use `/compact` to update the memory with recent messages.]],
       sidebar:toggle_fullscreen_edit()
       if cb then cb(args) end
     end,
-    ["toggle-plan-mode"] = function(sidebar, args, cb)
-      -- Toggle plan-only mode (backward compatible with old plan_only_mode)
-      -- This also triggers the same logic as :AvantePlanModeToggle
-      require("avante.api").toggle_plan_mode()
-      
+    ["avante-modes"] = function(sidebar, args, cb)
       local Config = require("avante.config")
-      local status = Config.plan_only_mode and "enabled" or "disabled"
-      
-      sidebar:update_content(
-        string.format("**Plan Mode %s**\n\nPlan mode is now %s.\n\n%s", 
-          status:upper(), 
-          status,
-          Config.plan_only_mode and "The assistant will only create plans, not execute code changes." or "The assistant will execute code changes normally."
-        ),
-        { focus = false, scroll = false }
-      )
-      
-      -- Update the header to reflect the change
-      sidebar:render_result()
-      
-      if cb then cb(args) end
+      local Path = require("avante.path")
+      local modes = Config.avante_modes or {}
+      if #modes == 0 then
+        sidebar:update_content("No avante modes configured.", { focus = false, scroll = false })
+        return
+      end
+
+      -- Build selection list: modes + "none"
+      local items = { { name = "none", description = "Disable avante mode" } }
+      for _, m in ipairs(modes) do
+        table.insert(items, m)
+      end
+
+      vim.ui.select(items, {
+        prompt = "Select avante mode:",
+        format_item = function(item)
+          local current = sidebar.current_avante_mode
+          local marker = (item.name == (current or "none")) and " (current)" or ""
+          if item.name == "none" then return "No mode" .. marker end
+          return item.name .. " — " .. item.description .. marker
+        end,
+      }, function(choice)
+        if not choice then return end
+        local old_mode = sidebar.current_avante_mode
+        local new_mode = choice.name == "none" and nil or choice.name
+
+        if old_mode ~= new_mode then
+          sidebar._pending_mode_transition = {
+            from = old_mode or "none",
+            to = new_mode or "none",
+          }
+        end
+
+        sidebar.current_avante_mode = new_mode
+        if sidebar.chat_history then
+          sidebar.chat_history.avante_mode = new_mode
+          Path.history.save(sidebar.code.bufnr, sidebar.chat_history)
+        end
+
+        sidebar:render_result()
+        sidebar:show_input_hint()
+
+        local display = new_mode and new_mode:upper() or "NONE"
+        M.info("Avante mode: " .. display)
+        if cb then cb(args) end
+      end)
     end,
     ["toggle-follow"] = function(sidebar, args, cb)
       -- Toggle follow agent locations mode
@@ -2186,6 +2213,41 @@ Use `/compact` to update the memory with recent messages.]],
   end
 
   return commands
+end
+
+--- Register ACP-sourced commands into Config.slash_commands and refresh the cmp source.
+--- This is the single source of truth for handling available_commands_update from ACP.
+---@param commands avante.acp.AvailableCommand[]
+function M.register_acp_commands(commands)
+  local Config = require("avante.config")
+  for _, command in ipairs(commands) do
+    local exists = false
+    for _, command_ in ipairs(Config.slash_commands) do
+      if command_.name == command.name then
+        command_.source = "acp"
+        command_.description = command.description
+        command_.details = command.description
+        exists = true
+        break
+      end
+    end
+    if not exists then
+      table.insert(Config.slash_commands, {
+        name = command.name,
+        description = command.description,
+        details = command.description,
+        source = "acp",
+      })
+    end
+  end
+
+  local has_cmp, cmp = pcall(require, "cmp")
+  if has_cmp then
+    local slash_commands_id = require("avante").slash_commands_id
+    if slash_commands_id ~= nil then cmp.unregister_source(slash_commands_id) end
+    local avante = require("avante")
+    avante.slash_commands_id = cmp.register_source("avante_commands", require("cmp_avante.commands"):new())
+  end
 end
 
 function M.get_timestamp() return tostring(os.date("%Y-%m-%d %H:%M:%S")) end

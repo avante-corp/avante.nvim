@@ -185,8 +185,6 @@ cmd("Threads", function() require("avante.api").view_threads() end, { desc = "av
 cmd("PinnedThreads", function() require("avante.api").view_pinned_threads() end, { desc = "avante: view pinned threads with unread detection" })
 cmd("NextPinnedThread", function() require("avante.api").next_pinned_thread() end, { desc = "avante: switch to next pinned thread" })
 cmd("PrevPinnedThread", function() require("avante.api").prev_pinned_thread() end, { desc = "avante: switch to previous pinned thread" })
-cmd("PlanModeToggle", function() require("avante.api").toggle_plan_mode() end, { desc = "avante: toggle plan-only mode" })
-cmd("PlanMode", function() require("avante.api").toggle_plan_mode() end, { desc = "avante: toggle plan-only mode (deprecated, use PlanModeToggle)" })
 cmd("Debug", function()
   local Config = require("avante.config")
   Config.debug = not Config.debug

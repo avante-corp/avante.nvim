@@ -510,6 +510,12 @@ vim.g.avante_login = vim.g.avante_login
 ---@field selected_filepaths string[] | nil
 ---@field visible boolean?
 ---
+---@class AvanteMode
+---@field name string
+---@field description string
+---@field prompt string|nil        -- nil on "plan" mode → uses built-in get_plan_mode_prompt()
+---@field additional_files string[] -- markdown file paths to include as context
+
 ---@class avante.ChatHistory
 ---@field title string
 ---@field timestamp string
@@ -527,6 +533,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field parent_thread_id string | nil
 ---@field pinned boolean | nil
 ---@field last_seen_message_count integer | nil
+---@field avante_mode string | nil
 ---
 ---@class avante.ChatMemory
 ---@field content string

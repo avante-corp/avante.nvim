@@ -528,24 +528,8 @@ function M.setup(opts)
     end
   end
 
-  -- Check pinned threads for new messages on startup
-  vim.defer_fn(function()
-    local ok_path, PathMod = pcall(require, "avante.path")
-    if not ok_path then return end
-    local all = PathMod.history.list_all()
-    local pinned = vim.tbl_filter(function(h)
-      return h.pinned == true and h.acp_session_id ~= nil
-    end, all)
-    if #pinned == 0 then return end
-
-    local ok_tv, thread_viewer = pcall(require, "avante.thread_viewer")
-    if not ok_tv then return end
-    thread_viewer.check_pinned_unread(pinned, function(unread_count)
-      if unread_count > 0 then
-        Utils.info(unread_count .. " pinned thread(s) have new messages. Use :AvantePinnedThreads to view.")
-      end
-    end)
-  end, 3000)
+  -- TODO: pinned threads startup check disabled — scanning 1500+ history files blocks the UI.
+  -- Re-enable once list_all() is made async or uses a metadata index.
 
   -- setup helpers
   H.autocmds()

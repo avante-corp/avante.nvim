@@ -693,14 +693,19 @@ function ACPClient:_handle_request_permission(message_id, params)
       self.config.handlers.on_request_permission(
         tool_call,
         options,
-        function(option_id)
+        function(option_id, result_data)
           Utils.debug("Permission response: message_id=" .. message_id .. ", option_id=" .. option_id)
-          self:_send_result(message_id, {
+          local result = {
             outcome = {
               outcome = "selected",
               optionId = option_id,
             },
-          })
+          }
+          -- Allow callers to include additional result fields (e.g. answer for AskUserQuestion)
+          if result_data then
+            result = vim.tbl_deep_extend("force", result, result_data)
+          end
+          self:_send_result(message_id, result)
           Utils.debug("Permission response sent successfully")
         end
       )

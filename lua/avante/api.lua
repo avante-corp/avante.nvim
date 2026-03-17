@@ -159,10 +159,11 @@ function M.ask(opts)
     if new_chat then
       open_opts.skip_acp_connect = true
       open_opts.skip_session_restore = true
+      open_opts.new_chat = true
     end
     require("avante").open_sidebar(open_opts)
     sidebar = require("avante").get()
-    if new_chat then sidebar:new_thread() end
+    if new_chat then sidebar:new_thread({ avante_mode = opts.avante_mode }) end
     if opts.without_selection then
       sidebar.code.selection = nil
       sidebar.file_selector:reset()
@@ -430,7 +431,8 @@ end
 --- Open sidebar with a new chat in a specific directory
 ---@param dir string Absolute path to cd into
 ---@param title string|nil Optional thread title
-local function open_new_chat_in_dir(dir, title)
+---@param avante_mode string|nil Optional avante mode name
+local function open_new_chat_in_dir(dir, title, avante_mode)
   local Utils = require("avante.utils")
   local Path = require("avante.path")
 
@@ -440,7 +442,7 @@ local function open_new_chat_in_dir(dir, title)
   require("avante").open_sidebar({ skip_acp_connect = true, skip_session_restore = true })
   local sidebar = require("avante").get()
   if sidebar then
-    sidebar:new_thread()
+    sidebar:new_thread({ avante_mode = avante_mode })
     if title and sidebar.chat_history then
       sidebar.chat_history.title = title
       Path.history.save(sidebar.code.bufnr, sidebar.chat_history)
@@ -510,6 +512,45 @@ local function list_worktrees()
     end
   end
   return worktrees
+end
+
+--- Show avante mode picker, then call the action with the selected mode.
+--- If default_avante_mode is set, skips the picker. If no modes configured, skips.
+---@param action fun(avante_mode: string|nil)
+local function pick_avante_mode(action)
+  local Config = require("avante.config")
+  local modes = Config.avante_modes or {}
+
+  -- If no modes configured, skip picker
+  if #modes == 0 then
+    action(nil)
+    return
+  end
+
+  -- If default is set, skip picker
+  if Config.default_avante_mode then
+    action(Config.default_avante_mode)
+    return
+  end
+
+  -- Build selection list
+  local items = {}
+  for _, m in ipairs(modes) do
+    table.insert(items, m)
+  end
+  table.insert(items, { name = "none", description = "No mode" })
+
+  vim.ui.select(items, {
+    prompt = "Select mode:",
+    format_item = function(item)
+      if item.name == "none" then return "No mode" end
+      return item.name .. " — " .. item.description
+    end,
+  }, function(choice)
+    if not choice then return end
+    local mode = choice.name == "none" and nil or choice.name
+    action(mode)
+  end)
 end
 
 --- Show a telescope picker for creating a new chat: current dir, repo root, worktrees, favorite dirs
@@ -590,22 +631,28 @@ function M.new_chat_picker(ask_args)
     })
   end
 
-  -- If there's only the "current dir" entry, skip the picker
+  -- If there's only the "current dir" entry, skip the dir picker
   if #entries <= 1 then
-    ask_args = ask_args or {}
-    ask_args.ask = false
-    ask_args.new_chat = true
-    M.ask(ask_args)
+    pick_avante_mode(function(avante_mode)
+      ask_args = ask_args or {}
+      ask_args.ask = false
+      ask_args.new_chat = true
+      ask_args.avante_mode = avante_mode
+      M.ask(ask_args)
+    end)
     return
   end
 
   local ok, telescope = pcall(require, "telescope.pickers")
   if not ok then
     -- No telescope, fall back to normal new chat
-    ask_args = ask_args or {}
-    ask_args.ask = false
-    ask_args.new_chat = true
-    M.ask(ask_args)
+    pick_avante_mode(function(avante_mode)
+      ask_args = ask_args or {}
+      ask_args.ask = false
+      ask_args.new_chat = true
+      ask_args.avante_mode = avante_mode
+      M.ask(ask_args)
+    end)
     return
   end
 
@@ -635,12 +682,17 @@ function M.new_chat_picker(ask_args)
 
         local entry = selection.value
         if entry.action == "current" then
-          local args = ask_args or {}
-          args.ask = false
-          args.new_chat = true
-          M.ask(args)
+          pick_avante_mode(function(avante_mode)
+            local args = ask_args or {}
+            args.ask = false
+            args.new_chat = true
+            args.avante_mode = avante_mode
+            M.ask(args)
+          end)
         elseif entry.action == "dir" then
-          open_new_chat_in_dir(entry.dir, entry.title)
+          pick_avante_mode(function(avante_mode)
+            open_new_chat_in_dir(entry.dir, entry.title, avante_mode)
+          end)
         elseif entry.action == "create" then
           vim.ui.input({ prompt = "Worktree name: " }, function(input)
             if input and input ~= "" then
