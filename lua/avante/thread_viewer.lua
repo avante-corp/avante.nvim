@@ -218,7 +218,15 @@ local function fetch_sessions_from_acp(callback)
       table.insert(transformed_sessions, {
         session_id = acp_session.sessionId or acp_session.session_id,
         working_directory = acp_session.cwd or acp_session.workingDirectory or "unknown",
-        mtime = acp_session.lastModified or acp_session.last_modified or os.time(),
+        mtime = (function()
+          local lm = acp_session.lastModified or acp_session.last_modified
+          if type(lm) == "string" then
+            local ts = Utils.parse_iso8601_date(lm)
+            if ts then return ts end
+          end
+          if type(lm) == "number" then return lm end
+          return os.time()
+        end)(),
         message_count = acp_session.messageCount or acp_session.message_count or 0,
         title = acp_session.title or acp_session.name or nil, -- Capture title from ACP response
         path = nil, -- ACP sessions don't have a local path
@@ -609,15 +617,15 @@ function M.open_with_telescope(bufnr, cb, opts)
       table.insert(deduplicated_histories, history)
     end
 
-    -- Sort: pinned first, then by timestamp (most recent first)
+    -- Sort: pinned first, then by most recent activity (last message timestamp)
     table.sort(deduplicated_histories, function(a, b)
       local a_pinned = a.pinned or false
       local b_pinned = b.pinned or false
       if a_pinned ~= b_pinned then return a_pinned end
       local a_msgs = History.get_history_messages(a)
       local b_msgs = History.get_history_messages(b)
-      local a_time = #a_msgs > 0 and a_msgs[#a_msgs].timestamp or a.timestamp
-      local b_time = #b_msgs > 0 and b_msgs[#b_msgs].timestamp or b.timestamp
+      local a_time = #a_msgs > 0 and a_msgs[#a_msgs].timestamp or a.timestamp or ""
+      local b_time = #b_msgs > 0 and b_msgs[#b_msgs].timestamp or b.timestamp or ""
       return a_time > b_time
     end)
 
