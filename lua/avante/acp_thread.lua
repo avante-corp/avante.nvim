@@ -514,10 +514,11 @@ function AcpThread:_track_file_edit(update)
   end
   if not is_write_tool then return end
 
-  local raw = update.rawInput or {}
+  local raw = update.rawInput or stored_acp.rawInput or {}
   local path = raw.file_path or raw.path or raw.rel_path or raw.filepath
-  if not path and update.locations and #update.locations > 0 then
-    path = update.locations[1].path
+  local locations = update.locations or stored_acp.locations
+  if not path and locations and #locations > 0 then
+    path = locations[1].path
   end
   -- Also try to extract path from the title (e.g. "Write(src/foo.lua)" or "Edit(src/foo.lua)")
   if not path then

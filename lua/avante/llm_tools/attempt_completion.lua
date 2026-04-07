@@ -58,6 +58,7 @@ M.returns = {
 
 ---@type avante.LLMToolOnRender<AttemptCompletionInput>
 function M.on_render(input)
+  if not input then return {} end
   local lines = {}
   table.insert(lines, Line:new({ { "✓  Task Completed", Highlights.AVANTE_TASK_COMPLETED } }))
   table.insert(lines, Line:new({ { "" } }))

@@ -15,20 +15,17 @@ M.ACP_WRITE_TOOL_TITLES = {
   "edit_file",
 }
 
---- Called from track_edited_file; schedules a loclist refresh
+--- Called from track_edited_file; schedules a quickfix refresh
 ---@param abs_path string
 ---@param session_ctx table
 ---@param tool_name? string
 function M.on_file_edited(abs_path, session_ctx, tool_name)
-  vim.schedule(function() M._refresh_loclist(session_ctx) end)
+  vim.schedule(function() M._refresh_qflist(session_ctx) end)
 end
 
---- Rebuild the location list from session_ctx
+--- Rebuild the quickfix list from session_ctx
 ---@param session_ctx table
-function M._refresh_loclist(session_ctx)
-  local sidebar = require("avante").get()
-  if not sidebar or not sidebar.code or not vim.api.nvim_win_is_valid(sidebar.code.winid) then return end
-
+function M._refresh_qflist(session_ctx)
   local file_snapshots = session_ctx.file_snapshots or {}
   local file_order = session_ctx.edited_files_order or {}
 
@@ -52,7 +49,6 @@ function M._refresh_loclist(session_ctx)
       end
     end
 
-    local rel_path = vim.fn.fnamemodify(abs_path, ":~:.")
     local text = string.format("+%d -%d", additions, deletions)
     table.insert(items, {
       filename = abs_path,
@@ -63,34 +59,25 @@ function M._refresh_loclist(session_ctx)
     })
   end
 
-  vim.fn.setloclist(sidebar.code.winid, items, "r")
-  vim.fn.setloclist(sidebar.code.winid, {}, "a", {
+  vim.fn.setqflist(items, "r")
+  vim.fn.setqflist({}, "a", {
     title = "Avante: Changed Files (" .. #items .. ")",
   })
 end
 
---- Open the location list window
+--- Open the quickfix list window
 function M.open()
-  local sidebar = require("avante").get()
-  if not sidebar or not sidebar.code or not vim.api.nvim_win_is_valid(sidebar.code.winid) then
-    Utils.error("No sidebar found")
-    return
-  end
-  local items = vim.fn.getloclist(sidebar.code.winid)
+  local items = vim.fn.getqflist()
   if #items == 0 then
     Utils.info("No files changed in this session")
     return
   end
-  vim.api.nvim_set_current_win(sidebar.code.winid)
-  vim.cmd("lopen")
+  vim.cmd("copen")
 end
 
---- Clear the location list
+--- Clear the quickfix list
 function M.clear()
-  local sidebar = require("avante").get()
-  if not sidebar or not sidebar.code then return end
-  if not vim.api.nvim_win_is_valid(sidebar.code.winid) then return end
-  pcall(vim.fn.setloclist, sidebar.code.winid, {}, "r")
+  pcall(vim.fn.setqflist, {}, "r")
 end
 
 return M

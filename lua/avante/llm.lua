@@ -1324,6 +1324,16 @@ function M._stream_acp(opts)
               end)
             end
 
+            -- Sync tool call to acp_thread so _track_file_edit can look up
+            -- stored title/kind/rawInput during later tool_call_update events
+            if sidebar and sidebar.acp_thread then
+              local tc_msg = tool_call_messages[update.toolCallId]
+              if tc_msg then
+                sidebar.acp_thread.tool_call_messages[update.toolCallId] = tc_msg
+              end
+              sidebar.acp_thread:_track_file_edit(update)
+            end
+
           end
 
           if update.sessionUpdate == "tool_call_update" then
@@ -1364,6 +1374,16 @@ function M._stream_acp(opts)
             local messages = { tool_call_message }
             if tool_result_message then table.insert(messages, tool_result_message) end
             on_messages_add(messages)
+
+            -- Sync updated tool call to acp_thread and track file edits
+            local sidebar = require("avante").get()
+            if sidebar and sidebar.acp_thread then
+              local tc_msg = tool_call_messages[update.toolCallId]
+              if tc_msg then
+                sidebar.acp_thread.tool_call_messages[update.toolCallId] = tc_msg
+              end
+              sidebar.acp_thread:_track_file_edit(update)
+            end
 
           end
 

@@ -3,14 +3,15 @@
     "allow": [
       "Bash(find:*)",
       "WebFetch(domain:crates.io)",
-      "WebFetch(domain:docs.rs)"
+      "WebFetch(domain:docs.rs)",
+      "Bash(xargs ls -la)"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "memory",
     "figma",
     "nuon-cms",
     "ctl-api-db"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }

@@ -72,6 +72,7 @@ end
 
 ---@type avante.LLMToolOnRender<AskUserQuestionInput>
 function M.on_render(input, opts)
+  if not input then return {} end
   local state = opts.state
   local lines = {}
   local question = input.question or input.text or "(no question)"

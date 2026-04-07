@@ -86,6 +86,7 @@ end
 
 ---@type avante.LLMToolOnRender<avante.DispatchAgentInput>
 function M.on_render(input, opts)
+  if not input then return {} end
   local result_message = opts.result_message
   local store = opts.store or {}
   local messages = store.messages or {}

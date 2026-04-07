@@ -1180,6 +1180,9 @@ To use ACP-compatible agents with Avante.nvim, you need to configure an ACP prov
 ```
 
 #### Claude Code with ACP
+
+> **Note:** The Claude Code ACP integration uses Zed Industries' [`@zed-industries/claude-code-acp`](https://www.npmjs.com/package/@zed-industries/claude-code-acp) npm package, which provides the ACP server implementation for Claude Code. This is the same package used by the [Zed editor](https://zed.dev) for its Claude Code integration.
+
 ```lua
 {
   provider = "claude-code",

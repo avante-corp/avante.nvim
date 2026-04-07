@@ -59,6 +59,7 @@ M.returns = {
 
 ---@type avante.LLMToolOnRender<ThinkingInput>
 function M.on_render(input, opts)
+  if not input then return {} end
   local state = opts.state
   local lines = {}
   local text = state == "generating" and "Thinking" or "Thoughts"
