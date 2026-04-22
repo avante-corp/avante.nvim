@@ -2,6 +2,18 @@ local Utils = require("avante.utils")
 
 local M = {}
 
+--- Parse a unified diff hunk header
+---@param line string
+---@return integer old_start, integer old_count, integer new_start, integer new_count
+local function parse_hunk_header(line)
+  local os, oc, ns, nc = line:match("^@@ %-(%d+),?(%d*) %+(%d+),?(%d*) @@")
+  os = tonumber(os) or 0
+  oc = tonumber(oc) or 1
+  ns = tonumber(ns) or 0
+  nc = tonumber(nc) or 1
+  return os, oc, ns, nc
+end
+
 --- Tool titles from ACP agents that indicate file writes
 M.ACP_WRITE_TOOL_TITLES = {
   "Write",
@@ -35,33 +47,55 @@ function M._refresh_qflist(session_ctx)
     local ok, new_lines = pcall(vim.fn.readfile, abs_path)
     local new_content = (ok and new_lines) and table.concat(new_lines, "\n") or ""
 
-    local additions, deletions = 0, 0
+    local rel_path = vim.fn.fnamemodify(abs_path, ":~:.")
+
     if old_content ~= new_content then
       local diff_text = vim.diff(old_content .. "\n", new_content .. "\n", { algorithm = "histogram" })
       if diff_text then
+        local hunk_additions, hunk_deletions = 0, 0
+        local hunk_new_start = nil
+
         for line in diff_text:gmatch("[^\n]+") do
-          if line:match("^%+") and not line:match("^%+%+%+") then
-            additions = additions + 1
+          if line:match("^@@") then
+            -- Flush previous hunk if any
+            if hunk_new_start then
+              table.insert(items, {
+                filename = abs_path,
+                lnum = hunk_new_start,
+                col = 1,
+                text = string.format("%s +%d -%d", rel_path, hunk_additions, hunk_deletions),
+                type = "",
+              })
+            end
+            -- Start new hunk
+            local _, _, ns, _ = parse_hunk_header(line)
+            hunk_new_start = ns
+            hunk_additions = 0
+            hunk_deletions = 0
+          elseif line:match("^%+") and not line:match("^%+%+%+") then
+            hunk_additions = hunk_additions + 1
           elseif line:match("^%-") and not line:match("^%-%-%-") then
-            deletions = deletions + 1
+            hunk_deletions = hunk_deletions + 1
           end
+        end
+
+        -- Flush last hunk
+        if hunk_new_start then
+          table.insert(items, {
+            filename = abs_path,
+            lnum = hunk_new_start,
+            col = 1,
+            text = string.format("%s +%d -%d", rel_path, hunk_additions, hunk_deletions),
+            type = "",
+          })
         end
       end
     end
-
-    local text = string.format("+%d -%d", additions, deletions)
-    table.insert(items, {
-      filename = abs_path,
-      lnum = 1,
-      col = 1,
-      text = text,
-      type = "",
-    })
   end
 
   vim.fn.setqflist(items, "r")
   vim.fn.setqflist({}, "a", {
-    title = "Avante: Changed Files (" .. #items .. ")",
+    title = "Avante: Changed Files (" .. #items .. " hunks)",
   })
 end
 
