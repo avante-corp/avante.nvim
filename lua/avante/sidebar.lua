@@ -206,8 +206,16 @@ function Sidebar:open(opts)
       todos = {},
       tags = {},
       filename = "",
+      acp_session_id = nil,
     }
     self.current_avante_mode = nil
+    -- Clear thread state early so nothing leaks from a prior session
+    -- into the brief window before new_thread() runs
+    self.acp_thread = nil
+    self.current_mode_id = nil
+    self.available_modes = {}
+    self._pending_mode_transition = nil
+    self._current_session_ctx = nil
   end
   local in_visual_mode = Utils.in_visual_mode() and self:in_code_win()
   if not self:is_open() then
@@ -408,8 +416,11 @@ function Sidebar:initialize_modes(opts)
     self.current_mode_id = self.acp_client:current_mode()
 
     -- Setup mode change callback — routes through acp_thread if available
+    -- Capture generation to drop stale callbacks from old sessions
+    local mode_gen = self._acp_session_generation or 0
     self.acp_client.on_mode_changed = function(mode_id)
       vim.schedule(function()
+        if (self._acp_session_generation or 0) ~= mode_gen then return end
         self.current_mode_id = mode_id
         if self.acp_thread then
           self.acp_thread.current_mode_id = mode_id
@@ -505,15 +516,21 @@ function Sidebar:ensure_acp_thread()
     self.acp_thread.config_options = self.acp_client:all_config_options()
   end
 
+  -- Capture current generation so callbacks from stale sessions are dropped
+  local cb_generation = self._acp_session_generation or 0
+  local function is_stale() return (self._acp_session_generation or 0) ~= cb_generation end
+
   -- Wire up callbacks that update the sidebar
   self.acp_thread:set_callbacks({
     on_state_change = function(new_state, _old_state)
       vim.schedule(function()
+        if is_stale() then return end
         self:show_input_hint()
       end)
     end,
     on_mode_change = function(mode_id, mode_name)
       vim.schedule(function()
+        if is_stale() then return end
         self.current_mode_id = mode_id
         self:render_result()
         self:show_input_hint()
@@ -521,12 +538,14 @@ function Sidebar:ensure_acp_thread()
     end,
     on_plan_update = function(todos)
       vim.schedule(function()
+        if is_stale() then return end
         self:update_plan(todos)
         self:show_input_hint() -- refresh plan progress in status line
       end)
     end,
     on_config_options_change = function(config_options)
       vim.schedule(function()
+        if is_stale() then return end
         self:render_result()
         self:show_input_hint()
       end)
@@ -554,9 +573,20 @@ function Sidebar:connect_acp(opts)
   self._acp_session_generation = (self._acp_session_generation or 0) + 1
   local my_generation = self._acp_session_generation
 
-  -- Disconnect existing client if switching sessions
+  -- Stop and unregister existing client if switching sessions
   if self.acp_client then
-    pcall(function() self.acp_client:disconnect() end)
+    -- Unregister from global registry before stopping
+    local ok, Avante = pcall(require, "avante")
+    if ok and Avante.unregister_acp_client then
+      -- Find and remove our client from the registry
+      for client_id, client in pairs(Avante.acp_clients or {}) do
+        if client == self.acp_client then
+          Avante.unregister_acp_client(client_id)
+          break
+        end
+      end
+    end
+    pcall(function() self.acp_client:stop() end)
   end
   self.acp_client = nil
   self.acp_thread = nil
@@ -763,15 +793,29 @@ function Sidebar:new_thread(opts)
 
   Path.history.save(self.code.bufnr, self.chat_history)
 
-  -- Clear UI
+  -- Clear UI and all session state
   self.current_state = nil
   self.expanded_message_uuids = {}
   self.tool_message_positions = {}
   self.current_tool_use_extmark_id = nil
   self._current_session_ctx = nil
-  self:update_content_with_history()
+  self._history_cache_invalidated = true
+
+  -- Clear changed files tracking from prior session
+  require("avante.changed_files").clear()
+
+  -- Clear stale ACP slash commands from previous session
+  Config.slash_commands = vim.tbl_filter(function(c) return c.source ~= "acp" end, Config.slash_commands)
+
+  -- Update display with the fresh (empty) history — don't call
+  -- update_content_with_history() as that reloads from disk and overwrites
+  -- the fresh chat_history we just created above.
+  self:update_content("")
   self:render_result()
   self:show_input_hint()
+
+  -- Refresh plan container to clear stale todos
+  vim.schedule(function() self:create_plan_container() end)
 
   -- Connect ACP — force_new since this is a brand new thread
   self:connect_acp({ force_new = true })
@@ -808,6 +852,15 @@ function Sidebar:load_thread(opts)
   self.current_mode_id = nil
   self.available_modes = {}
   self._pending_mode_transition = nil
+  self.current_state = nil
+  self.expanded_message_uuids = {}
+  self.tool_message_positions = {}
+  self.current_tool_use_extmark_id = nil
+  self._current_session_ctx = nil
+
+  -- Clear prior session's changed files and slash commands
+  require("avante.changed_files").clear()
+  Config.slash_commands = vim.tbl_filter(function(c) return c.source ~= "acp" end, Config.slash_commands)
 
   -- Restore avante mode from history
   self.current_avante_mode = self.chat_history and self.chat_history.avante_mode or nil
@@ -815,6 +868,7 @@ function Sidebar:load_thread(opts)
   -- Update UI
   self:render_result()
   self:show_input_hint()
+  vim.schedule(function() self:create_plan_container() end)
 
   -- Connect ACP — will load existing session if acp_session_id present
   self:connect_acp()
