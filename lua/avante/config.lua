@@ -428,6 +428,12 @@ M._defaults = {
         OPENAI_API_KEY = os.getenv("OPENAI_API_KEY"),
       },
     },
+    ["mistral-vibe"] = {
+      command = "vibe-acp",
+      env = {
+        MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY"), -- necessary if you setup Mistral Vibe manually
+      },
+    },
     ["opencode"] = {
       command = "opencode",
       args = { "acp" },
