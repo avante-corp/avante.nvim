@@ -51,6 +51,48 @@ describe("llm_tools", function()
     Utils.get_project_root:revert()
   end)
 
+  describe("web search tools", function()
+    it("exposes one tool per search engine", function()
+      local names = LlmTools.get_tool_names()
+
+      local tools_list = {
+        "dispatch_agent",
+        "glob",
+        "rag_search",
+        "run_python",
+        "git_diff",
+        "git_commit",
+        "ls",
+        "grep",
+        "delete_tool_use_messages",
+        "read_todos",
+        "write_todos",
+        "read_file_toplevel_symbols",
+        "str_replace",
+        "view",
+        "write_to_file",
+        "insert",
+        "undo_edit",
+        "read_global_file",
+        "write_global_file",
+        "move_path",
+        "copy_path",
+        "delete_path",
+        "create_dir",
+        "think",
+        "get_diagnostics",
+        "bash",
+        "attempt_completion",
+        "edit_file",
+        "web_search_tavily",
+        "fetch",
+        "read_definitions",
+      }
+
+      assert.are.same(tools_list, names)
+    end)
+  end)
+
   describe("ls", function()
     it("should list files in directory", function()
       local result, err = ls({ path = ".", max_depth = 1 }, {})

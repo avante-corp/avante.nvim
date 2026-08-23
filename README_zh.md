@@ -852,16 +852,18 @@ Avante 的工具包括一些 Web 搜索引擎，目前支持：
 
 - [Tavily](https://tavily.com/)
 - [SerpApi - Search API](https://serpapi.com/)
+- [SearchAPI](https://www.searchapi.io/)
 - Google's [Programmable Search Engine](https://developers.google.com/custom-search/v1/overview)
 - [Kagi](https://help.kagi.com/kagi/api/search.html)
 - [Brave Search](https://api-dashboard.search.brave.com/app/documentation/web-search/get-started)
 - [SearXNG](https://searxng.github.io/searxng/)
 
-默认是 Tavily，可以通过配置 `Config.web_search_engine.provider` 进行更改：
+每个搜索引擎都作为独立工具提供（`web_search_tavily`、`web_search_serpapi`、
+`web_search_searchapi`、`web_search_google`、`web_search_kagi`、`web_search_brave`
+和 `web_search_searxng`）。共享设置仍位于 `web_search_engine` 下：
 
 ```lua
 web_search_engine = {
-  provider = "tavily", -- tavily, serpapi, google, kagi, brave 或 searxng
   proxy = nil, -- proxy support, e.g., http://127.0.0.1:7890
 }
 ```
@@ -870,6 +872,7 @@ web_search_engine = {
 
 - Tavily: `TAVILY_API_KEY`
 - SerpApi: `SERPAPI_API_KEY`
+- SearchAPI: `SEARCHAPI_API_KEY`
 - Google:
   - `GOOGLE_SEARCH_API_KEY` 作为 [API 密钥](https://developers.google.com/custom-search/v1/overview)
   - `GOOGLE_SEARCH_ENGINE_ID` 作为 [搜索引擎](https://programmablesearchengine.google.com) ID
@@ -905,7 +908,9 @@ Avante 默认启用工具，但某些 LLM 模型不支持工具。您可以通�
 工具列表
 
 > rag_search, python, git_diff, git_commit, glob, search_keyword, read_file_toplevel_symbols,
-> read_file, create_file, move_path, copy_path, delete_path, create_dir, bash, web_search, fetch
+> read_file, create_file, move_path, copy_path, delete_path, create_dir, bash,
+> web_search_tavily, web_search_serpapi, web_search_searchapi, web_search_google,
+> web_search_kagi, web_search_brave, web_search_searxng, fetch
 
 ## 自定义工具
 

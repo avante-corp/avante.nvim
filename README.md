@@ -1252,16 +1252,18 @@ Avante's tools include some web search engines, currently support:
 
 - [Tavily](https://tavily.com/)
 - [SerpApi - Search API](https://serpapi.com/)
+- [SearchAPI](https://www.searchapi.io/)
 - Google's [Programmable Search Engine](https://developers.google.com/custom-search/v1/overview)
 - [Kagi](https://help.kagi.com/kagi/api/search.html)
 - [Brave Search](https://api-dashboard.search.brave.com/app/documentation/web-search/get-started)
 - [SearXNG](https://searxng.github.io/searxng/)
 
-The default is Tavily, and can be changed through configuring `Config.web_search_engine.provider`:
+Each engine is exposed as its own tool (`web_search_tavily`, `web_search_serpapi`,
+`web_search_searchapi`, `web_search_google`, `web_search_kagi`, `web_search_brave`,
+and `web_search_searxng`). Shared settings remain under `web_search_engine`:
 
 ```lua
 web_search_engine = {
-  provider = "tavily", -- tavily, serpapi, google, kagi, brave, or searxng
   proxy = nil, -- proxy support, e.g., http://127.0.0.1:7890
 }
 ```
@@ -1270,6 +1272,7 @@ Environment variables required for providers:
 
 - Tavily: `TAVILY_API_KEY`
 - SerpApi: `SERPAPI_API_KEY`
+- SearchAPI: `SEARCHAPI_API_KEY`
 - Google:
   - `GOOGLE_SEARCH_API_KEY` as the [API key](https://developers.google.com/custom-search/v1/overview)
   - `GOOGLE_SEARCH_ENGINE_ID` as the [search engine](https://programmablesearchengine.google.com) ID
@@ -1307,7 +1310,9 @@ In case you want to ban some tools to avoid its usage (like Claude 3.7 overusing
 Tool list
 
 > rag_search, python, git_diff, git_commit, glob, search_keyword, read_file_toplevel_symbols,
-> read_file, create_file, move_path, copy_path, delete_path, create_dir, bash, web_search, fetch
+> read_file, create_file, move_path, copy_path, delete_path, create_dir, bash,
+> web_search_tavily, web_search_serpapi, web_search_searchapi, web_search_google,
+> web_search_kagi, web_search_brave, web_search_searxng, fetch
 
 ## Custom Tools
 

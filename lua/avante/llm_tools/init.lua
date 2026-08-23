@@ -59,7 +59,7 @@
 --->
 ---   rag_search, python, git_diff, git_commit, glob, search_keyword,
 ---   read_file_toplevel_symbols, read_file, create_file, move_path, copy_path,
----   delete_path, create_dir, bash, web_search, fetch
+---   delete_path, create_dir, bash, web_search_tavily, fetch
 ---<
 ---
 ---@brief ]]
@@ -68,10 +68,13 @@ local Utils = require("avante.utils")
 local Path = require("plenary.path")
 local Config = require("avante.config")
 local Helpers = require("avante.llm_tools.helpers")
+local WebSearch = require("avante.llm_tools.web_search")
 
 local M = {}
 
 ---@type AvanteLLMToolFunc<{ path: string }>
+---Read the top-level symbols of a file in current project scope.
+---It can be used to extract information about functions, types, constants, and other symbols that are defined at the top level of a file.
 function M.read_file_toplevel_symbols(input, opts)
   local on_log = opts.on_log
   local RepoMap = require("avante.repo_map")
@@ -127,6 +130,7 @@ function M.str_replace_based_edit_tool(input, opts)
 end
 
 ---@type AvanteLLMToolFunc<{ abs_path: string }>
+---Read the contents of a file in the global scope if the file content is not already in context
 function M.read_global_file(input, opts)
   local on_log = opts.on_log
   local abs_path = Helpers.get_abs_path(input.abs_path)
@@ -280,182 +284,8 @@ function M.create_dir(input, opts)
   end, nil, opts.session_ctx, "create_dir")
 end
 
----@tag avante-web-search
----@brief [[
----<
----  vim.g.avante = {
----    web_search_engine = {
----      provider = "tavily",
----      proxy = nil,
----    },
----  }
---->
----
---- Supported providers and environment variables:
----
---- - Tavily: `TAVILY_API_KEY`
---- - SerpApi: `SERPAPI_API_KEY`
---- - Google: `GOOGLE_SEARCH_API_KEY` and `GOOGLE_SEARCH_ENGINE_ID`
---- - Kagi: `KAGI_API_KEY`
---- - Brave Search: `BRAVE_API_KEY`
---- - SearXNG: `SEARXNG_API_URL`
----@brief ]]
----@type AvanteLLMToolFunc<{ query: string }>
-function M.web_search(input, opts)
-  local curl = require("plenary.curl")
-  local on_log = opts.on_log
-  local provider_type = Config.web_search_engine.provider
-  local proxy = Config.web_search_engine.proxy
-  if provider_type == nil then return nil, "Search engine provider is not set" end
-  if on_log then on_log("provider: " .. provider_type) end
-  if on_log then on_log("query: " .. input.query) end
-  local search_engine = Config.web_search_engine.providers[provider_type]
-  if search_engine == nil then return nil, "No search engine found: " .. provider_type end
-  if provider_type ~= "searxng" and search_engine.api_key_name == "" then return nil, "No API key provided" end
-  local api_key = provider_type ~= "searxng" and Utils.environment.parse(search_engine.api_key_name) or nil
-  if provider_type ~= "searxng" and api_key == nil or api_key == "" then
-    return nil, "Environment variable " .. search_engine.api_key_name .. " is not set"
-  end
-  if provider_type == "tavily" then
-    local curl_opts = {
-      headers = {
-        ["Content-Type"] = "application/json",
-        ["Authorization"] = "Bearer " .. api_key,
-      },
-      body = vim.json.encode(vim.tbl_deep_extend("force", {
-        query = input.query,
-      }, search_engine.extra_request_body)),
-    }
-    if proxy then curl_opts.proxy = proxy end
-    local resp = curl.post("https://api.tavily.com/search", curl_opts)
-    if resp.status ~= 200 then return nil, "Error: " .. resp.body end
-    local jsn = vim.json.decode(resp.body)
-    return search_engine.format_response_body(jsn)
-  elseif provider_type == "serpapi" then
-    local query_params = vim.tbl_deep_extend("force", {
-      api_key = api_key,
-      q = input.query,
-    }, search_engine.extra_request_body)
-    local query_string = ""
-    for key, value in pairs(query_params) do
-      query_string = query_string .. key .. "=" .. vim.uri_encode(value) .. "&"
-    end
-    local curl_opts = {
-      headers = {
-        ["Content-Type"] = "application/json",
-      },
-    }
-    if proxy then curl_opts.proxy = proxy end
-    local resp = curl.get("https://serpapi.com/search?" .. query_string, curl_opts)
-    if resp.status ~= 200 then return nil, "Error: " .. resp.body end
-    local jsn = vim.json.decode(resp.body)
-    return search_engine.format_response_body(jsn)
-  elseif provider_type == "searchapi" then
-    local query_params = vim.tbl_deep_extend("force", {
-      api_key = api_key,
-      q = input.query,
-    }, search_engine.extra_request_body)
-    local query_string = ""
-    for key, value in pairs(query_params) do
-      query_string = query_string .. key .. "=" .. vim.uri_encode(value) .. "&"
-    end
-    local curl_opts = {
-      headers = {
-        ["Content-Type"] = "application/json",
-      },
-    }
-    if proxy then curl_opts.proxy = proxy end
-    local resp = curl.get("https://searchapi.io/api/v1/search?" .. query_string, curl_opts)
-    if resp.status ~= 200 then return nil, "Error: " .. resp.body end
-    local jsn = vim.json.decode(resp.body)
-    return search_engine.format_response_body(jsn)
-  elseif provider_type == "google" then
-    local engine_id = Utils.environment.parse(search_engine.engine_id_name)
-    if engine_id == nil or engine_id == "" then
-      return nil, "Environment variable " .. search_engine.engine_id_name .. " is not set"
-    end
-    local query_params = vim.tbl_deep_extend("force", {
-      key = api_key,
-      cx = engine_id,
-      q = input.query,
-    }, search_engine.extra_request_body)
-    local query_string = ""
-    for key, value in pairs(query_params) do
-      query_string = query_string .. key .. "=" .. vim.uri_encode(value) .. "&"
-    end
-    local curl_opts = {
-      headers = {
-        ["Content-Type"] = "application/json",
-      },
-    }
-    if proxy then curl_opts.proxy = proxy end
-    local resp = curl.get("https://www.googleapis.com/customsearch/v1?" .. query_string, curl_opts)
-    if resp.status ~= 200 then return nil, "Error: " .. resp.body end
-    local jsn = vim.json.decode(resp.body)
-    return search_engine.format_response_body(jsn)
-  elseif provider_type == "kagi" then
-    local query_params = vim.tbl_deep_extend("force", {
-      q = input.query,
-    }, search_engine.extra_request_body)
-    local query_string = ""
-    for key, value in pairs(query_params) do
-      query_string = query_string .. key .. "=" .. vim.uri_encode(value) .. "&"
-    end
-    local curl_opts = {
-      headers = {
-        ["Authorization"] = "Bot " .. api_key,
-        ["Content-Type"] = "application/json",
-      },
-    }
-    if proxy then curl_opts.proxy = proxy end
-    local resp = curl.get("https://kagi.com/api/v0/search?" .. query_string, curl_opts)
-    if resp.status ~= 200 then return nil, "Error: " .. resp.body end
-    local jsn = vim.json.decode(resp.body)
-    return search_engine.format_response_body(jsn)
-  elseif provider_type == "brave" then
-    local query_params = vim.tbl_deep_extend("force", {
-      q = input.query,
-    }, search_engine.extra_request_body)
-    local query_string = ""
-    for key, value in pairs(query_params) do
-      query_string = query_string .. key .. "=" .. vim.uri_encode(value) .. "&"
-    end
-    local curl_opts = {
-      headers = {
-        ["Content-Type"] = "application/json",
-        ["X-Subscription-Token"] = api_key,
-      },
-    }
-    if proxy then curl_opts.proxy = proxy end
-    local resp = curl.get("https://api.search.brave.com/res/v1/web/search?" .. query_string, curl_opts)
-    if resp.status ~= 200 then return nil, "Error: " .. resp.body end
-    local jsn = vim.json.decode(resp.body)
-    return search_engine.format_response_body(jsn)
-  elseif provider_type == "searxng" then
-    local searxng_api_url = Utils.environment.parse(search_engine.api_url_name)
-    if searxng_api_url == nil or searxng_api_url == "" then
-      return nil, "Environment variable " .. search_engine.api_url_name .. " is not set"
-    end
-    local query_params = vim.tbl_deep_extend("force", {
-      q = input.query,
-    }, search_engine.extra_request_body)
-    local query_string = ""
-    for key, value in pairs(query_params) do
-      query_string = query_string .. key .. "=" .. vim.uri_encode(value) .. "&"
-    end
-    local resp = curl.get(searxng_api_url .. "?" .. query_string, {
-      headers = {
-        ["Content-Type"] = "application/json",
-      },
-    })
-    if resp.status ~= 200 then return nil, "Error: " .. resp.body end
-    local jsn = vim.json.decode(resp.body)
-    return search_engine.format_response_body(jsn)
-  end
-  return nil, "Error: No search engine found"
-end
-
 ---@type AvanteLLMToolFunc<{ url: string }>
+---Fetch markdown from a url using our rust libraries
 function M.fetch(input, opts)
   local on_log = opts.on_log
   if on_log then on_log("url: " .. input.url) end
@@ -719,6 +549,7 @@ function M.get_tools(user_input, history_messages)
     :totable()
 end
 
+---@brief Get all active tools' names
 function M.get_tool_names()
   local custom_tools = Config.custom_tools
   if type(custom_tools) == "function" then custom_tools = custom_tools() end
@@ -1217,36 +1048,7 @@ You can delete the first file by providing a path of "directory1/a/something.txt
   require("avante.llm_tools.bash"),
   require("avante.llm_tools.attempt_completion"),
   require("avante.llm_tools.edit_file"),
-  {
-    name = "web_search",
-    description = "Search the web",
-    param = {
-      type = "table",
-      fields = {
-        {
-          name = "query",
-          description = "Query to search",
-          type = "string",
-        },
-      },
-      usage = {
-        query = "Query to search",
-      },
-    },
-    returns = {
-      {
-        name = "result",
-        description = "Result of the search",
-        type = "string",
-      },
-      {
-        name = "error",
-        description = "Error message if the search was not successful",
-        type = "string",
-        optional = true,
-      },
-    },
-  },
+  WebSearch.web_search_tavily,
   {
     name = "fetch",
     description = "Fetch markdown from a url",
