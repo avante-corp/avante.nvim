@@ -1,0 +1,45 @@
+"provider: azure":
+  - changed-files:
+      - any-glob-to-any-file: lua/avante/providers/azure.lua
+
+"provider: bedrock":
+  - changed-files:
+      - any-glob-to-any-file:
+          - lua/avante/providers/bedrock.lua
+          - lua/avante/providers/bedrock/**
+
+"provider: claude":
+  - changed-files:
+      - any-glob-to-any-file: lua/avante/providers/claude.lua
+
+"provider: cohere":
+  - changed-files:
+      - any-glob-to-any-file: lua/avante/providers/cohere.lua
+
+"provider: copilot":
+  - changed-files:
+      - any-glob-to-any-file: lua/avante/providers/copilot.lua
+
+"provider: gemini":
+  - changed-files:
+      - any-glob-to-any-file: lua/avante/providers/gemini.lua
+
+"provider: ollama":
+  - changed-files:
+      - any-glob-to-any-file: lua/avante/providers/ollama.lua
+
+"provider: openai":
+  - changed-files:
+      - any-glob-to-any-file: lua/avante/providers/openai.lua
+
+"provider: vertex":
+  - changed-files:
+      - any-glob-to-any-file: lua/avante/providers/vertex.lua
+
+"provider: vertex-claude":
+  - changed-files:
+      - any-glob-to-any-file: lua/avante/providers/vertex_claude.lua
+
+"provider: watsonx-code-assistant":
+  - changed-files:
+      - any-glob-to-any-file: lua/avante/providers/watsonx_code_assistant.lua
