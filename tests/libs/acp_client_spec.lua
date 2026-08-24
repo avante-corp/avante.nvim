@@ -237,4 +237,152 @@ describe("ACPClient", function()
       assert.equals(ACPClient.ERROR_CODES.METHOD_NOT_FOUND, sent_error.code)
     end)
   end)
+
+  --- Build a client whose _send_result/_send_error record into `sent`.
+  local function client_recording_replies(config)
+    local client = ACPClient:new(config or { transport_type = "stdio", handlers = {} })
+    local sent = {}
+    client._send_result = stub().invokes(function(_, id, result) sent[#sent + 1] = { id = id, result = result } end)
+    client._send_error = stub().invokes(
+      function(_, id, message, code) sent[#sent + 1] = { id = id, message = message, code = code } end
+    )
+    return client, sent
+  end
+
+  describe("unsupported inbound methods", function()
+    -- Regression: unimplemented methods used to be answered with silence, which
+    -- blocks the agent forever because it is waiting on the response.
+    it("replies METHOD_NOT_FOUND to an unsupported request", function()
+      local client, sent = client_recording_replies()
+
+      client:_handle_notification(42, "terminal/create", { sessionId = "s1", command = "ls" })
+
+      assert.equals(1, #sent)
+      assert.equals(42, sent[1].id)
+      assert.equals(ACPClient.ERROR_CODES.METHOD_NOT_FOUND, sent[1].code)
+    end)
+
+    it("stays silent for an unsupported notification", function()
+      local client, sent = client_recording_replies()
+
+      client:_handle_notification(nil, "some/unknown_notification", {})
+
+      assert.equals(0, #sent)
+    end)
+
+    it("stays silent for $/cancel_request", function()
+      local client, sent = client_recording_replies()
+
+      client:_handle_notification(nil, "$/cancel_request", { requestId = 7 })
+
+      assert.equals(0, #sent)
+    end)
+  end)
+
+  describe("_handle_request_permission", function()
+    it("cancels when no permission handler is configured", function()
+      local client, sent = client_recording_replies()
+
+      client:_handle_request_permission(1, { sessionId = "s1", toolCall = { toolCallId = "t1" }, options = {} })
+
+      assert.equals(1, #sent)
+      assert.equals("cancelled", sent[1].result.outcome.outcome)
+    end)
+
+    it("replies INVALID_PARAMS instead of hanging when toolCall is missing", function()
+      local client, sent = client_recording_replies()
+
+      client:_handle_request_permission(2, { sessionId = "s1" })
+
+      assert.equals(1, #sent)
+      assert.equals(ACPClient.ERROR_CODES.INVALID_PARAMS, sent[1].code)
+    end)
+
+    it("cancels when the handler raises", function()
+      local client, sent = client_recording_replies({
+        transport_type = "stdio",
+        handlers = { on_request_permission = function() error("boom") end },
+      })
+
+      client:_handle_request_permission(3, { sessionId = "s1", toolCall = { toolCallId = "t1" }, options = {} })
+
+      assert.equals(1, #sent)
+      assert.equals("cancelled", sent[1].result.outcome.outcome)
+    end)
+
+    it("maps a nil option id to a cancelled outcome", function()
+      local client, sent = client_recording_replies({
+        transport_type = "stdio",
+        handlers = { on_request_permission = function(_, _, cb) cb(nil) end },
+      })
+
+      client:_handle_request_permission(4, { sessionId = "s1", toolCall = { toolCallId = "t1" }, options = {} })
+
+      assert.equals(1, #sent)
+      assert.equals("cancelled", sent[1].result.outcome.outcome)
+    end)
+
+    it("ignores a duplicate response from the handler", function()
+      local client, sent = client_recording_replies({
+        transport_type = "stdio",
+        handlers = {
+          on_request_permission = function(_, _, cb)
+            cb("opt-allow")
+            cb("opt-reject")
+          end,
+        },
+      })
+
+      client:_handle_request_permission(5, { sessionId = "s1", toolCall = { toolCallId = "t1" }, options = {} })
+
+      assert.equals(1, #sent)
+      assert.equals("selected", sent[1].result.outcome.outcome)
+      assert.equals("opt-allow", sent[1].result.outcome.optionId)
+    end)
+  end)
+
+  describe("pending request lifecycle", function()
+    it("resolves a callback only once", function()
+      local client = ACPClient:new({ transport_type = "stdio", handlers = {} })
+      local calls = 0
+      client.callbacks[1] = function() calls = calls + 1 end
+
+      client:_resolve_callback(1, {}, nil)
+      client:_resolve_callback(1, {}, nil)
+
+      assert.equals(1, calls)
+    end)
+
+    it("fails every in-flight request when the connection drops", function()
+      local client = ACPClient:new({ transport_type = "stdio", handlers = {} })
+      local errors = {}
+      client.callbacks[1] = function(_, err) errors[#errors + 1] = err end
+      client.callbacks[2] = function(_, err) errors[#errors + 1] = err end
+      client.request_methods[1] = "session/prompt"
+      client.request_methods[2] = "session/new"
+
+      client:_fail_pending_requests("agent died")
+
+      assert.equals(2, #errors)
+      assert.equals(ACPClient.ERROR_CODES.CONNECTION_CLOSED, errors[1].code)
+      assert.equals("agent died", errors[1].message)
+      assert.same({}, client.callbacks)
+    end)
+
+    it("gives session/prompt no wall-clock deadline", function()
+      -- Prompts are bounded by session/cancel and streamed updates, not by time.
+      assert.equals(0, ACPClient.REQUEST_TIMEOUTS["session/prompt"])
+    end)
+
+    it("errors the callback when the transport refuses the send", function()
+      local client = ACPClient:new({ transport_type = "stdio", handlers = {} })
+      client.transport = { send = function() return false end }
+
+      local err
+      client:_send_request("session/new", {}, function(_, e) err = e end)
+
+      assert.is_not_nil(err)
+      assert.equals(ACPClient.ERROR_CODES.CONNECTION_CLOSED, err.code)
+    end)
+  end)
 end)

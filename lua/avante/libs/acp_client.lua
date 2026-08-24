@@ -236,6 +236,26 @@ ACPClient.ERROR_CODES = {
   -- ACP
   AUTH_REQUIRED = -32000,
   RESOURCE_NOT_FOUND = -32002,
+  -- avante-internal (client side only, never sent over the wire)
+  PROTOCOL_ERROR = -32001,
+  TIMEOUT_ERROR = -32003,
+  CONNECTION_CLOSED = -32004,
+}
+
+-- How many stderr chunks from the agent to retain for diagnostics.
+local STDERR_TAIL_LINES = 50
+
+-- Default per-request deadline, in milliseconds.
+ACPClient.DEFAULT_REQUEST_TIMEOUT = 30000
+
+-- Per-method deadline overrides. A value of 0 means "no deadline": the request is
+-- driven by session/update notifications and terminated by session/cancel, so a
+-- wall-clock timeout would be wrong.
+ACPClient.REQUEST_TIMEOUTS = {
+  ["session/prompt"] = 0,
+  ["session/load"] = 120000,
+  ["session/resume"] = 120000,
+  ["authenticate"] = 300000,
 }
 
 ---@class ACPHandlers
@@ -275,6 +295,9 @@ function ACPClient:new(config)
     },
     debug_log_file = nil,
     callbacks = {},
+    request_timers = {},
+    request_methods = {},
+    stderr_tail = {},
     transport = nil,
     config = config or {},
     state = "disconnected",
@@ -362,6 +385,8 @@ function ACPClient:_create_stdio_transport()
     stdin = nil,
     --- @type uv.uv_pipe_t|nil
     stdout = nil,
+    --- @type uv.uv_pipe_t|nil
+    stderr = nil,
     --- @type uv.uv_process_t|nil
     process = nil,
   }
@@ -419,6 +444,15 @@ function ACPClient:_create_stdio_transport()
         transport_self.process = nil
       end
 
+      -- The agent is gone: nothing will ever answer the requests we have in
+      -- flight, so release them instead of leaving the UI spinning forever.
+      vim.schedule(function()
+        local reason = string.format("ACP agent exited (code=%d, signal=%d)", code, signal)
+        local stderr = self:recent_stderr()
+        if stderr ~= "" then reason = reason .. "\n" .. stderr end
+        self:_fail_pending_requests(reason)
+      end)
+
       -- Handle auto-reconnect
       if self.config.reconnect and self.reconnect_count < (self.config.max_reconnect_attempts or 3) then
         self.reconnect_count = self.reconnect_count + 1
@@ -438,6 +472,7 @@ function ACPClient:_create_stdio_transport()
     transport_self.process = handle
     transport_self.stdin = stdin
     transport_self.stdout = stdout
+    transport_self.stderr = stderr
 
     self:_set_state("connected")
 
@@ -473,14 +508,23 @@ function ACPClient:_create_stdio_transport()
       end
     end)
 
-    -- Read stderr for debugging
-    stderr:read_start(function(_, data)
-      -- if data then
-      --   -- Filter out common session recovery error messages to avoid user confusion
-      --   if not (data:match("Session not found") or data:match("session/prompt")) then
-      --     vim.schedule(function() vim.notify("ACP stderr: " .. data, vim.log.levels.DEBUG) end)
-      --   end
-      -- end
+    -- Read stderr. This is where agents report auth failures, missing binaries
+    -- and crashes, so it is retained and attached to timeout/exit diagnostics
+    -- rather than discarded.
+    stderr:read_start(function(stderr_err, data)
+      if stderr_err then
+        Utils.debug("ACP stderr read error: " .. tostring(stderr_err))
+        return
+      end
+      if not data then return end
+
+      self:_debug_log("stderr: " .. data)
+
+      local tail = self.stderr_tail
+      tail[#tail + 1] = data
+      while #tail > STDERR_TAIL_LINES do
+        table.remove(tail, 1)
+      end
     end)
   end
 
@@ -506,7 +550,12 @@ function ACPClient:_create_stdio_transport()
       transport_self.stdout:close()
       transport_self.stdout = nil
     end
+    if transport_self.stderr then
+      transport_self.stderr:close()
+      transport_self.stderr = nil
+    end
     self:_set_state("disconnected")
+    self:_fail_pending_requests("ACP connection closed")
   end
 
   return transport
@@ -539,11 +588,87 @@ function ACPClient:_send_request(method, params, callback)
   }
 
   self.callbacks[id] = callback
+  self.request_methods[id] = method
+
+  local timeout = self.REQUEST_TIMEOUTS[method]
+  if timeout == nil then timeout = self.config.timeout or self.DEFAULT_REQUEST_TIMEOUT end
+
+  if timeout and timeout > 0 then
+    self.request_timers[id] = vim.defer_fn(function()
+      self:_resolve_callback(
+        id,
+        nil,
+        self:_create_error(
+          self.ERROR_CODES.TIMEOUT_ERROR,
+          string.format("ACP request '%s' timed out after %dms", method, timeout),
+          { method = method, timeout = timeout, stderr = self:recent_stderr() }
+        )
+      )
+    end, timeout)
+  end
 
   local data = vim.json.encode(message)
   self:_debug_log("request: " .. data .. string.rep("=", 100) .. "\n")
-  self.transport:send(data)
+
+  local sent = self.transport:send(data)
+  if not sent then
+    self:_resolve_callback(
+      id,
+      nil,
+      self:_create_error(
+        self.ERROR_CODES.CONNECTION_CLOSED,
+        string.format("Cannot send '%s': ACP transport is not connected", method)
+      )
+    )
+  end
 end
+
+---Resolve a pending request exactly once, cancelling its deadline.
+---@param id number
+---@param result table|nil
+---@param err avante.acp.ACPError|nil
+function ACPClient:_resolve_callback(id, result, err)
+  local callback = self.callbacks[id]
+  if not callback then return end
+
+  self.callbacks[id] = nil
+  self.request_methods[id] = nil
+
+  local timer = self.request_timers[id]
+  self.request_timers[id] = nil
+  if timer then
+    pcall(function() timer:stop() end)
+    pcall(function() timer:close() end)
+  end
+
+  callback(result, err)
+end
+
+---Fail every in-flight request. Called when the agent process dies or the
+---transport is torn down, so callers are never left waiting forever.
+---@param reason string
+---@param code? number
+function ACPClient:_fail_pending_requests(reason, code)
+  local ids = vim.tbl_keys(self.callbacks)
+  if #ids == 0 then return end
+
+  table.sort(ids)
+  for _, id in ipairs(ids) do
+    local method = self.request_methods[id] or "unknown"
+    self:_resolve_callback(
+      id,
+      nil,
+      self:_create_error(code or self.ERROR_CODES.CONNECTION_CLOSED, reason, {
+        method = method,
+        stderr = self:recent_stderr(),
+      })
+    )
+  end
+end
+
+---Most recent agent stderr output, for attaching to error diagnostics.
+---@return string
+function ACPClient:recent_stderr() return table.concat(self.stderr_tail or {}, "") end
 
 ---Send JSON-RPC notification
 ---@param method string
@@ -588,24 +713,23 @@ end
 ---Handle received message
 ---@param message table
 function ACPClient:_handle_message(message)
-  -- Check if this is a notification (has method but no id, or has both method and id for notifications)
   if message.method and not message.result and not message.error then
-    -- This is a notification
-    self:_handle_notification(message.id, message.method, message.params)
-  elseif message.id and (message.result or message.error) then
+    -- Inbound call. It is a request when it carries an id (we owe a reply),
+    -- otherwise a notification (we must stay silent).
+    local id = message.id
+    if id == vim.NIL then id = nil end
+    self:_handle_notification(id, message.method, message.params or {})
+  elseif message.id ~= nil and (message.result ~= nil or message.error ~= nil) then
     self:_debug_log("response: " .. vim.inspect(message) .. "\n" .. string.rep("=", 100) .. "\n")
-    local callback = self.callbacks[message.id]
-    if callback then
-      callback(message.result, message.error)
-      self.callbacks[message.id] = nil
-    end
+    self:_resolve_callback(message.id, message.result, message.error)
   else
     -- Unknown message type
     vim.notify("Unknown message type: " .. vim.inspect(message), vim.log.levels.WARN)
   end
 end
 
----Handle notification
+---Handle an inbound call from the agent.
+---@param message_id number|nil JSON-RPC id when this is a request, nil for a notification
 ---@param method string
 ---@param params table
 function ACPClient:_handle_notification(message_id, method, params)
@@ -619,8 +743,20 @@ function ACPClient:_handle_notification(message_id, method, params)
     self:_handle_read_text_file(message_id, params)
   elseif method == "fs/write_text_file" then
     self:_handle_write_text_file(message_id, params)
+  elseif method == "$/cancel_request" then
+    -- We have no long-running inbound work to abort; acknowledging is a no-op,
+    -- and the spec forbids replying to a notification.
+    Utils.debug("Ignoring $/cancel_request for " .. vim.inspect(params.requestId))
   else
-    vim.notify("Unknown notification method: " .. method, vim.log.levels.WARN)
+    -- Anything we do not implement (terminal/*, elicitation/*, _-prefixed
+    -- extensions, ...). The agent is blocked until it hears back, so a request
+    -- MUST get a Method not found reply rather than silence.
+    if message_id ~= nil then
+      Utils.debug("Replying METHOD_NOT_FOUND to unsupported ACP method: " .. method)
+      self:_send_error(message_id, "Method not supported by avante: " .. method, self.ERROR_CODES.METHOD_NOT_FOUND)
+    else
+      Utils.debug("Ignoring unsupported ACP notification: " .. method)
+    end
   end
 end
 
@@ -656,8 +792,9 @@ function ACPClient:_handle_session_update(params)
     end
   end
 
-  -- Handle ConfigOptionsUpdate internally
-  if update.sessionUpdate == "config_options_update" then
+  -- Handle ConfigOptionsUpdate internally. The spec names this
+  -- `config_option_update`; some agents emit the pluralised form.
+  if update.sessionUpdate == "config_option_update" or update.sessionUpdate == "config_options_update" then
     if update.configOptions then
       self.config_options = update.configOptions
       Utils.debug("Config options updated: " .. #self.config_options .. " options")
@@ -680,39 +817,70 @@ function ACPClient:_handle_request_permission(message_id, params)
   local tool_call = params.toolCall
   local options = params.options
 
-  if not session_id or not tool_call then 
-    Utils.debug("Permission request missing sessionId or toolCall")
-    return 
+  -- A permission request always blocks the agent's tool execution until we
+  -- answer. Every path below must therefore terminate in exactly one reply.
+  if message_id == nil then
+    Utils.debug("Ignoring session/request_permission sent as a notification (no id to reply to)")
+    return
   end
 
-  Utils.debug("Permission request received: session=" .. session_id .. ", tool=" .. (tool_call.kind or "unknown") .. ", message_id=" .. message_id)
+  if not session_id or not tool_call then
+    Utils.debug("Permission request missing sessionId or toolCall")
+    self:_send_error(
+      message_id,
+      "Invalid session/request_permission params: sessionId and toolCall are required",
+      self.ERROR_CODES.INVALID_PARAMS
+    )
+    return
+  end
+
+  Utils.debug(
+    "Permission request received: session="
+      .. session_id
+      .. ", tool="
+      .. (tool_call.kind or "unknown")
+      .. ", message_id="
+      .. tostring(message_id)
+  )
   Utils.debug("Permission options: " .. vim.inspect(options))
 
-  if self.config.handlers and self.config.handlers.on_request_permission then
-    vim.schedule(function()
-      self.config.handlers.on_request_permission(
-        tool_call,
-        options,
-        function(option_id, result_data)
-          Utils.debug("Permission response: message_id=" .. message_id .. ", option_id=" .. option_id)
-          local result = {
-            outcome = {
-              outcome = "selected",
-              optionId = option_id,
-            },
-          }
-          -- Allow callers to include additional result fields (e.g. answer for AskUserQuestion)
-          if result_data then
-            result = vim.tbl_deep_extend("force", result, result_data)
-          end
-          self:_send_result(message_id, result)
-          Utils.debug("Permission response sent successfully")
-        end
-      )
-    end)
-  else
-    Utils.warn("No permission handler configured")
+  if not (self.config.handlers and self.config.handlers.on_request_permission) then
+    Utils.warn("No permission handler configured; cancelling permission request")
+    self:_send_result(message_id, { outcome = { outcome = "cancelled" } })
+    return
   end
+
+  local answered = false
+  ---@param option_id string|nil nil cancels the request
+  ---@param result_data table|nil extra result fields (e.g. answer for AskUserQuestion)
+  local function respond(option_id, result_data)
+    if answered then
+      Utils.debug("Ignoring duplicate permission response for message_id=" .. tostring(message_id))
+      return
+    end
+    answered = true
+
+    local result
+    if option_id == nil then
+      result = { outcome = { outcome = "cancelled" } }
+    else
+      result = { outcome = { outcome = "selected", optionId = option_id } }
+    end
+    if result_data then result = vim.tbl_deep_extend("force", result, result_data) end
+
+    Utils.debug(
+      "Permission response: message_id=" .. tostring(message_id) .. ", option_id=" .. tostring(option_id)
+    )
+    self:_send_result(message_id, result)
+  end
+
+  vim.schedule(function()
+    local ok, err = pcall(self.config.handlers.on_request_permission, tool_call, options, respond)
+    if not ok then
+      Utils.error("Permission handler failed: " .. tostring(err))
+      respond(nil)
+    end
+  end)
 end
 
 ---Handle fs/read_text_file requests
@@ -721,6 +889,11 @@ end
 function ACPClient:_handle_read_text_file(message_id, params)
   local session_id = params.sessionId
   local path = params.path
+
+  if message_id == nil then
+    Utils.debug("Ignoring fs/read_text_file sent as a notification (no id to reply to)")
+    return
+  end
 
   if not session_id or not path then
     self:_send_error(message_id, "Invalid fs/read_text_file params", ACPClient.ERROR_CODES.INVALID_PARAMS)
@@ -749,6 +922,11 @@ function ACPClient:_handle_write_text_file(message_id, params)
   local session_id = params.sessionId
   local path = params.path
   local content = params.content
+
+  if message_id == nil then
+    Utils.debug("Ignoring fs/write_text_file sent as a notification (no id to reply to)")
+    return
+  end
 
   if not session_id or not path or not content then
     self:_send_error(message_id, "Invalid fs/write_text_file params", ACPClient.ERROR_CODES.INVALID_PARAMS)

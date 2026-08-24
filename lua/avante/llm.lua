@@ -1395,7 +1395,10 @@ function M._stream_acp(opts)
         on_request_permission = function(tool_call, options, callback)
           local sidebar = require("avante").get()
           if not sidebar then
-            Utils.error("Avante sidebar not found")
+            -- The agent blocks until we answer, so cancel rather than returning
+            -- silently and stalling the turn forever.
+            Utils.error("Avante sidebar not found; cancelling permission request")
+            callback(nil)
             return
           end
 
@@ -1430,12 +1433,16 @@ function M._stream_acp(opts)
               callback(acp_mapped_options.no)
             else
               -- Fallback to first reject option
+              local rejected = false
               for _, opt in ipairs(options) do
                 if opt.kind == "reject_once" or opt.kind == "reject_always" then
                   callback(opt.optionId)
+                  rejected = true
                   break
                 end
               end
+              -- No reject option offered at all: cancel, so the agent unblocks.
+              if not rejected then callback(nil) end
             end
             sidebar.scroll = true
             sidebar._history_cache_invalidated = true
