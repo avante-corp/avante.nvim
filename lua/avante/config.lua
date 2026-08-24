@@ -33,10 +33,21 @@ M._defaults = {
   mode = "agentic",
   --- ACP backend implementation to use.
   --- "lua" uses the built-in Lua JSON-RPC client.
-  --- "rust" uses the native Rust ACP SDK (requires avante-acp native module).
-  ---@alias avante.AcpBackend "lua" | "rust"
+  --- "python" uses the Python bridge in `python/`, which implements the full
+  --- ACP surface (terminals, resume, MCP forwarding) via the official SDK.
+  --- Falls back to "lua" automatically when no Python environment is found,
+  --- so this is safe to leave on.
+  ---@alias avante.AcpBackend "lua" | "python"
   ---@type avante.AcpBackend
-  acp_backend = "lua",
+  acp_backend = "python",
+  --- Python interpreter for the ACP bridge. When nil, avante looks for
+  --- `python/.venv`, then `uv`.
+  ---@type string|nil
+  acp_python = nil,
+  --- Default deadline in milliseconds for ACP bridge requests. Prompts and
+  --- authentication are exempt: they are bounded by user or agent action.
+  ---@type number
+  acp_timeout = 30000,
   ---@alias avante.ProviderName "claude" | "openai" | "azure" | "gemini" | "vertex" | "cohere" | "copilot" | "bedrock" | "ollama" | "watsonx_code_assistant" | string
   ---@type avante.ProviderName
   provider = "claude",
@@ -260,19 +271,29 @@ M._defaults = {
       envOverrides = {},
     },
     ["claude-code"] = {
+      -- The maintained successor to @zed-industries/claude-code-acp. The old
+      -- scripts/acp-wrapper.mjs shim has been deleted: it only ever patched
+      -- v0.12.6 while installing unpinned, so it was already broken.
       command = "npx",
-      args = (function()
-        local config_path = debug.getinfo(1, "S").source:sub(2)
-        local plugin_root = vim.fn.fnamemodify(config_path, ":h:h:h")
-        local wrapper = plugin_root .. "/scripts/acp-wrapper.mjs"
-        return { "-y", "--package", "@zed-industries/claude-code-acp", "node", wrapper }
-      end)(),
+      args = { "-y", "@agentclientprotocol/claude-agent-acp" },
       env = {
         NODE_NO_WARNINGS = "1",
         ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY"),
         ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL"),
         CLAUDE_CODE_EXECUTABLE = vim.fn.exepath("claude"),
-        ACP_PERMISSION_MODE = "bypassPermissions",
+      },
+      envOverrides = {},
+    },
+    ["cursor"] = {
+      -- Cursor's docs render this as `agent acp`, but the binary its CLI
+      -- installs is `cursor-agent`. Requires `cursor-agent login`, or
+      -- CURSOR_API_KEY / CURSOR_AUTH_TOKEN in the environment.
+      command = "cursor-agent",
+      args = { "acp" },
+      auth_method = "cursor_login",
+      env = {
+        CURSOR_API_KEY = os.getenv("CURSOR_API_KEY"),
+        CURSOR_AUTH_TOKEN = os.getenv("CURSOR_AUTH_TOKEN"),
       },
       envOverrides = {},
     },
@@ -560,7 +581,10 @@ M._defaults = {
     use_cwd_as_project_root = false,
     auto_focus_on_diff_view = false,
     ---@type boolean | string[] -- true: auto-approve all tools, false: normal prompts, string[]: auto-approve specific tools by name
-    auto_approve_tool_permissions = true, -- Default: auto-approve all tools (no prompts)
+    --- Defaults to prompting. Under the Python backend agents can execute
+    --- arbitrary commands via terminal/*, so auto-approving means shell access
+    --- with nothing asking first. Set to true to restore the old behaviour.
+    auto_approve_tool_permissions = false,
     auto_check_diagnostics = true,
     enable_fastapply = false,
     include_generated_by_commit_line = false, -- Controls if 'Generated-by: <provider/model>' line is added to git commit message

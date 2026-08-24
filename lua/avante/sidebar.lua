@@ -504,6 +504,11 @@ function Sidebar:ensure_acp_thread()
     self.acp_thread.session_id = self.chat_history.acp_session_id
   end
 
+  -- The client satisfies the connection interface the thread expects
+  -- (has_modes/all_modes/mode_by_id/set_mode/cancel_session). It was never
+  -- assigned before, so AcpThread's mode and cancel paths were silent no-ops.
+  self.acp_thread.connection = self.acp_client
+
   -- Sync mode state
   self.acp_thread.current_mode_id = self.current_mode_id
   self.acp_thread.available_modes = {}
@@ -566,7 +571,8 @@ function Sidebar:connect_acp(opts)
     return
   end
 
-  local ACPClient = require("avante.libs.acp_client")
+  local ACPFactory = require("avante.acp")
+  local ACPClient = ACPFactory.error_codes_module()
   local EnvUtils = require("avante.utils.environment")
 
   -- Bump session generation to invalidate any in-flight callbacks from prior session
@@ -634,8 +640,10 @@ function Sidebar:connect_acp(opts)
   local acp_config = vim.tbl_deep_extend("force", acp_provider, {
     handlers = handlers,
     env = resolved_env,
+    provider = Config.provider,
+    cwd = cwd,
   })
-  local acp_client = ACPClient:new(acp_config)
+  local acp_client = ACPFactory.new(acp_config)
 
   acp_client:connect(function(conn_err)
     -- Guard against stale callbacks

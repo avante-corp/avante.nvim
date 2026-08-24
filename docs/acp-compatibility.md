@@ -5,7 +5,10 @@ Where avante's ACP client stands against the Agent Client Protocol.
 - **Target protocol version:** `1` (current stable).
 - **Schema source of truth:** `agentclientprotocol/agent-client-protocol`, `schema/v1/meta.json`
   (method tables) and `schema/v1/schema.json` (type definitions, 170 `$defs`).
-- **Implementation:** `lua/avante/libs/acp_client.lua`.
+- **Implementation:** the Python bridge in `python/` (`acp_backend = "python"`, the default),
+  with the legacy `lua/avante/libs/acp_client.lua` retained as a fallback (`acp_backend = "lua"`).
+
+Where the two differ, cells read ✅ (bridge) / ❌ (Lua).
 
 Protocol **v2** is a draft, not a target. It renames `authenticate` → `auth/login`, replaces
 `session/load` with `session/resume`, drops `session/set_mode` in favour of session config options,
@@ -21,15 +24,15 @@ Legend: ✅ implemented · ⚠️ partial · ❌ not implemented
 
 | Method | Status | Notes |
 |---|---|---|
-| `initialize` | ⚠️ | `acp_client.lua:795`. Advertises only `fs.readTextFile` / `fs.writeTextFile`. Missing `terminal`, `elicitation.{form,url}`, `session.configOptions`, `auth.terminal`, and `clientInfo`. |
+| `initialize` | ✅ (bridge) / ⚠️ (Lua) | The bridge advertises `fs`, `terminal` and `clientInfo`, plus `elicitation.form` on an unstable connection. The Lua client advertises only `fs.*`. |
 | `authenticate` | ⚠️ | Only fires when `config.auth_method` is preset. `authMethods` from the initialize response is ignored, so there is no interactive login flow. |
 | `logout` | ❌ | |
-| `session/new` | ⚠️ | `mcpServers` is hardcoded to `{}` at `sidebar.lua:715` — **MCP servers are never forwarded to any agent**. No `additionalDirectories`. |
+| `session/new` | ✅ (bridge) / ⚠️ (Lua) | The bridge forwards MCP servers, discovering them from `.cursor/mcp.json` / `.mcp.json` when the caller passes none. The Lua client hardcoded `{}`, so servers never reached any agent. |
 | `session/load` | ✅ | |
-| `session/resume` | ❌ | Mis-modelled: `acp_client.lua:825` rewrites `sessionCapabilities.resume` into `loadSession`, so resume-capable agents get a full history replay instead of a resume. |
-| `session/list` | ⚠️ | Implemented but not gated on `sessionCapabilities.list`; callers fall back to scraping `~/.cache/claude-code-acp` (`thread_viewer.lua:120`). |
-| `session/delete` | ❌ | |
-| `session/close` | ❌ | Sessions are only released by killing the agent process. |
+| `session/resume` | ✅ (bridge) / ❌ (Lua) | The bridge prefers resume when the agent advertises it, so reconnecting no longer replays the whole history. `acp_client.lua:825` rewrites `sessionCapabilities.resume` into `loadSession` and always replays. |
+| `session/list` | ✅ (bridge) / ⚠️ (Lua) | The bridge gates on `sessionCapabilities.list` and refuses with `-32601` otherwise. `thread_viewer.lua:120` still scrapes `~/.cache/claude-code-acp` as a fallback. |
+| `session/delete` | ✅ (bridge) / ❌ (Lua) | Capability-gated. |
+| `session/close` | ✅ (bridge) / ❌ (Lua) | Also releases that session's terminals. Under the Lua client, sessions were freed only by killing the agent. |
 | `session/set_mode` | ✅ | |
 | `session/set_config_option` | ✅ | |
 | `session/prompt` | ✅ | Deliberately has no wall-clock deadline; bounded by `session/cancel`. |
@@ -43,13 +46,13 @@ Legend: ✅ implemented · ⚠️ partial · ❌ not implemented
 | `session/request_permission` | ✅ | Every path now terminates in exactly one reply. |
 | `fs/read_text_file` | ✅ | Correctly reads unsaved buffers via `Utils.read_file_from_buf_or_disk`. |
 | `fs/write_text_file` | ✅ | |
-| `terminal/create` | ❌ | Replies `-32601`. Not advertised in client capabilities. |
-| `terminal/output` | ❌ | Replies `-32601`. |
-| `terminal/wait_for_exit` | ❌ | Replies `-32601`. |
-| `terminal/kill` | ❌ | Replies `-32601`. |
-| `terminal/release` | ❌ | Replies `-32601`. |
-| `elicitation/create` | ❌ | Replies `-32601`. The correct replacement for the `scripts/acp-wrapper.mjs` `AskUserQuestion` patch. |
-| `elicitation/complete` | ❌ | Notification, ignored. |
+| `terminal/create` | ✅ (bridge) / ❌ (Lua) | Implemented natively in the Python bridge via `asyncio.subprocess`; Neovim is not involved. The Lua client replies `-32601`. |
+| `terminal/output` | ✅ (bridge) / ❌ (Lua) | Output is pumped continuously, so a child filling the pipe buffer cannot deadlock. Tail-truncated at `outputByteLimit`. |
+| `terminal/wait_for_exit` | ✅ (bridge) / ❌ (Lua) | |
+| `terminal/kill` | ✅ (bridge) / ❌ (Lua) | Reports the signal name. |
+| `terminal/release` | ✅ (bridge) / ❌ (Lua) | Kills the process if still running. |
+| `elicitation/create` | ⚠️ | Implemented in the Python bridge, but **gated behind `use_unstable_protocol` in `agent-client-protocol` 0.12.1** despite the v1 docs listing it as a client method. On a stable connection the agent gets `-32601`. Until it stabilises there is no supported way to feed a structured answer back into a tool; the `acp-wrapper.mjs` monkey-patch that used to do this has been removed. |
+| `elicitation/complete` | ⚠️ | Same gate. Forwarded as an event when enabled. |
 | `$/cancel_request` | ⚠️ | Accepted and ignored — we have no long-running inbound work to abort. Never sent outbound. |
 | `_`-prefixed extensions | ⚠️ | No extension is implemented, but unknown requests now get the spec-required `-32601` and unknown notifications are silently ignored. |
 
@@ -88,13 +91,47 @@ Configured in `config.lua:251-301`.
 
 | Provider | Command | Status |
 |---|---|---|
-| `claude-code` | `npx -y --package @zed-industries/claude-code-acp …` | ⚠️ Pinned to the **legacy** package. The successor is `@agentclientprotocol/claude-agent-acp`. `scripts/acp-wrapper.mjs` only patches v0.12.6 but installs unpinned, so the shim is already stale. |
+| `claude-code` | `npx -y @agentclientprotocol/claude-agent-acp` | ✅ Migrated off the legacy `@zed-industries/claude-code-acp`; `scripts/acp-wrapper.mjs` and `scripts/run-acp.sh` deleted. |
 | `gemini-cli` | `gemini --experimental-acp` | ✅ |
 | `goose` | `goose acp` | ✅ |
 | `codex` | `codex-acp` | ✅ |
 | `opencode` | `opencode acp` | ✅ |
 | `kimi-cli` | `kimi --acp` | ✅ |
-| `cursor` | `agent acp` | ❌ **Not configured at all.** |
+| `cursor` | `cursor-agent acp` | ⚠️ Configured, **not verified live** — `cursor-agent` on this machine is unauthenticated (`cursor-agent login` required). Note the docs render the binary as `agent`; the CLI installs it as `cursor-agent`. |
+
+### Live-verified: `@agentclientprotocol/claude-agent-acp`
+
+Captured by driving the Python bridge against the real agent (2026-08-24). This is the
+authoritative answer to what claude supports, and it contradicts several assumptions in the Lua
+client:
+
+```
+loadSession: true
+promptCapabilities:  image: true, embeddedContext: true, audio: false
+mcpCapabilities:     http: true, sse: true, acp: false
+sessionCapabilities: list, delete, additionalDirectories, fork, resume, close   (all present)
+auth:                logout
+_meta.claudeCode:    promptQueueing: true
+authMethods:         []          (already authenticated via the claude CLI)
+```
+
+Modes: `auto`, `default` (Manual), `acceptEdits`, `plan`, `dontAsk`, `bypassPermissions`.
+
+Consequences:
+
+- **`session/resume` is supported.** The Lua client's rewrite of `sessionCapabilities.resume` into
+  `loadSession` (`acp_client.lua:825`) is therefore actively wrong for this agent: it replays the
+  entire history on every reconnect instead of resuming.
+- **`session/list` is supported.** The `~/.cache/claude-code-acp` directory scraping in
+  `thread_viewer.lua:120` is unnecessary against this package.
+- **`usage_update` is emitted on every turn** (with `cachedReadTokens` / `cachedWriteTokens`), and
+  is currently dropped on the floor — as are token counts and cost.
+- Image and embedded-context prompt content are accepted; avante advertises neither.
+
+A full tool-call turn was exercised end to end: `tool_call` → four `tool_call_update`s →
+`agent_message_chunk` → `stopReason: end_turn`, with permissions auto-approved by the bridge.
+Note that claude executed its Bash tool internally and did **not** call `terminal/create`, so that
+run does not exercise the client terminal path; that is covered by the fake-agent suite instead.
 
 ### Cursor specifics
 

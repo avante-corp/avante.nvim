@@ -2,7 +2,7 @@ local History = require("avante.history")
 local Utils = require("avante.utils")
 local Path = require("avante.path")
 local PlPath = require("plenary.path")
-local ACPClient = require("avante.libs.acp_client")
+local ACPFactory = require("avante.acp")
 local Config = require("avante.config")
 local EnvUtils = require("avante.utils.environment")
 
@@ -84,15 +84,20 @@ local function get_or_create_acp_client()
     cwd
   )
 
-  local client = ACPClient:new({
+  -- Built through the factory so this honours acp_backend. Constructing the
+  -- Lua client directly here meant a second agent process was spawned just to
+  -- list sessions, even when the sidebar already had one.
+  local client = ACPFactory.new({
     transport_type = "stdio",
+    provider = current_provider,
     command = acp_config.command,
     args = acp_config.args or {},
     env = resolved_env,
+    cwd = cwd,
     timeout = 5000,
+    handlers = {},
   })
 
-  -- Try to connect with timeout
   local connect_err = nil
   local connected = false
 
@@ -104,11 +109,9 @@ local function get_or_create_acp_client()
     end
   end)
 
-  -- Wait up to 5 seconds for connection
-  local start_time = vim.loop.now()
-  while not connected and not connect_err and (vim.loop.now() - start_time) < 5000 do
-    vim.wait(100)
-  end
+  -- Blocks the editor, but only while the thread viewer is opening. vim.wait
+  -- pumps the event loop, so the connect callback can still fire.
+  vim.wait(15000, function() return connected or connect_err ~= nil end, 50)
 
   if not connected or connect_err then
     _acp_available = false

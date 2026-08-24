@@ -76,19 +76,33 @@ function M.check_acp_backend()
   local acp_backend = Config.acp_backend or "lua"
   H.info("Configured ACP backend: " .. acp_backend)
 
-  if acp_backend == "rust" then
-    local ok, _ = pcall(require, "avante_acp")
-    if ok then
-      H.ok("Rust ACP backend (avante_acp native module) is available")
-    else
-      H.warn("Rust ACP backend configured but native module 'avante_acp' not found. Will fall back to Lua backend.")
-    end
+  local ok_bridge, ACPBridge = pcall(require, "avante.acp.bridge")
+  if not ok_bridge then
+    H.error("Failed to load avante.acp.bridge: " .. tostring(ACPBridge))
+    return
+  end
+
+  local command, args, err = ACPBridge.resolve_interpreter()
+  if command then
+    H.ok("Python ACP bridge interpreter: " .. command .. " " .. table.concat(args or {}, " "))
   else
-    H.ok("Using Lua ACP backend (built-in)")
-    local ok, _ = pcall(require, "avante_acp")
-    if ok then
-      H.info("Rust ACP backend (avante_acp) is also available — set acp_backend = 'rust' to use it")
+    H.warn(err or "No Python environment found for the ACP bridge")
+  end
+
+  if acp_backend == "python" then
+    if command then
+      H.ok("Using the Python ACP bridge (full protocol support: terminals, resume, MCP forwarding)")
+    else
+      H.error("acp_backend is 'python' but no interpreter was found. Run: cd " .. ACPBridge.plugin_root() .. "/python && uv sync")
     end
+  elseif acp_backend == "lua" then
+    H.ok("Using the Lua ACP backend (built-in)")
+    H.info(
+      "The Lua backend does not implement terminal/*, session/resume or MCP forwarding. "
+        .. "Set acp_backend = 'python' for full protocol support."
+    )
+  else
+    H.warn("Unknown acp_backend '" .. tostring(acp_backend) .. "'. Expected 'lua' or 'python'.")
   end
 end
 
