@@ -1,7 +1,8 @@
----@tag avante-custom-tools
+---@mod avante-custom-tools Custom tools
 ---@brief [[
 ---Custom tools can run shell commands, scripts, or Lua functions
----<
+---Here's an example of a custom tool that runs Go unit tests:
+---<lua
 ---   vim.g.avante = {
 ---     custom_tools = {
 ---       {
@@ -630,6 +631,8 @@ function M.rag_search(input, opts)
 end
 
 ---@type AvanteLLMToolFunc<{ code: string, path: string, container_image?: string }>
+---Runs python code via docker.
+---Default container is python:3.14-slim-bookworm
 function M.python(input, opts)
   local on_log = opts.on_log
   local on_complete = opts.on_complete

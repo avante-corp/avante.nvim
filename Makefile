@@ -82,6 +82,7 @@ docgen:
 		lua/cmp_avante/mentions.lua \
 		lua/avante/rag_service.lua \
 		lua/avante/llm_tools/init.lua \
+		lua/avante/llm_tools/bash.lua \
 		lua/avante/utils/prompts.lua \
 		lua/avante/extensions/init.lua \
 		lua/avante/utils/init.lua \

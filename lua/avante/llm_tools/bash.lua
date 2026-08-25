@@ -1,10 +1,11 @@
----@mod avante-tool-bash
+---@mod avante-tools-bash Avante bash
 ---@brief
 ---Runs bash. Tries to avoid running the 'banned_commands'
 local Base = require("avante.llm_tools.base")
 local Config = require("avante.config")
 
 ---@class AvanteLLMTool
+---Gives access to bash
 local M = setmetatable({}, Base)
 
 M.name = "bash"

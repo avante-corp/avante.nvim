@@ -31,7 +31,9 @@ Sidebar ····································
 Slash commands ·········································· |avante-slashcommands|
 avante completion sources ·································· |avante-completion|
 avante RAG service ········································ |avante-rag-service|
+Custom tools ············································· |avante-custom-tools|
 avante tools ···················································· |avante-tools|
+Avante bash ················································ |avante-tools-bash|
 Custom prompts ················································ |avante-prompts|
 avante utilities ················································ |avante-utils|
 Agent Client Protocol support ····································· |avante-acp|
@@ -1562,9 +1564,12 @@ M.get_resources()                             *avante-rag-service.get_resources*
         (AvanteRagServiceResourceListResponse|nil)
 
 
-                                                           *avante-custom-tools*
+==============================================================================
+Custom tools                                               *avante-custom-tools*
+
 Custom tools can run shell commands, scripts, or Lua functions
-<
+Here's an example of a custom tool that runs Go unit tests:
+<lua
    vim.g.avante = {
      custom_tools = {
        {
@@ -1686,6 +1691,8 @@ M.rag_search()                                         *avante-tools.rag_search*
 
 
 M.python()                                                 *avante-tools.python*
+    Runs python code via docker.
+    Default container is python:3.14-slim-bookworm
 
 
 M.get_tools({user_input}, {history_messages})           *avante-tools.get_tools*
@@ -1734,6 +1741,30 @@ M.stringify_tool_use({tool_use})               *avante-tools.stringify_tool_use*
 
     Returns: ~
         (string)
+
+
+==============================================================================
+Avante bash                                                  *avante-tools-bash*
+
+AvanteLLMTool                                                    *AvanteLLMTool*
+
+
+M.get_description()                          *avante-tools-bash.get_description*
+
+
+M.param                                                                *M.param*
+
+    Type: ~
+        (AvanteLLMToolParam)
+
+
+M.returns                                                            *M.returns*
+
+    Type: ~
+        (AvanteLLMToolReturn[])
+
+
+M.func()                                                *avante-tools-bash.func*
 
 
 ==============================================================================
