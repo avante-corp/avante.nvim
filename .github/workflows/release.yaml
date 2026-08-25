@@ -19,23 +19,31 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       release_id: ${{ steps.create-release.outputs.id }}
-      release_tag: ${{ steps.get_version.outputs.version }}
+      release_tag: ${{ steps.release.outputs.tag }}
       release_body: "${{ steps.tag.outputs.message }}"
 
     steps:
       - uses: actions/checkout@v7
 
-      - name: Get version
-        id: get_version
-        uses: battila7/get-version-action@d97fbc34ceb64d1f5d95f4dfd6dce33521ccccf5 # ratchet:battila7/get-version-action@v2
+      - name: Resolve release
+        id: release
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "branch" ]]; then
+            echo "tag=${GITHUB_REF_NAME#release-}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Create Release
         id: create-release
         uses: ncipollo/release-action@v1
         with:
           draft: true
-          name: "avante-libs ${{ steps.get_version.outputs.version }}"
-          tag: ${{ steps.get_version.outputs.version }}
+          name: ${{ steps.release.outputs.tag }}
+          tag: ${{ steps.release.outputs.tag }}
+          commit: ${{ github.sha }}
+          allowUpdates: true
           generateReleaseNotes: true
 
   releases-matrix:
@@ -101,6 +109,7 @@ jobs:
             --clobber
 
   publish-release:
+    if: github.ref_type == 'tag'
     permissions:
       contents: write
     runs-on: ubuntu-24.04
