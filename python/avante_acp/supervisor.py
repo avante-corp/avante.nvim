@@ -124,12 +124,21 @@ class AgentHandle:
         return "\n".join(self._stderr_tail)
 
     def supports(self, *path: str) -> bool:
+        """Whether a capability is advertised.
+
+        ACP marks a sub-capability as available by sending an object, which is
+        usually empty -- `sessionCapabilities.list = {}` means "supported".
+        Truthiness is therefore the wrong test: `bool({})` is False, which would
+        refuse every capability every agent actually offers. Presence is what
+        matters, with False reserved for the plain-boolean flags like
+        `loadSession`.
+        """
         node: Any = self.capabilities
         for key in path:
             if not isinstance(node, dict):
                 return False
             node = node.get(key)
-        return bool(node)
+        return node is not None and node is not False
 
     async def stop(self) -> None:
         if self._stderr_task is not None:

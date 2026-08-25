@@ -36,10 +36,14 @@ from acp.schema import (
     ElicitationFormSessionMode,
     ElicitationSchema,
     InitializeResponse,
+    ListSessionsResponse,
     NewSessionResponse,
     PermissionOption,
     PlanEntry,
     PromptResponse,
+    SessionCapabilities,
+    SessionInfo,
+    SessionListCapabilities,
     SessionModeState,
     TextContentBlock,
 )
@@ -50,6 +54,8 @@ from acp.schema import SessionMode
 class ScriptedAgent(Agent):
     def __init__(self, conn: AgentSideConnection) -> None:
         self.conn = conn
+        # Lets a test exercise the "agent cannot list sessions" branch.
+        self.supports_list = os.environ.get("AVANTE_FAKE_NO_LIST") != "1"
         self.sessions: dict[str, dict[str, Any]] = {}
         self.cancelled: set[str] = set()
         self.counter = 0
@@ -60,7 +66,12 @@ class ScriptedAgent(Agent):
         self.client_capabilities = client_capabilities
         return InitializeResponse(
             protocolVersion=protocol_version,
-            agentCapabilities=AgentCapabilities(loadSession=True),
+            agentCapabilities=AgentCapabilities(
+                loadSession=True,
+                sessionCapabilities=SessionCapabilities(
+                    list=SessionListCapabilities() if self.supports_list else None
+                ),
+            ),
         )
 
     async def authenticate(self, method_id: str, **kw: Any) -> AuthenticateResponse | None:
@@ -87,6 +98,21 @@ class ScriptedAgent(Agent):
         self.sessions.setdefault(session_id, {"cwd": cwd})
         await self._say(session_id, "replayed")
         return None
+
+    async def list_sessions(
+        self, cwd: str | None = None, cursor: str | None = None, **kw: Any
+    ) -> ListSessionsResponse:
+        # Paginated one session per page, so the client's cursor-following is
+        # actually exercised rather than assumed.
+        entries = [
+            SessionInfo(sessionId=f"listed-{i}", cwd=cwd or "/tmp", title=f"Thread {i}",
+                        updatedAt="2026-08-24T12:00:0%d+00:00" % i)
+            for i in range(3)
+        ]
+        index = int(cursor) if cursor else 0
+        page = entries[index : index + 1]
+        next_cursor = str(index + 1) if index + 1 < len(entries) else None
+        return ListSessionsResponse(sessions=page, nextCursor=next_cursor)
 
     async def set_session_mode(self, session_id: str, mode_id: str, **kw: Any) -> None:
         self.sessions.setdefault(session_id, {})["mode"] = mode_id

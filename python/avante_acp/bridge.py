@@ -7,6 +7,7 @@ agent support resume".
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -19,7 +20,7 @@ from acp.schema import (
     TextContentBlock,
 )
 
-from . import providers
+from . import providers, threads
 from .jsonrpc import Peer, RpcError
 from .supervisor import Supervisor
 
@@ -54,6 +55,7 @@ class Bridge:
         peer.on_request("session/set_mode", self.session_set_mode)
         peer.on_request("session/set_config_option", self.session_set_config_option)
         peer.on_request("session/prompt", self.session_prompt)
+        peer.on_request("threads/list", self.threads_list)
         peer.on_notification("session/cancel", self.session_cancel)
 
     # -- lifecycle -------------------------------------------------------
@@ -219,6 +221,27 @@ class Bridge:
 
         result = await handle.conn.prompt(session_id=session_id, prompt=blocks)
         return {"stopReason": result.stop_reason, "usage": _dump(result.usage)}
+
+    # -- threads ---------------------------------------------------------
+
+    async def threads_list(self, params: dict[str, Any]) -> dict[str, Any]:
+        """List local chat histories.
+
+        Not ACP: this reads avante's own history storage. It lives here because
+        doing it in Lua meant decoding gigabytes of JSON on Neovim's main loop
+        every time the picker opened.
+        """
+        storage_path = _require(params, "storagePath")
+        limit = params.get("limit")
+
+        # Off the event loop: a cold build reads the whole history tree, and
+        # session updates must keep flowing while it does.
+        return await asyncio.to_thread(
+            threads.list_threads,
+            storage_path,
+            limit=int(limit) if limit else None,
+            force=bool(params.get("force")),
+        )
 
     async def session_cancel(self, params: dict[str, Any]) -> None:
         session_id = params.get("sessionId")

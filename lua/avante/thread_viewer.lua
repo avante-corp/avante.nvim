@@ -197,23 +197,28 @@ local function fetch_sessions_from_acp(callback)
   end
 
   Utils.debug("Fetching sessions via ACP...")
-  client:list_sessions(function(sessions, list_err)
+  -- cwd = false so threads from every worktree are listed, not just this one.
+  client:list_sessions({ cwd = false }, function(sessions, list_err)
     if list_err then
-      Utils.warn("Failed to list sessions via ACP: " .. (list_err.message or "unknown error"))
-      Utils.debug("ACP error details: " .. vim.inspect(list_err))
-      -- Fall back to filesystem scanning
+      -- METHOD_NOT_FOUND means the agent genuinely cannot list sessions, which
+      -- is the only case where scraping the cache directory is justified.
+      local unsupported = list_err.code == -32601
+      if unsupported then
+        Utils.debug("Agent does not support session/list; scanning cache directories")
+      else
+        Utils.warn("Failed to list sessions via ACP: " .. (list_err.message or "unknown error"))
+      end
       callback(scan_external_acp_sessions_legacy())
       return
     end
-    
+
     if not sessions then
       Utils.warn("ACP returned no sessions (nil)")
       callback(scan_external_acp_sessions_legacy())
       return
     end
 
-    Utils.info("ACP returned " .. #sessions .. " sessions")
-    Utils.debug("Raw ACP sessions: " .. vim.inspect(sessions))
+    Utils.debug("ACP returned " .. #sessions .. " sessions")
 
     -- Transform ACP session format to our internal format
     local transformed_sessions = {}
@@ -222,9 +227,16 @@ local function fetch_sessions_from_acp(callback)
         session_id = acp_session.sessionId or acp_session.session_id,
         working_directory = acp_session.cwd or acp_session.workingDirectory or "unknown",
         mtime = (function()
-          local lm = acp_session.lastModified or acp_session.last_modified
+          -- ACP SessionInfo spells this `updatedAt`; the other names are kept
+          -- for agents that predate the field.
+          local lm = acp_session.updatedAt
+            or acp_session.updated_at
+            or acp_session.lastModified
+            or acp_session.last_modified
           if type(lm) == "string" then
-            local ts = Utils.parse_iso8601_date(lm)
+            -- Must be numeric: mtime is sorted against os.time() fallbacks, and
+            -- comparing a string with a number raises in table.sort.
+            local ts = Utils.parse_iso8601_epoch(lm)
             if ts then return ts end
           end
           if type(lm) == "number" then return lm end
@@ -236,14 +248,10 @@ local function fetch_sessions_from_acp(callback)
       })
     end
 
-    Utils.info("Transformed " .. #transformed_sessions .. " ACP sessions")
-    
-    -- If ACP returned nothing, fall back to filesystem
-    if #transformed_sessions == 0 then
-      Utils.info("No ACP sessions found, falling back to filesystem scan")
-      callback(scan_external_acp_sessions_legacy())
-      return
-    end
+    Utils.debug("Transformed " .. #transformed_sessions .. " ACP sessions")
+
+    -- An agent that supports session/list and reports none genuinely has none;
+    -- scraping the cache here would resurrect sessions the agent has dropped.
     
     callback(transformed_sessions)
   end)
@@ -280,12 +288,32 @@ local function create_synthetic_history(session_info)
   }
 end
 
+---Message count for a thread, whether it is a full history or a bridge summary.
+---Summaries deliberately omit the messages array; that is the whole reason
+---listing is fast.
+---@param history table
+---@return integer
+local function thread_message_count(history)
+  if history.message_count then return history.message_count end
+  return #History.get_history_messages(history)
+end
+
+---Timestamp used for ordering and display.
+---@param history table
+---@return string
+local function thread_timestamp(history)
+  if history.last_message_timestamp then return history.last_message_timestamp end
+  local messages = History.get_history_messages(history)
+  if #messages > 0 then return messages[#messages].timestamp end
+  return history.timestamp or ""
+end
+
 ---@param history avante.ChatHistory
 ---@param acp_message_counts? table<string, integer> Map of session_id to ACP message count
 ---@return string
 local function format_thread_entry(history, acp_message_counts)
-  local messages = History.get_history_messages(history)
-  local timestamp = #messages > 0 and messages[#messages].timestamp or history.timestamp
+  local message_count = thread_message_count(history)
+  local timestamp = thread_timestamp(history)
   local working_dir = history.working_directory or "unknown"
 
   -- Extract just the directory name for display
@@ -311,7 +339,7 @@ local function format_thread_entry(history, acp_message_counts)
   local unread = ""
   if acp_message_counts and history.acp_session_id then
     local acp_count = acp_message_counts[history.acp_session_id]
-    local last_seen = history.last_seen_message_count or #messages
+    local last_seen = history.last_seen_message_count or message_count
     if acp_count and acp_count > last_seen then
       unread = " [NEW]"
     end
@@ -321,9 +349,9 @@ local function format_thread_entry(history, acp_message_counts)
   return string.format("%s[%s] %s - %s (%d)%s%s%s",
     pin,
     dir_name,
-    history.title,
+    history.title or "(untitled)",
     timestamp,
-    #messages,
+    message_count,
     tags_str,
     acp_indicator,
     unread
@@ -550,9 +578,10 @@ function M.open_with_telescope(bufnr, cb, opts)
   local action_state = require("telescope.actions.state")
   local previewers = require("telescope.previewers")
 
-  -- Load histories from all projects, not just current
-  local histories = Path.history.list_all()
-
+  -- Load histories from all projects, not just current.
+  -- Path.history.list_all() decodes every history file on the main loop, which
+  -- is multi-second on a large store, so prefer the bridge's cached index.
+  M.list_all_histories(function(histories)
   -- Fetch external ACP sessions asynchronously
   scan_external_acp_sessions(function(external_sessions)
     -- Build ACP message counts lookup for unread detection
@@ -578,14 +607,12 @@ function M.open_with_telescope(bufnr, cb, opts)
           -- Session already exists - prefer the most recently modified copy
           -- This ensures that pin/unpin changes are picked up from the freshest save
           local existing = session_map[session_id]
-          local existing_msgs = History.get_history_messages(existing)
-          local new_msgs = History.get_history_messages(history)
-          local existing_time = #existing_msgs > 0 and existing_msgs[#existing_msgs].timestamp or existing.timestamp
-          local new_time = #new_msgs > 0 and new_msgs[#new_msgs].timestamp or history.timestamp
+          local existing_time = thread_timestamp(existing)
+          local new_time = thread_timestamp(history)
           if new_time > existing_time then
             Utils.debug("Replacing session " .. session_id .. " with more recent copy")
             session_map[session_id] = history
-          elseif new_time == existing_time and #new_msgs > #(History.get_history_messages(existing)) then
+          elseif new_time == existing_time and thread_message_count(history) > thread_message_count(existing) then
             Utils.debug("Replacing session " .. session_id .. " with more complete copy (same timestamp)")
             session_map[session_id] = history
           else
@@ -625,11 +652,7 @@ function M.open_with_telescope(bufnr, cb, opts)
       local a_pinned = a.pinned or false
       local b_pinned = b.pinned or false
       if a_pinned ~= b_pinned then return a_pinned end
-      local a_msgs = History.get_history_messages(a)
-      local b_msgs = History.get_history_messages(b)
-      local a_time = #a_msgs > 0 and a_msgs[#a_msgs].timestamp or a.timestamp or ""
-      local b_time = #b_msgs > 0 and b_msgs[#b_msgs].timestamp or b.timestamp or ""
-      return a_time > b_time
+      return thread_timestamp(a) > thread_timestamp(b)
     end)
 
     -- Apply filter
@@ -646,6 +669,46 @@ function M.open_with_telescope(bufnr, cb, opts)
     vim.schedule(function()
       show_telescope_picker(deduplicated_histories, bufnr, cb, pickers, finders, conf, actions, action_state, previewers, picker_opts)
     end)
+  end)
+  end)
+end
+
+---Load thread summaries for every project.
+---
+---Uses the bridge's cached index when the python backend is active: it only
+---re-reads history files whose mtime changed, and does it off the main loop.
+---Falls back to Path.history.list_all(), which decodes every file inline.
+---@param callback fun(histories: table[])
+function M.list_all_histories(callback)
+  local ACPFactory = require("avante.acp")
+  if ACPFactory.backend() ~= "python" then
+    callback(Path.history.list_all())
+    return
+  end
+
+  local ok, ACPClient = pcall(require, "avante.acp.client")
+  if not ok or not ACPClient.list_threads then
+    callback(Path.history.list_all())
+    return
+  end
+
+  ACPClient.list_threads({}, function(threads, err, stats)
+    if err or not threads then
+      Utils.debug("threads/list failed (" .. vim.inspect(err) .. "); falling back to local scan")
+      callback(Path.history.list_all())
+      return
+    end
+    if stats then
+      Utils.debug(
+        string.format(
+          "threads/list: %d scanned, %d parsed, %d cached",
+          stats.scanned or 0,
+          stats.parsed or 0,
+          stats.cached or 0
+        )
+      )
+    end
+    callback(threads)
   end)
 end
 

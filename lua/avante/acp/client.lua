@@ -21,6 +21,22 @@ M.ERROR_CODES = ACPBridge.ERROR_CODES
 ---@type table<string, avante.acp.BridgeClient>
 local registry = {}
 
+---Remove `vim.NIL` values from a decoded JSON table.
+---JSON null decodes to vim.NIL, which is truthy in Lua, so `if value then`
+---passes and the next use of it fails. Absent is what callers expect.
+---@param tbl table
+local function strip_json_null(tbl)
+  if type(tbl) ~= "table" then return tbl end
+  for key, value in pairs(tbl) do
+    if value == vim.NIL then
+      tbl[key] = nil
+    elseif type(value) == "table" then
+      strip_json_null(value)
+    end
+  end
+  return tbl
+end
+
 ---@class avante.acp.BridgeClient
 ---@field config table
 ---@field agent_id string|nil
@@ -66,11 +82,17 @@ local function install_handlers(bridge)
   bridge:on("ui/elicitation", function(params, reply)
     local client = registry[params.agentId]
     local handlers = client and client.config and client.config.handlers
-    if not (handlers and handlers.on_elicitation) then
+    if handlers and handlers.on_elicitation then
+      handlers.on_elicitation(params, function(answer) reply(answer or { action = "cancel" }) end)
+      return
+    end
+    -- Built-in form UI, so questions work without every caller wiring one up.
+    local ok_ui, Elicitation = pcall(require, "avante.acp.elicitation")
+    if not ok_ui then
       reply({ action = "cancel" })
       return
     end
-    handlers.on_elicitation(params, function(answer) reply(answer or { action = "cancel" }) end)
+    Elicitation.prompt(params, reply)
   end)
 
   bridge:on("ui/ext", function(params, reply)
@@ -142,6 +164,9 @@ function Client:connect(callback)
       env = self.config.env,
       cwd = self.config.cwd or Utils.root.get(),
       autoApprove = Config.behaviour and Config.behaviour.auto_approve_tool_permissions or false,
+      -- Advertises elicitation.form, without which claude-agent-acp disallows
+      -- its AskUserQuestion tool outright.
+      unstable = Config.acp_unstable ~= false,
     }, function(result, err)
       if err then
         self.state = "error"
@@ -292,14 +317,97 @@ end
 
 function Client:cancel_session(session_id) self._bridge:cancel(self.agent_id, session_id) end
 
-function Client:list_sessions(callback)
+---List sessions known to the agent.
+---
+---Returns a flat array, matching the legacy ACPClient contract. `session/list`
+---is paginated, so this follows `nextCursor` until exhausted.
+---@param opts? { cwd?: string|false, limit?: number } cwd=false lists every session
+---@param callback? fun(sessions: table[]|nil, err: table|nil)
+function Client:list_sessions(opts, callback)
+  if type(opts) == "function" then
+    callback = opts
+    opts = nil
+  end
+  opts = opts or {}
   callback = callback or function() end
-  self._bridge:request(
-    "session/list",
-    { agentId = self.agent_id, cwd = Utils.root.get() },
-    {},
-    function(result, err) callback(result, err) end
-  )
+
+  if not self:supports_session_list() then
+    callback(nil, {
+      code = M.ERROR_CODES.METHOD_NOT_FOUND,
+      message = "Agent does not support session/list",
+    })
+    return
+  end
+
+  local cwd = opts.cwd
+  if cwd == nil then cwd = Utils.root.get() end
+  local limit = opts.limit or 500
+
+  local collected = {}
+
+  local function fetch(cursor)
+    self._bridge:request("session/list", {
+      agentId = self.agent_id,
+      cwd = cwd ~= false and cwd or nil,
+      cursor = cursor,
+    }, {}, function(result, err)
+      if err then
+        callback(nil, err)
+        return
+      end
+
+      for _, session in ipairs((result and result.sessions) or {}) do
+        collected[#collected + 1] = session
+      end
+
+      local next_cursor = result and result.nextCursor
+      if next_cursor and next_cursor ~= vim.NIL and #collected < limit then
+        fetch(next_cursor)
+        return
+      end
+      callback(collected, nil)
+    end)
+  end
+
+  fetch(nil)
+end
+
+---List local chat histories via the bridge.
+---
+---Not ACP: this reads avante's own history storage. It lives in the bridge
+---because doing it in Lua meant decoding gigabytes of JSON on the main loop
+---every time the thread picker opened.
+---@param opts? { limit?: number, force?: boolean }
+---@param callback fun(threads: table[]|nil, err: table|nil, stats: table|nil)
+function M.list_threads(opts, callback)
+  opts = opts or {}
+  callback = callback or function() end
+
+  local bridge = ACPBridge.get()
+  bridge:request("threads/list", {
+    storagePath = Config.history.storage_path,
+    limit = opts.limit,
+    force = opts.force,
+  }, {
+    -- A cold index build reads the whole history tree; it runs off the
+    -- bridge's event loop, but it can still take seconds the first time.
+    timeout = opts.timeout or 120000,
+  }, function(result, err)
+    if err then
+      callback(nil, err, nil)
+      return
+    end
+    local threads = result and result.threads or {}
+    for _, thread in ipairs(threads) do
+      strip_json_null(thread)
+    end
+    callback(threads, nil, result and result.stats)
+  end)
+end
+
+function Client:supports_session_list()
+  local caps = self.agent_capabilities or {}
+  return (caps.sessionCapabilities or {}).list ~= nil
 end
 
 function Client:close_session(session_id, callback)

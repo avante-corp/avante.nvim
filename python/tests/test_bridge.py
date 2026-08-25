@@ -243,7 +243,7 @@ async def test_unsupported_capability_is_refused_not_attempted(nvim):
 
 
 async def test_session_list_is_refused_when_unsupported(nvim):
-    agent_id = await spawn(nvim)
+    agent_id = await spawn(nvim, env={"AVANTE_FAKE_NO_LIST": "1"})
 
     with pytest.raises(RpcError) as excinfo:
         await nvim.call("session/list", {"agentId": agent_id})
@@ -339,3 +339,35 @@ async def test_crashed_agent_fails_the_prompt_rather_than_hanging(nvim):
             nvim.call("session/prompt", {"sessionId": session_id, "prompt": "crash"}),
             timeout=20,
         )
+
+
+# -- session/list --------------------------------------------------------
+
+
+async def test_session_list_returns_a_page_and_cursor(nvim):
+    agent_id = await spawn(nvim)
+
+    page = await nvim.call("session/list", {"agentId": agent_id, "cwd": "/tmp"})
+
+    assert [s["sessionId"] for s in page["sessions"]] == ["listed-0"]
+    assert page["nextCursor"] == "1"
+
+
+async def test_session_list_follows_the_cursor(nvim):
+    agent_id = await spawn(nvim)
+
+    second = await nvim.call(
+        "session/list", {"agentId": agent_id, "cwd": "/tmp", "cursor": "1"}
+    )
+
+    assert [s["sessionId"] for s in second["sessions"]] == ["listed-1"]
+
+
+async def test_session_list_entries_carry_title_and_updated_at(nvim):
+    agent_id = await spawn(nvim)
+
+    page = await nvim.call("session/list", {"agentId": agent_id, "cwd": "/tmp"})
+    entry = page["sessions"][0]
+
+    assert entry["title"] == "Thread 0"
+    assert entry["updatedAt"].startswith("2026-08-24")

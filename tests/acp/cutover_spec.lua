@@ -196,6 +196,39 @@ describe("acp cutover", function()
     assert.is_true(vim.tbl_contains(late, "late binding"))
   end)
 
+  it("lists sessions, following pagination cursors", function()
+    -- The fake agent paginates one session per page, so a client that ignored
+    -- nextCursor would return only the first.
+    connect()
+
+    local done, sessions, err = false, nil, nil
+    client:list_sessions({ cwd = false }, function(s, e)
+      sessions, err = s, e
+      done = true
+    end)
+    assert.is_true(wait_for(function() return done end), "list_sessions timed out")
+
+    assert.is_nil(err)
+    assert.equals(3, #sessions)
+    assert.equals("listed-0", sessions[1].sessionId)
+    assert.equals("listed-2", sessions[3].sessionId)
+    assert.equals("Thread 0", sessions[1].title)
+    assert.is_not_nil(sessions[1].updatedAt)
+  end)
+
+  it("accepts the legacy single-callback form", function()
+    connect()
+
+    local done, sessions = false, nil
+    client:list_sessions(function(s)
+      sessions = s
+      done = true
+    end)
+    assert.is_true(wait_for(function() return done end))
+
+    assert.is_true(#sessions > 0)
+  end)
+
   it("reports an unknown session as an error rather than hanging", function()
     connect()
 

@@ -48,6 +48,12 @@ M._defaults = {
   --- authentication are exempt: they are bounded by user or agent action.
   ---@type number
   acp_timeout = 30000,
+  --- Enable ACP's unstable protocol surface, which currently gates
+  --- `elicitation/create`. claude-agent-acp disables its built-in
+  --- AskUserQuestion tool unless the client advertises `elicitation.form`, so
+  --- turning this off means the agent cannot ask you questions mid-turn.
+  ---@type boolean
+  acp_unstable = true,
   ---@alias avante.ProviderName "claude" | "openai" | "azure" | "gemini" | "vertex" | "cohere" | "copilot" | "bedrock" | "ollama" | "watsonx_code_assistant" | string
   ---@type avante.ProviderName
   provider = "claude",
