@@ -19,7 +19,34 @@ check_tools() {
     }
 }
 
+# nui.nvim is a real dependency of lua/avante/sidebar.lua. Without it the
+# sidebar specs silently skip rather than fail, which hides regressions.
+clone_dep() {
+    local name="$1"
+    local repo="$2"
+    local path="$DEPS_DIR/$name"
+    if [ -d "$path/.git" ]; then
+        log "$name already exists. Updating..."
+        (
+            cd "$path"
+            git fetch -q
+            if git show-ref --verify --quiet refs/remotes/origin/main; then
+                git reset -q --hard origin/main
+            elif git show-ref --verify --quiet refs/remotes/origin/master; then
+                git reset -q --hard origin/master
+            fi
+        )
+    elif [ -d "$path" ]; then
+        log "$name present (non-git); leaving as-is."
+    else
+        log "Cloning $name..."
+        mkdir -p "$DEPS_DIR"
+        git clone --depth 1 "$repo" "$path"
+    fi
+}
+
 setup_deps() {
+    clone_dep "nui.nvim" "https://github.com/MunifTanjim/nui.nvim.git"
     local plenary_path="$DEPS_DIR/plenary.nvim"
     if [ -d "$plenary_path/.git" ]; then
         log "plenary.nvim already exists. Updating..."
@@ -47,7 +74,8 @@ run_tests() {
     log "Running tests..."
     nvim --headless --clean \
         -c "set runtimepath+=$DEPS_DIR/plenary.nvim" \
-        -c "lua require('plenary.test_harness').test_directory('tests/', { minimal_init = 'NONE' })"
+        -c "set runtimepath+=$DEPS_DIR/nui.nvim" \
+        -c "lua require('plenary.test_harness').test_directory('tests/', { minimal_init = 'tests/minimal_init.lua' })"
 }
 
 main() {

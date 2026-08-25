@@ -1054,7 +1054,6 @@ function M._stream_acp(opts)
   local permission_answers = {}
   ---@type avante.HistoryMessage
   local last_tool_call_message = nil
-  local acp_provider = Config.acp_providers[Config.provider]
   local prev_text_message_content = ""
   local history_messages = {}
   local get_history_messages = function()
@@ -1395,7 +1394,10 @@ function M._stream_acp(opts)
         on_request_permission = function(tool_call, options, callback)
           local sidebar = require("avante").get()
           if not sidebar then
-            Utils.error("Avante sidebar not found")
+            -- The agent blocks until we answer, so cancel rather than returning
+            -- silently and stalling the turn forever.
+            Utils.error("Avante sidebar not found; cancelling permission request")
+            callback(nil)
             return
           end
 
@@ -1430,12 +1432,16 @@ function M._stream_acp(opts)
               callback(acp_mapped_options.no)
             else
               -- Fallback to first reject option
+              local rejected = false
               for _, opt in ipairs(options) do
                 if opt.kind == "reject_once" or opt.kind == "reject_always" then
                   callback(opt.optionId)
+                  rejected = true
                   break
                 end
               end
+              -- No reject option offered at all: cancel, so the agent unblocks.
+              if not rejected then callback(nil) end
             end
             sidebar.scroll = true
             sidebar._history_cache_invalidated = true
@@ -1456,9 +1462,18 @@ function M._stream_acp(opts)
           end
 
           -- Handle AskUserQuestion interactively.
-          -- The ACP wrapper (acp-wrapper.mjs) patches canUseTool to read the `answers`
-          -- field from the permission response and merge it into the tool's updatedInput.
-          -- We collect answers via inline buttons, then approve with answers attached.
+          --
+          -- This renders the question inline and approves the tool with the
+          -- user's choice. It no longer feeds the answer back into the tool's
+          -- input: that relied on scripts/acp-wrapper.mjs monkey-patching
+          -- canUseTool to read a non-standard `answers` field off the
+          -- permission response, and that wrapper has been removed. The
+          -- `answers` field below is still sent but is ignored by agents and
+          -- dropped by the Python bridge, which only reads `optionId`.
+          --
+          -- The supported replacement is elicitation/create, which the bridge
+          -- implements but the SDK currently gates behind use_unstable_protocol
+          -- (see docs/acp-compatibility.md). Revisit when it stabilises.
           local is_ask_question = tool_call.title and tool_call.title:match("AskUserQuestion")
           if is_ask_question and tool_call.rawInput then
             local raw = tool_call.rawInput
@@ -2074,6 +2089,12 @@ function M._continue_stream_acp(opts, acp_client, session_id)
         local details = err_.data.details
         -- Support both Claude format ("Session not found") and Gemini-CLI format ("Session not found: session-id")
         is_session_not_found = details == "Session not found" or details:match("^Session not found:")
+      end
+      -- The Python bridge rejects a session it no longer knows with
+      -- INVALID_PARAMS before the request ever reaches the agent, so recovery
+      -- must recognise that shape too.
+      if not is_session_not_found and err_.code == -32602 and type(err_.message) == "string" then
+        is_session_not_found = err_.message:match("^Unknown sessionId") ~= nil
       end
 
       if recovery_enabled and is_session_not_found and not rawget(opts, "_session_recovery_attempted") then

@@ -1,0 +1,36 @@
+[project]
+name = "avante-acp"
+version = "0.1.0"
+description = "ACP bridge for avante.nvim: speaks Agent Client Protocol to agents, a small stable JSON-RPC to Neovim"
+readme = "README.md"
+requires-python = ">=3.10,<3.15"
+dependencies = [
+    "agent-client-protocol>=0.12.1",
+]
+
+[project.scripts]
+avante-acp = "avante_acp.__main__:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-timeout>=2.3",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["avante_acp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+# No individual test should ever hang; that is the bug class this package exists
+# to eliminate, so a hang must fail loudly rather than stall the suite.
+timeout = 30
+markers = [
+    "live: drives a real agent binary; requires it on PATH and is skipped by default",
+]

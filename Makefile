@@ -97,6 +97,19 @@ rusttest:
 luatest:
 	@./scripts/run-luatest.sh
 
+.PHONY: pysync
+pysync:
+	@cd python && uv sync
+
+.PHONY: pytest
+pytest: pysync
+	@cd python && uv run pytest
+
+# Drives real agent binaries; requires them installed and authenticated.
+.PHONY: pytest-live
+pytest-live: pysync
+	@cd python && uv run pytest -m live
+
 .PHONY: lint
 lint: luacheck luastylecheck ruststylecheck rustlint
 

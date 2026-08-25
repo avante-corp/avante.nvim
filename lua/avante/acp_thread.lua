@@ -9,7 +9,6 @@
 local Config = require("avante.config")
 local Utils = require("avante.utils")
 local History = require("avante.history")
-local AcpConnection = require("avante.acp_connection")
 
 ---@alias AcpThreadState "idle" | "connecting" | "session_creating" | "prompting" | "generating" | "cancelled" | "error"
 
@@ -36,7 +35,7 @@ local AcpConnection = require("avante.acp_connection")
 
 ---@class avante.AcpThread
 ---@field session_id string|nil
----@field connection avante.AcpConnection|nil
+---@field connection nil unused; retained so older annotations still resolve
 ---@field state AcpThreadState
 ---@field history_messages avante.HistoryMessage[]
 ---@field tool_call_messages table<string, avante.HistoryMessage>
@@ -161,73 +160,41 @@ function AcpThread:write_plan_file()
   return path
 end
 
---- Initialize modes from the connection after session creation
-function AcpThread:initialize_modes()
-  if not self.connection then return end
+--- Initialize modes after session creation.
+---
+--- `self.connection` is never assigned, so this used to return immediately and
+--- the default-mode logic below never ran. Callers already have the modes, so
+--- they are passed in.
+---@param modes avante.acp.SessionMode[]|nil
+---@param current_mode_id string|nil
+function AcpThread:initialize_modes(modes, current_mode_id)
+  modes = modes or {}
 
-  if self.connection:has_modes() then
-    self.available_modes = self.connection:all_modes()
-    self.current_mode_id = self.connection:current_mode()
-
-    -- Wire up mode change callback
-    self.connection:set_on_mode_changed(function(mode_id)
-      vim.schedule(function()
-        local old_mode = self.current_mode_id
-        self.current_mode_id = mode_id
-        local mode = self.connection:mode_by_id(mode_id)
-        local mode_name = mode and mode.name or mode_id
-
-        if self.callbacks.on_mode_change then
-          self.callbacks.on_mode_change(mode_id, mode_name)
-        end
-
-        Utils.info("Mode: " .. mode_name)
-      end)
-    end)
+  if #modes > 0 then
+    self.available_modes = modes
+    self.current_mode_id = current_mode_id or self.current_mode_id
 
     Utils.debug("Initialized " .. #self.available_modes .. " modes from agent")
-
-    -- Set default mode if configured
-    local default_mode = Config.behaviour.acp_default_mode
-    if default_mode and self.session_id then
-      local has_mode = false
-      for _, mode in ipairs(self.available_modes) do
-        if mode.id == default_mode then
-          has_mode = true
-          break
-        end
-      end
-      if has_mode and self.current_mode_id ~= default_mode then
-        self:set_mode(default_mode, function(_, err)
-          if err then
-            Utils.warn("Failed to set default mode: " .. vim.inspect(err))
-          end
-        end)
-      elseif not has_mode then
-        local names = {}
-        for _, m in ipairs(self.available_modes) do table.insert(names, m.id) end
-        Utils.warn("Default mode '" .. default_mode .. "' not available. Available: " .. table.concat(names, ", "))
-      end
-    end
+    -- Applying `behaviour.acp_default_mode` is Sidebar:initialize_modes's job;
+    -- doing it here too would send session/set_mode twice per session.
   else
     self.available_modes = {}
     self.current_mode_id = nil
     Utils.debug("Agent does not provide session modes")
   end
 
-  -- Initialize config options (ACP spec: supersedes modes)
-  if self.connection:has_config_options() then
-    self.config_options = self.connection:all_config_options()
-    Utils.debug("Initialized " .. #self.config_options .. " config options from agent")
+  -- Config options (ACP spec: supersedes modes). Sidebar:ensure_acp_thread
+  -- populates these from the client, so nothing is read from a connection here.
+end
 
-    -- Wire up config options change callback
-    self.connection.on_config_options_changed = function(config_options)
-      vim.schedule(function()
-        self.config_options = config_options
-        if self.callbacks.on_config_options_change then
-          self.callbacks.on_config_options_change(config_options)
-        end
-      end)
+--- Apply config options fetched by the caller.
+---@param config_options avante.acp.ConfigOption[]|nil
+function AcpThread:initialize_config_options(config_options)
+  self.config_options = config_options or {}
+  if #self.config_options > 0 then
+    Utils.debug("Initialized " .. #self.config_options .. " config options from agent")
+    if self.callbacks.on_config_options_change then
+      self.callbacks.on_config_options_change(self.config_options)
     end
   end
 end
@@ -532,10 +499,17 @@ function AcpThread:_track_file_edit(update)
     if not sidebar or not sidebar._current_session_ctx then return end
     local abs_path = vim.fn.fnamemodify(path, ":p")
     local Helpers = require("avante.llm_tools.helpers")
-    if update.status == "pending" or update.status == "in_progress" then
-      Helpers.snapshot_file_for_review(abs_path, sidebar._current_session_ctx)
-    elseif update.status == "completed" then
+    if update.status == "completed" or update.status == "failed" then
       Helpers.track_edited_file(abs_path, sidebar._current_session_ctx, tool_title)
+    else
+      -- Snapshot on *any* pre-completion update that yields a path, not just
+      -- pending/in_progress. Agents announce the tool with no path at all
+      -- (rawInput = {}, locations = []) and only fill it in on later updates
+      -- that carry no status field, so keying on status meant the "before"
+      -- content was never captured and every change diffed against empty --
+      -- which is why /files reported whole files as pure additions.
+      -- snapshot_file_for_review is idempotent, so repeating this is free.
+      Helpers.snapshot_file_for_review(abs_path, sidebar._current_session_ctx)
     end
   end)
 end

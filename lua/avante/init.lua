@@ -346,6 +346,11 @@ function H.autocmds()
       end
       -- Otherwise, just disconnect cleanly without cancelling sessions
 
+      -- The Python bridge owns every agent subprocess, so it must always be
+      -- stopped or those agents outlive Neovim.
+      local ok_bridge, ACPBridge = pcall(require, "avante.acp.bridge")
+      if ok_bridge then pcall(function() ACPBridge.reset() end) end
+
       Utils.debug("VimLeavePre: ACP cleanup completed")
     end,
   })

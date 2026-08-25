@@ -1576,14 +1576,30 @@ function M.datetime_diff(dt1, dt2)
   return delta_seconds
 end
 
+---Split an ISO 8601 timestamp into its parts.
+---Accepts fractional seconds and either `Z` or a `±HH:MM` / `±HHMM` offset;
+---ACP agents send e.g. `2026-08-24T23:18:35.642Z`.
 ---@param iso_str string
----@return string|nil
----@return string|nil error
-function M.parse_iso8601_date(iso_str)
-  local year, month, day, hour, min, sec = iso_str:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)Z")
-  if not year then return nil, "Invalid ISO 8601 format" end
+---@return table|nil fields, number|nil offset_seconds
+local function split_iso8601(iso_str)
+  if type(iso_str) ~= "string" then return nil, nil end
 
-  local time_table = {
+  local year, month, day, hour, min, sec, rest =
+    iso_str:match("^(%d%d%d%d)-(%d%d)-(%d%d)T(%d%d):(%d%d):(%d%d)(.*)$")
+  if not year then return nil, nil end
+
+  -- Drop any fractional-seconds component.
+  rest = (rest or ""):gsub("^%.%d+", "")
+
+  local offset_seconds = 0
+  if rest ~= "" and rest ~= "Z" and rest ~= "z" then
+    local sign, off_hour, off_min = rest:match("^([+-])(%d%d):?(%d%d)$")
+    if not sign then return nil, nil end
+    offset_seconds = (tonumber(off_hour) * 3600 + tonumber(off_min) * 60)
+      * (sign == "-" and -1 or 1)
+  end
+
+  return {
     year = tonumber(year),
     month = tonumber(month),
     day = tonumber(day),
@@ -1591,11 +1607,38 @@ function M.parse_iso8601_date(iso_str)
     min = tonumber(min),
     sec = tonumber(sec),
     isdst = false,
-  }
+  }, offset_seconds
+end
 
-  local timestamp = os.time(time_table)
+---@param iso_str string
+---@return string|nil
+---@return string|nil error
+function M.parse_iso8601_date(iso_str)
+  local fields = split_iso8601(iso_str)
+  if not fields then return nil, "Invalid ISO 8601 format" end
+
+  local timestamp = os.time(fields)
 
   return tostring(os.date("%Y-%m-%d %H:%M:%S", timestamp)), nil
+end
+
+---Parse an ISO 8601 timestamp to a Unix epoch, honouring the zone offset.
+---Distinct from `parse_iso8601_date`, which returns a formatted local string
+---that callers compare textually; this is for sorting and arithmetic.
+---@param iso_str string
+---@return number|nil epoch_seconds
+function M.parse_iso8601_epoch(iso_str)
+  local fields, offset_seconds = split_iso8601(iso_str)
+  if not fields then return nil end
+
+  -- os.time reads the fields as local time, so correct back to true UTC.
+  local as_local = os.time(fields)
+  if not as_local then return nil end
+  local utc_view = os.date("!*t", as_local)
+  utc_view.isdst = false
+  local local_utc_offset = os.difftime(as_local, os.time(utc_view))
+
+  return as_local + local_utc_offset - offset_seconds
 end
 
 function M.random_string(length)

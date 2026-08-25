@@ -163,7 +163,13 @@ function M.ask(opts)
     end
     require("avante").open_sidebar(open_opts)
     sidebar = require("avante").get()
-    if new_chat then sidebar:new_thread({ avante_mode = opts.avante_mode }) end
+    if new_chat then
+      sidebar:new_thread({
+        avante_mode = opts.avante_mode,
+        acp_provider = opts.acp_provider,
+        starter_prompt = opts.starter_prompt,
+      })
+    end
     if opts.without_selection then
       sidebar.code.selection = nil
       sidebar.file_selector:reset()
@@ -314,11 +320,19 @@ local function make_thread_open_callback(buf)
         if wd then sidebar.chat_history.working_directory = wd end
         Path.history.save(sidebar.code.bufnr, sidebar.chat_history)
         Path.history.save_latest_filename(sidebar.code.bufnr, sidebar.chat_history.filename)
-      elseif history then
-        -- Handle regular Avante history — use the history object directly
+      elseif history and history.messages then
+        -- Handle regular Avante history — use the history object directly.
+        -- Guarded on `messages`: the thread picker lists lightweight summaries
+        -- that carry none, and saving one of those would overwrite the stored
+        -- conversation with an empty stub. thread_viewer.hydrate() fills them
+        -- in; this is the backstop for when that fails.
         sidebar.chat_history = history
         Path.history.save(sidebar.code.bufnr, history)
         Path.history.save_latest_filename(sidebar.code.bufnr, history.filename)
+      elseif history then
+        Utils.warn("Thread contents could not be loaded; opening from disk instead")
+        Path.history.save_latest_filename(sidebar.code.bufnr, history.filename)
+        sidebar:reload_chat_history()
       else
         Path.history.save_latest_filename(sidebar.code.bufnr, filename)
         sidebar:reload_chat_history()
@@ -336,6 +350,12 @@ local function make_thread_open_callback(buf)
       if loaded_history then
         loaded_history.last_seen_message_count = #(loaded_history.messages or {})
         Path.history.save(sidebar.code.bufnr, loaded_history)
+      end
+
+      -- Fold the backlog so an old thread opens readable: only the most
+      -- recent turn is expanded.
+      if Config.collapse_threads_on_open ~= false then
+        sidebar:collapse_all_messages({ keep_last = true, silent = true, defer_render = true })
       end
 
       -- Update UI
@@ -432,7 +452,8 @@ end
 ---@param dir string Absolute path to cd into
 ---@param title string|nil Optional thread title
 ---@param avante_mode string|nil Optional avante mode name
-local function open_new_chat_in_dir(dir, title, avante_mode)
+---@param template table|nil Optional template: may pin an agent and a starter prompt
+local function open_new_chat_in_dir(dir, title, avante_mode, template)
   local Utils = require("avante.utils")
   local Path = require("avante.path")
 
@@ -442,7 +463,11 @@ local function open_new_chat_in_dir(dir, title, avante_mode)
   require("avante").open_sidebar({ skip_acp_connect = true, skip_session_restore = true })
   local sidebar = require("avante").get()
   if sidebar then
-    sidebar:new_thread({ avante_mode = avante_mode })
+    sidebar:new_thread({
+      avante_mode = avante_mode,
+      acp_provider = template and template.acp_provider or nil,
+      starter_prompt = template and template.starter_prompt or nil,
+    })
     if title and sidebar.chat_history then
       sidebar.chat_history.title = title
       Path.history.save(sidebar.code.bufnr, sidebar.chat_history)
@@ -544,12 +569,62 @@ local function pick_avante_mode(action)
     prompt = "Select mode:",
     format_item = function(item)
       if item.name == "none" then return "No mode" end
-      return item.name .. " — " .. item.description
+      local label = item.name .. " — " .. item.description
+      -- Surface what the template will actually do, so the choice is informed.
+      if item.acp_provider then label = label .. "  [" .. item.acp_provider .. "]" end
+      if item.starter_prompt then label = label .. "  [starts a prompt]" end
+      return label
     end,
   }, function(choice)
     if not choice then return end
-    local mode = choice.name == "none" and nil or choice.name
-    action(mode)
+    if choice.name == "none" then
+      action(nil, nil)
+      return
+    end
+    -- Second value is the full template: callers need its acp_provider and
+    -- starter_prompt, not just the name.
+    action(choice.name, choice)
+  end)
+end
+
+--- Pick the ACP provider for a new chat.
+---
+--- Skipped when a template already pins one, when disabled, or when there is
+--- nothing to choose between.
+---@param template table|nil
+---@param action fun(provider: string|nil)
+local function pick_acp_provider(template, action)
+  local Config = require("avante.config")
+
+  if template and template.acp_provider then
+    action(template.acp_provider)
+    return
+  end
+  if Config.ask_acp_provider_on_new_chat == false then
+    action(nil)
+    return
+  end
+
+  -- Only what the config file declares. Config.acp_providers is a deep merge
+  -- with avante's built-in table, so using it would list every agent avante
+  -- knows about -- most of them not installed.
+  local names = Config._user_acp_provider_names or {}
+  if #names < 2 then
+    action(nil)
+    return
+  end
+
+  local items = { { name = nil, label = "Default ACP provider (" .. tostring(Config.provider) .. ")" } }
+  for _, name in ipairs(names) do
+    table.insert(items, { name = name, label = name })
+  end
+
+  vim.ui.select(items, {
+    prompt = "Select ACP provider:",
+    format_item = function(item) return item.label end,
+  }, function(choice)
+    if not choice then return end
+    action(choice.name)
   end)
 end
 
@@ -682,16 +757,23 @@ function M.new_chat_picker(ask_args)
 
         local entry = selection.value
         if entry.action == "current" then
-          pick_avante_mode(function(avante_mode)
-            local args = ask_args or {}
-            args.ask = false
-            args.new_chat = true
-            args.avante_mode = avante_mode
-            M.ask(args)
+          pick_avante_mode(function(avante_mode, template)
+            pick_acp_provider(template, function(acp_provider)
+              local args = ask_args or {}
+              args.ask = false
+              args.new_chat = true
+              args.avante_mode = avante_mode
+              args.acp_provider = acp_provider
+              args.starter_prompt = template and template.starter_prompt or nil
+              M.ask(args)
+            end)
           end)
         elseif entry.action == "dir" then
-          pick_avante_mode(function(avante_mode)
-            open_new_chat_in_dir(entry.dir, entry.title, avante_mode)
+          pick_avante_mode(function(avante_mode, template)
+            pick_acp_provider(template, function(acp_provider)
+              local merged = vim.tbl_extend("force", template or {}, { acp_provider = acp_provider })
+              open_new_chat_in_dir(entry.dir, entry.title, avante_mode, merged)
+            end)
           end)
         elseif entry.action == "create" then
           vim.ui.input({ prompt = "Worktree name: " }, function(input)
