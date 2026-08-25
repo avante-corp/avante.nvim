@@ -638,7 +638,7 @@ function M.python(input, opts)
   if not Path:new(abs_path):exists() then return nil, "Path not found: " .. abs_path end
   if on_log then on_log("cwd: " .. abs_path) end
   if on_log then on_log("code:\n" .. input.code) end
-  local container_image = input.container_image or "python:3.11-slim-bookworm"
+  local container_image = input.container_image or "python:3.14-slim-bookworm"
   if not on_complete then return nil, "on_complete not provided" end
   Helpers.confirm(
     "Are you sure you want to run the following python code in the `"
