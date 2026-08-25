@@ -95,6 +95,37 @@ local function install_handlers(bridge)
     Elicitation.prompt(params, reply)
   end)
 
+  bridge:on("ui/plan_approval", function(params, reply)
+    -- Cursor asks for plan approval via cursor/create_plan. Render the plan and
+    -- ask once; anything other than an explicit yes/no is a cancel.
+    local client = registry[params.agentId]
+    local handlers = client and client.config and client.config.handlers
+    if handlers and handlers.on_plan_approval then
+      handlers.on_plan_approval(params, function(accepted) reply({ accepted = accepted }) end)
+      return
+    end
+
+    local lines = {}
+    if params.name then table.insert(lines, params.name) end
+    if params.overview then table.insert(lines, params.overview) end
+    for _, todo in ipairs(params.todos or {}) do
+      table.insert(lines, "  - " .. tostring(todo.content))
+    end
+    local message = table.concat(lines, "\n")
+
+    vim.schedule(function()
+      vim.ui.select({ "Approve plan", "Reject plan" }, {
+        prompt = message ~= "" and message or "Approve the agent's plan?",
+      }, function(choice)
+        if choice == nil then
+          reply({})
+          return
+        end
+        reply({ accepted = choice == "Approve plan" })
+      end)
+    end)
+  end)
+
   bridge:on("ui/ext", function(params, reply)
     local client = registry[params.agentId]
     local handlers = client and client.config and client.config.handlers

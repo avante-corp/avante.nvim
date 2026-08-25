@@ -24,6 +24,7 @@ from acp.schema import (
     WaitForTerminalExitResponse,
 )
 
+from . import vendor
 from .jsonrpc import Peer, RpcError
 from .terminal import TerminalManager, TerminalNotFound
 
@@ -271,6 +272,13 @@ class BridgeClient(Client):
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         """Custom ``_``-prefixed and vendor methods, e.g. Cursor's
         ``cursor/ask_question``. Unhandled ones must still be answered."""
+        # Cursor's blocking extensions get translated into the shapes Neovim
+        # already knows, so there is one question UI rather than one per vendor.
+        if method == "cursor/ask_question":
+            return await self._cursor_ask_question(params)
+        if method == "cursor/create_plan":
+            return await self._cursor_create_plan(params)
+
         try:
             result = await self._peer.request(
                 "ui/ext",
@@ -281,7 +289,49 @@ class BridgeClient(Client):
             raise RequestError(code=exc.code, message=exc.message) from exc
         return result if isinstance(result, dict) else {}
 
+    async def _cursor_ask_question(self, params: dict[str, Any]) -> dict[str, Any]:
+        request = vendor.ask_question_to_elicitation(params)
+        question_ids = request.pop("_questionIds", [])
+        try:
+            answer = await self._peer.request(
+                "ui/elicitation",
+                {"agentId": self._agent_id, **request},
+                timeout=NO_DEADLINE,
+            )
+        except RpcError as exc:
+            log.warning("cursor/ask_question failed (%s); cancelling", exc)
+            return {"outcome": {"outcome": "cancelled"}}
+        return vendor.elicitation_to_ask_question(answer or {}, question_ids)
+
+    async def _cursor_create_plan(self, params: dict[str, Any]) -> dict[str, Any]:
+        summary = vendor.create_plan_summary(params)
+        try:
+            answer = await self._peer.request(
+                "ui/plan_approval",
+                {"agentId": self._agent_id, **summary},
+                timeout=NO_DEADLINE,
+            )
+        except RpcError as exc:
+            log.warning("cursor/create_plan failed (%s); cancelling", exc)
+            return vendor.plan_response(None)
+        return vendor.plan_response((answer or {}).get("accepted"))
+
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
+        if method == "cursor/update_todos":
+            # Surface Cursor's todos through the same plan panel ACP plans use.
+            await self._peer.notify(
+                "event",
+                {
+                    "agentId": self._agent_id,
+                    "kind": "plan",
+                    "update": {
+                        "sessionUpdate": "plan",
+                        "entries": vendor.todos_to_plan_entries(params),
+                    },
+                },
+            )
+            return
+
         await self._peer.notify(
             "event",
             {

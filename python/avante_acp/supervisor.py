@@ -23,7 +23,7 @@ from acp.schema import (
     Implementation,
 )
 
-from . import providers
+from . import providers, vendor
 from .client import BridgeClient
 from .jsonrpc import Peer, RpcError
 from .terminal import TerminalManager
@@ -97,6 +97,12 @@ class AgentHandle:
                 use_unstable_protocol=unstable,
             )
         )
+
+        # Vendor extensions are not `_`-prefixed, so the SDK router would
+        # reject them before Client.ext_method ever runs.
+        registered = vendor.register_vendor_routes(self.conn, client)
+        if registered:
+            log.debug("Registered vendor extension routes: %s", ", ".join(registered))
 
         if self.process.stderr is not None:
             self._stderr_task = asyncio.create_task(self._drain_stderr(peer))

@@ -314,9 +314,11 @@ async def test_elicitation_is_unavailable_on_a_stable_connection(harness):
 
 
 async def test_ext_method_round_trips(harness):
+    # A generic extension. cursor/* names are no longer suitable here: they have
+    # dedicated translation (see test_vendor.py) and never reach ui/ext.
     harness.editor.ext_answer = {"answer": 42}
 
-    assert await harness.run("ext:cursor/ask_question") == "ext={'answer': 42}"
+    assert await harness.run("ext:_vendor/echo") == "ext={'answer': 42}"
 
 
 # -- lifecycle -----------------------------------------------------------
@@ -369,6 +371,6 @@ async def test_extension_method_without_a_handler_errors_rather_than_hangs():
         # Remove the editor's ext handler to model the default configuration.
         h.editor.peer._request_handlers.pop("ui/ext", None)
 
-        result = await _asyncio.wait_for(h.run("ext:cursor/ask_question"), timeout=20)
+        result = await _asyncio.wait_for(h.run("ext:_vendor/echo"), timeout=20)
 
         assert result.startswith("ext-error=")
