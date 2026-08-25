@@ -1232,6 +1232,13 @@ function M.setup(opts)
 
   M._options = merged
 
+  -- Remember which ACP providers the user actually declared. `acp_providers` is
+  -- a deep merge with the built-in table, so the merged result always lists
+  -- every agent avante knows about -- including ones not installed. The picker
+  -- offers only what the config file names.
+  M._user_acp_provider_names = vim.tbl_keys(opts.acp_providers or {})
+  table.sort(M._user_acp_provider_names)
+
   ---@diagnostic disable-next-line: undefined-field
   if M._options.disable_tools ~= nil then
     Utils.warn(

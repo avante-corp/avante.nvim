@@ -605,8 +605,10 @@ local function pick_acp_provider(template, action)
     return
   end
 
-  local names = vim.tbl_keys(Config.acp_providers or {})
-  table.sort(names)
+  -- Only what the config file declares. Config.acp_providers is a deep merge
+  -- with avante's built-in table, so using it would list every agent avante
+  -- knows about -- most of them not installed.
+  local names = Config._user_acp_provider_names or {}
   if #names < 2 then
     action(nil)
     return
