@@ -1311,54 +1311,8 @@ Tool list
 
 ## Custom Tools
 
-Avante allows you to define custom tools that can be used by the AI during code generation and analysis. These tools can execute shell commands, run scripts, or perform any custom logic you need.
+See `:h avante-custom-tools`.
 
-### Example: Go Test Runner
-
-<details>
-<summary>Here's an example of a custom tool that runs Go unit tests:</summary>
-
-```lua
-{
-  custom_tools = {
-    {
-      name = "run_go_tests",  -- Unique name for the tool
-      description = "Run Go unit tests and return results",  -- Description shown to AI
-      command = "go test -v ./...",  -- Shell command to execute
-      param = {  -- Input parameters (optional)
-        type = "table",
-        fields = {
-          {
-            name = "target",
-            description = "Package or directory to test (e.g. './pkg/...' or './internal/pkg')",
-            type = "string",
-            optional = true,
-          },
-        },
-      },
-      returns = {  -- Expected return values
-        {
-          name = "result",
-          description = "Result of the fetch",
-          type = "string",
-        },
-        {
-          name = "error",
-          description = "Error message if the fetch was not successful",
-          type = "string",
-          optional = true,
-        },
-      },
-      func = function(params, on_log, on_complete)  -- Custom function to execute
-        local target = params.target or "./..."
-        return vim.system({ "go", "test", "-v", target }, { text = true }):wait().stdout
-      end,
-    },
-  },
-}
-```
-
-</details>
 
 ## MCP
 
@@ -1529,7 +1483,7 @@ You can also disable specific tools while keeping agentic mode enabled by config
 
 Contributions to avante.nvim are welcome! If you're interested in helping out, please feel free to submit pull requests or open issues.
 
-See [wiki](https://github.com/yetone/avante.nvim/wiki) for more recipes and tricks.
+See [wiki](https://github.com/yetone/avante.nvim/wiki) for more recipes and tricks and [./CONTRIBUTING.md] to setup a local development environment.
 
 ## Acknowledgments
 
