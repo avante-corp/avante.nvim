@@ -1054,7 +1054,6 @@ function M._stream_acp(opts)
   local permission_answers = {}
   ---@type avante.HistoryMessage
   local last_tool_call_message = nil
-  local acp_provider = Config.acp_providers[Config.provider]
   local prev_text_message_content = ""
   local history_messages = {}
   local get_history_messages = function()

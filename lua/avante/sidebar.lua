@@ -82,6 +82,7 @@ Sidebar.__index = Sidebar
 ---@field permission_button_options ({ id: string, icon: string|nil, name: string }[]) | nil
 ---@field permission_question_text string | nil
 ---@field expanded_message_uuids table<string, boolean>
+---@field collapsed_message_uuids table<string, boolean>
 ---@field tool_message_positions table<string, [integer, integer]>
 ---@field skip_line_count integer | nil
 ---@field current_tool_use_extmark_id integer | nil
@@ -135,6 +136,8 @@ function Sidebar:new(id)
     available_modes = {},
     acp_thread = nil,
     current_avante_mode = nil,
+    current_acp_provider = nil,
+    collapsed_message_uuids = {},
     _pending_mode_transition = nil,
     _context_panel_visible = false,
     _plan_bufnr = nil,
@@ -179,6 +182,7 @@ function Sidebar:reset()
   self.token_count = nil
   self.tool_message_positions = {}
   self.expanded_message_uuids = {}
+  self.collapsed_message_uuids = {}
   self.current_tool_use_extmark_id = nil
   self.win_size_store = {}
   self.is_in_full_view = false
@@ -560,12 +564,49 @@ function Sidebar:ensure_acp_thread()
   return self.acp_thread
 end
 
+--- Which ACP provider this chat uses.
+--- Thread override first, then the global default.
+---@return string
+function Sidebar:acp_provider_name()
+  return (self.chat_history and self.chat_history.acp_provider)
+    or self.current_acp_provider
+    or Config.provider
+end
+
+--- Whether an agent is still coming up, so no prompt can be sent yet.
+---
+--- `_acp_connecting` alone is not enough: it is cleared by callbacks that a
+--- stale generation check can skip, so the client's presence is the ground
+--- truth and the flag only names who we are waiting for.
+---@return boolean
+function Sidebar:acp_connect_pending()
+  return self._acp_connecting ~= nil and self.acp_client == nil
+end
+
+--- Render a bridge error for a human.
+---
+--- These arrive as JSON-RPC error objects, so `tostring` yields "table: 0x…".
+--- `data.stderr` is where the agent explained itself (auth failures, crashes),
+--- which is exactly what the bridge's stderr pump collects it for.
+---@param err table|string|nil
+---@return string
+local function format_acp_error(err)
+  if type(err) ~= "table" then return tostring(err) end
+  local msg = err.message or vim.inspect(err)
+  local stderr = type(err.data) == "table" and err.data.stderr or nil
+  if type(stderr) == "string" and stderr ~= "" then msg = msg .. "\n" .. stderr end
+  return msg
+end
+
 --- Connect to ACP agent and either load an existing session or create a new one.
 --- This is the single entry point for all ACP session lifecycle management.
 ---@param opts? { on_ready?: fun(), force_new?: boolean }
 function Sidebar:connect_acp(opts)
   opts = opts or {}
-  local acp_provider = Config.acp_providers[Config.provider]
+  -- A thread may pin its own agent (chosen at :AvanteChatNew, or by a
+  -- template's acp_provider), independently of the global Config.provider.
+  local provider_name = self:acp_provider_name()
+  local acp_provider = Config.acp_providers[provider_name]
   if not acp_provider then
     if opts.on_ready then opts.on_ready() end
     return
@@ -578,6 +619,12 @@ function Sidebar:connect_acp(opts)
   -- Bump session generation to invalidate any in-flight callbacks from prior session
   self._acp_session_generation = (self._acp_session_generation or 0) + 1
   local my_generation = self._acp_session_generation
+
+  -- Bringing an agent up is slow (npx cold start, a login round-trip) and until
+  -- it finishes `self.acp_client` is nil. Without this flag a prompt submitted
+  -- in the meantime reported "ACP client not connected", which names a symptom
+  -- rather than the wait. Cleared at every terminal branch below.
+  self._acp_connecting = provider_name
 
   -- Stop and unregister existing client if switching sessions
   if self.acp_client then
@@ -640,7 +687,7 @@ function Sidebar:connect_acp(opts)
   local acp_config = vim.tbl_deep_extend("force", acp_provider, {
     handlers = handlers,
     env = resolved_env,
-    provider = Config.provider,
+    provider = provider_name,
     cwd = cwd,
   })
   local acp_client = ACPFactory.new(acp_config)
@@ -650,7 +697,9 @@ function Sidebar:connect_acp(opts)
     if (self._acp_session_generation or 0) ~= my_generation then return end
 
     if conn_err then
-      Utils.error("ACP connect failed: " .. tostring(conn_err))
+      self._acp_connecting = nil
+      Utils.error("ACP connect failed (" .. provider_name .. "): " .. format_acp_error(conn_err))
+      self:show_input_hint()
       return
     end
 
@@ -694,6 +743,7 @@ function Sidebar:connect_acp(opts)
           Utils.info("ACP session resumed: " .. loaded_session_id)
           vim.schedule(function()
             if (self._acp_session_generation or 0) ~= my_generation then return end
+            self._acp_connecting = nil
             self:initialize_modes({ skip_set_default_mode = true })
             self:ensure_acp_thread()
             self:render_result()
@@ -723,11 +773,15 @@ function Sidebar:_create_acp_session(acp_client, generation, opts)
   acp_client:create_session(project_root, {}, function(session_id, err)
     if (self._acp_session_generation or 0) ~= generation then return end
     if err then
-      Utils.error("Failed to create ACP session: " .. tostring(err))
+      self._acp_connecting = nil
+      Utils.error("Failed to create ACP session: " .. format_acp_error(err))
+      self:show_input_hint()
       return
     end
     if not session_id then
+      self._acp_connecting = nil
       Utils.error("Failed to create ACP session: no session ID returned")
+      self:show_input_hint()
       return
     end
 
@@ -737,8 +791,7 @@ function Sidebar:_create_acp_session(acp_client, generation, opts)
       -- Auto-tag with provider info on first session creation
       if not self.chat_history.tags or #self.chat_history.tags == 0 then
         self.chat_history.tags = {}
-        local provider = Config.provider or "unknown"
-        table.insert(self.chat_history.tags, provider)
+        table.insert(self.chat_history.tags, self:acp_provider_name() or "unknown")
         local cwd = vim.fn.fnamemodify(vim.fn.getcwd(), ":t")
         if cwd and cwd ~= "" then
           table.insert(self.chat_history.tags, cwd)
@@ -749,6 +802,7 @@ function Sidebar:_create_acp_session(acp_client, generation, opts)
 
     vim.schedule(function()
       if (self._acp_session_generation or 0) ~= generation then return end
+      self._acp_connecting = nil
       self:initialize_modes()
       self:ensure_acp_thread()
       self:render_result()
@@ -773,6 +827,7 @@ function Sidebar:new_thread(opts)
 
   -- Set avante mode
   self.current_avante_mode = opts.avante_mode or nil
+  self.current_acp_provider = opts.acp_provider or nil
 
   -- Reset file selector to clean state
   if self.file_selector then
@@ -790,9 +845,10 @@ function Sidebar:new_thread(opts)
   -- Create fresh history (no acp_session_id — connect_acp will create new)
   self.chat_history = Path.history.new(self.code.bufnr)
   self.chat_history.avante_mode = self.current_avante_mode
+  self.chat_history.acp_provider = self.current_acp_provider
 
   -- Auto-tag with provider info
-  local provider = Config.provider or "unknown"
+  local provider = self:acp_provider_name() or "unknown"
   self.chat_history.tags = { provider }
   local cwd = vim.fn.fnamemodify(vim.fn.getcwd(), ":t")
   if cwd and cwd ~= "" then
@@ -804,6 +860,7 @@ function Sidebar:new_thread(opts)
   -- Clear UI and all session state
   self.current_state = nil
   self.expanded_message_uuids = {}
+  self.collapsed_message_uuids = {}
   self.tool_message_positions = {}
   self.current_tool_use_extmark_id = nil
   self._current_session_ctx = nil
@@ -825,8 +882,15 @@ function Sidebar:new_thread(opts)
   -- Refresh plan container to clear stale todos
   vim.schedule(function() self:create_plan_container() end)
 
-  -- Connect ACP — force_new since this is a brand new thread
-  self:connect_acp({ force_new = true })
+  -- Connect ACP — force_new since this is a brand new thread.
+  -- A template's starter prompt is submitted once the session is ready, so the
+  -- chat opens with the first turn already under way.
+  self:connect_acp({
+    force_new = true,
+    on_ready = opts.starter_prompt and function()
+      vim.schedule(function() self:handle_submit(opts.starter_prompt) end)
+    end or nil,
+  })
 
   Utils.debug("Created new thread: " .. self.chat_history.filename)
 end
@@ -862,6 +926,7 @@ function Sidebar:load_thread(opts)
   self._pending_mode_transition = nil
   self.current_state = nil
   self.expanded_message_uuids = {}
+  self.collapsed_message_uuids = {}
   self.tool_message_positions = {}
   self.current_tool_use_extmark_id = nil
   self._current_session_ctx = nil
@@ -2036,6 +2101,24 @@ function Sidebar:bind_sidebar_keys(codeblocks)
   )
   vim.keymap.set(
     "n",
+    Config.mappings.sidebar.toggle_message_collapse,
+    function() self:toggle_message_collapse_at_cursor() end,
+    { buffer = self.containers.result.bufnr, noremap = true, silent = true, desc = "avante: fold message under cursor" }
+  )
+  vim.keymap.set(
+    "n",
+    Config.mappings.sidebar.collapse_all_messages,
+    function() self:collapse_all_messages() end,
+    { buffer = self.containers.result.bufnr, noremap = true, silent = true, desc = "avante: fold all messages" }
+  )
+  vim.keymap.set(
+    "n",
+    Config.mappings.sidebar.expand_all_messages,
+    function() self:expand_all_messages() end,
+    { buffer = self.containers.result.bufnr, noremap = true, silent = true, desc = "avante: unfold all messages" }
+  )
+  vim.keymap.set(
+    "n",
     Config.mappings.jump.next,
     function() jump_to_codeblock("next") end,
     { buffer = self.containers.result.bufnr, noremap = true, silent = true }
@@ -2770,6 +2853,128 @@ local function calculate_config_window_position()
   return position
 end
 
+--------------------------------------------------------------------------------
+-- Message collapsing
+--------------------------------------------------------------------------------
+
+--- Truncate a collapsed message to its first line of real content.
+---
+--- Distinct from `expand_tool_use`, which toggles the detail of a single tool
+--- call. This folds whole messages so a long thread can be skimmed.
+---@param message avante.HistoryMessage
+---@param lines avante.ui.Line[]
+---@return avante.ui.Line[]
+function Sidebar:_collapse_lines(message, lines)
+  if not message.uuid or not self.collapsed_message_uuids[message.uuid] then return lines end
+  if #lines == 0 then return lines end
+
+  local first_index = nil
+  for index, line in ipairs(lines) do
+    if vim.trim(tostring(line)) ~= "" then
+      first_index = index
+      break
+    end
+  end
+  if not first_index then return lines end
+
+  local hidden = #lines - first_index
+  local kept = { lines[first_index] }
+  if hidden > 0 then
+    table.insert(
+      kept,
+      Line:new({
+        {
+          string.format("  ⋯ %d more line%s", hidden, hidden == 1 and "" or "s"),
+          Highlights.INLINE_HINT,
+        },
+      })
+    )
+  end
+  return kept
+end
+
+--- Messages eligible for collapsing: the visible, uuid-bearing ones.
+---@return avante.HistoryMessage[]
+function Sidebar:_collapsible_messages()
+  local messages = self.chat_history and History.get_history_messages(self.chat_history) or {}
+  return vim.tbl_filter(function(m) return m.uuid ~= nil and m.visible ~= false end, messages)
+end
+
+function Sidebar:_rerender_after_collapse()
+  self._history_cache_invalidated = true
+  local old_scroll = self.scroll
+  self.scroll = false
+  self:update_content("")
+  self.scroll = old_scroll
+end
+
+--- Collapse every message, optionally leaving the most recent turn expanded.
+---@param opts? { keep_last?: boolean, silent?: boolean, defer_render?: boolean }
+function Sidebar:collapse_all_messages(opts)
+  opts = opts or {}
+  local messages = self:_collapsible_messages()
+  if #messages == 0 then return end
+
+  self.collapsed_message_uuids = {}
+  local last_uuid = messages[#messages].uuid
+  local collapsed = 0
+  for _, message in ipairs(messages) do
+    if not (opts.keep_last and message.uuid == last_uuid) then
+      self.collapsed_message_uuids[message.uuid] = true
+      collapsed = collapsed + 1
+    end
+  end
+
+  -- defer_render lets a caller that is about to redraw anyway (opening a
+  -- thread) avoid rendering twice.
+  if not opts.defer_render then self:_rerender_after_collapse() end
+  if not opts.silent then Utils.info("Collapsed " .. collapsed .. " messages") end
+end
+
+function Sidebar:expand_all_messages()
+  if next(self.collapsed_message_uuids) == nil then return end
+  self.collapsed_message_uuids = {}
+  self:_rerender_after_collapse()
+  Utils.info("Expanded all messages")
+end
+
+--- Toggle the message under the cursor.
+function Sidebar:toggle_message_collapse_at_cursor()
+  if not Utils.is_valid_container(self.containers.result) then return end
+  local cursor_line = api.nvim_win_get_cursor(self.containers.result.winid)[1]
+
+  -- tool_message_positions maps uuid -> {start, stop}; use it to find the
+  -- message the cursor sits in, falling back to the nearest one above.
+  local best_uuid, best_start = nil, -1
+  for uuid, positions in pairs(self.tool_message_positions or {}) do
+    local start_line = positions[1] + (self.skip_line_count or 0)
+    if start_line <= cursor_line and start_line > best_start then
+      best_uuid, best_start = uuid, start_line
+    end
+  end
+
+  if not best_uuid then
+    Utils.info("No message under the cursor to collapse")
+    return
+  end
+
+  self.collapsed_message_uuids[best_uuid] = not self.collapsed_message_uuids[best_uuid] or nil
+  self:_rerender_after_collapse()
+end
+
+--- Identifier used when reporting agent activity in notifications.
+---
+--- Threads created outside ACP have no session id, so fall back to something
+--- stable. Sidebar has no `bufnr` field -- that annotation belongs to
+--- avante.CodeState -- and reaching for one raised inside a vim.schedule
+--- callback, which silently abandoned the rest of the post-turn UI update.
+---@return string
+function Sidebar:notification_session_id()
+  local session_id = self.chat_history and self.chat_history.acp_session_id
+  if session_id and session_id ~= "" then return session_id end
+  return "internal_" .. tostring((self.code and self.code.bufnr) or self.id or "unknown")
+end
+
 function Sidebar:get_layout()
   return vim.tbl_contains({ "left", "right" }, calculate_config_window_position()) and "vertical" or "horizontal"
 end
@@ -2790,6 +2995,7 @@ function Sidebar:_get_message_lines(ctx, message, messages, ignore_record_prefix
   end
   if message.visible == false then return {} end
   local lines = Render.message_to_lines(message, messages, expanded)
+  lines = self:_collapse_lines(message, lines)
   if message.is_user_submission and not ignore_record_prefix then
     ctx.selected_filepaths = message.selected_filepaths
     local text = table.concat(vim.tbl_map(function(line) return tostring(line) end, lines), "\n")
@@ -3204,6 +3410,7 @@ function Sidebar:new_chat(args, cb, opts)
   self:reload_chat_history()
   self.current_state = nil
   self.expanded_message_uuids = {}
+  self.collapsed_message_uuids = {}
   self.tool_message_positions = {}
   self.current_tool_use_extmark_id = nil
   self._current_session_ctx = nil
@@ -3271,9 +3478,13 @@ function Sidebar:add_history_messages(messages, opts)
   messages = vim.islist(messages) and messages or { messages }
   for _, message in ipairs(messages) do
     if message.is_user_submission then
-      message.provider = Config.provider
-      if not Config.acp_providers[Config.provider] then
-        message.model = Config.get_provider_config(Config.provider).model
+      -- The thread's provider, not the global one: a thread may pin its own
+      -- agent, and recording Config.provider made the transcript claim every
+      -- chat ran on the default agent.
+      local provider = self:acp_provider_name()
+      message.provider = provider
+      if not Config.acp_providers[provider] then
+        message.model = Config.get_provider_config(provider).model
       end
     end
     local idx = nil
@@ -3449,6 +3660,10 @@ function Sidebar:show_input_hint()
   -- Build status line parts
   local parts = {}
   local plan_mode_text = nil
+
+  -- Connecting outranks everything else: until the agent answers, none of the
+  -- mode/model state below is known, and the user needs to know to wait.
+  if self:acp_connect_pending() then table.insert(parts, "connecting to " .. self._acp_connecting .. "…") end
 
   -- 1. Mode indicator (prefer configOptions over legacy modes)
   if config.show_plan_mode then
@@ -3919,8 +4134,8 @@ function Sidebar:collect_prompt_metadata()
   end
   
   -- Provider and model
-  metadata.provider = Config.provider or "unknown"
-  local ok, provider_config = pcall(Config.get_provider_config, Config.provider)
+  metadata.provider = self:acp_provider_name() or "unknown"
+  local ok, provider_config = pcall(Config.get_provider_config, metadata.provider)
   if ok and provider_config then
     metadata.model = provider_config.model or "unknown"
   else
@@ -3961,6 +4176,16 @@ function Sidebar:handle_submit(request)
 
   if self.is_generating then
     self:add_history_messages({ History.Message:new("user", request) })
+    return
+  end
+
+  -- The agent is still coming up. Say so rather than queueing: if the agent
+  -- never answers, a queued prompt is indistinguishable from a freeze.
+  if self:acp_connect_pending() then
+    self:update_content(
+      "Still connecting to " .. self._acp_connecting .. "… try again in a moment.",
+      { focus = false, scroll = false }
+    )
     return
   end
 
@@ -4067,7 +4292,7 @@ function Sidebar:handle_submit(request)
     if Config.notifications.enabled then
       local ok, Notifications = pcall(require, "avante.notifications")
       if ok then
-        local session_id = self.chat_history.acp_session_id or "internal_" .. self.bufnr
+        local session_id = self:notification_session_id()
         Notifications.on_agent_start(session_id)
       end
     end
@@ -4138,7 +4363,7 @@ function Sidebar:handle_submit(request)
       if should_notify then
         local ok, Notifications = pcall(require, "avante.notifications")
         if ok then
-          local session_id = self.chat_history.acp_session_id or "internal_" .. self.bufnr
+          local session_id = self:notification_session_id()
           local task_summary = self:_extract_task_summary()
           local thread_title = self.chat_history and self.chat_history.title or nil
           Notifications.on_agent_complete(session_id, stop_opts, task_summary, thread_title)

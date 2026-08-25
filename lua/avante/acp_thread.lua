@@ -499,10 +499,17 @@ function AcpThread:_track_file_edit(update)
     if not sidebar or not sidebar._current_session_ctx then return end
     local abs_path = vim.fn.fnamemodify(path, ":p")
     local Helpers = require("avante.llm_tools.helpers")
-    if update.status == "pending" or update.status == "in_progress" then
-      Helpers.snapshot_file_for_review(abs_path, sidebar._current_session_ctx)
-    elseif update.status == "completed" then
+    if update.status == "completed" or update.status == "failed" then
       Helpers.track_edited_file(abs_path, sidebar._current_session_ctx, tool_title)
+    else
+      -- Snapshot on *any* pre-completion update that yields a path, not just
+      -- pending/in_progress. Agents announce the tool with no path at all
+      -- (rawInput = {}, locations = []) and only fill it in on later updates
+      -- that carry no status field, so keying on status meant the "before"
+      -- content was never captured and every change diffed against empty --
+      -- which is why /files reported whole files as pure additions.
+      -- snapshot_file_for_review is idempotent, so repeating this is free.
+      Helpers.snapshot_file_for_review(abs_path, sidebar._current_session_ctx)
     end
   end)
 end

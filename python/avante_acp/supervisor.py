@@ -32,6 +32,15 @@ log = logging.getLogger(__name__)
 
 CLIENT_INFO = Implementation(name="avante.nvim", title="avante.nvim", version="0.1.0")
 
+#: How long an agent gets to answer `initialize`.
+#:
+#: Spawning may legitimately take minutes (`npx -y` on a cold cache), but the
+#: handshake starts only once the process is up, so it can be bounded tightly.
+#: Without a bound, a command that is not an ACP server at all hangs here
+#: forever -- `cursor-agent acp` on a build with no `acp` subcommand swallows
+#: the request as a chat prompt and never replies.
+INITIALIZE_TIMEOUT = 20.0
+
 
 def client_capabilities(*, unstable: bool = False) -> ClientCapabilities:
     """What we can do for an agent.
@@ -92,11 +101,27 @@ class AgentHandle:
         if self.process.stderr is not None:
             self._stderr_task = asyncio.create_task(self._drain_stderr(peer))
 
-        result = await self.conn.initialize(
-            protocol_version=PROTOCOL_VERSION,
-            client_capabilities=client_capabilities(unstable=unstable),
-            client_info=CLIENT_INFO,
-        )
+        try:
+            result = await asyncio.wait_for(
+                self.conn.initialize(
+                    protocol_version=PROTOCOL_VERSION,
+                    client_capabilities=client_capabilities(unstable=unstable),
+                    client_info=CLIENT_INFO,
+                ),
+                timeout=INITIALIZE_TIMEOUT,
+            )
+        except asyncio.TimeoutError as exc:
+            raise RpcError(
+                -32003,
+                f"{command!r} did not answer ACP initialize within "
+                f"{INITIALIZE_TIMEOUT:.0f}s -- it may not be an ACP server. "
+                f"Check that `{' '.join([command, *args])}` starts one.",
+                {
+                    "command": command,
+                    "args": list(args),
+                    "stderr": self.recent_stderr(),
+                },
+            ) from exc
         self.capabilities = _dump(result.agent_capabilities) or {}
         self.auth_methods = [_dump(method) for method in (result.auth_methods or [])]
 
@@ -201,6 +226,12 @@ class Supervisor:
                 f"Agent command not found: {resolved_command}",
                 {"provider": provider, "command": resolved_command},
             ) from exc
+        except RpcError:
+            # Already diagnosed (e.g. the initialize timeout), and its code and
+            # message are what Neovim shows. Re-wrapping would bury both under a
+            # generic -32603, so only reap the process.
+            await handle.stop()
+            raise
         except Exception as exc:
             stderr = handle.recent_stderr()
             await handle.stop()

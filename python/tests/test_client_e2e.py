@@ -88,10 +88,30 @@ class Harness:
         self.session_id = session_id
 
     async def run(self, command: str) -> str:
-        """Send a prompt, return the last agent message."""
+        """Send a prompt, return the last agent message.
+
+        The prompt response and the session/update notifications travel the
+        same wire in order, but the receiving Peer dispatches notifications as
+        separate tasks, so a response can be delivered before an earlier
+        notification has been handled. Let those drain before asserting.
+        (The real editor is unaffected: Lua queues everything through
+        vim.schedule, which is FIFO.)
+        """
         await self.conn.prompt(session_id=self.session_id, prompt=[text_block(command)])
+        await self._settle()
         messages = self.editor.messages()
         return messages[-1] if messages else ""
+
+    async def _settle(self, rounds: int = 5) -> None:
+        seen = len(self.editor.events)
+        for _ in range(rounds):
+            await asyncio.sleep(0)
+            if len(self.editor.events) == seen:
+                # Two consecutive passes with no new events: the queue is empty.
+                await asyncio.sleep(0)
+                if len(self.editor.events) == seen:
+                    return
+            seen = len(self.editor.events)
 
 
 @contextlib.asynccontextmanager
@@ -337,3 +357,18 @@ async def test_load_session_replays(harness):
     )
 
     assert "replayed" in harness.editor.messages()
+
+
+async def test_extension_method_without_a_handler_errors_rather_than_hangs():
+    """avante registers no ui/ext handler by default, so vendor extensions
+    (cursor/ask_question, cursor/create_plan) must come back as an error the
+    agent can act on -- never silence."""
+    import asyncio as _asyncio
+
+    async with build_harness() as h:
+        # Remove the editor's ext handler to model the default configuration.
+        h.editor.peer._request_handlers.pop("ui/ext", None)
+
+        result = await _asyncio.wait_for(h.run("ext:cursor/ask_question"), timeout=20)
+
+        assert result.startswith("ext-error=")

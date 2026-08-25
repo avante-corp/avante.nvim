@@ -440,7 +440,11 @@ local function show_telescope_picker(histories, bufnr, cb, pickers, finders, con
             return
           end
           
-          local history = entry.history
+          -- Hydrate lazily: the list holds summaries with no messages, so the
+          -- preview would otherwise be blank. Cached on the entry so scrolling
+          -- back over a thread does not re-read the file.
+          local history = M.hydrate(entry.history)
+          entry.history = history
           local Sidebar = require("avante.sidebar")
           local content = Sidebar.render_history_content(history)
           
@@ -498,7 +502,10 @@ local function show_telescope_picker(histories, bufnr, cb, pickers, finders, con
                 if selection.history and selection.history._is_external then
                   external_session_id = selection.history.acp_session_id
                 end
-                cb(selection.value, external_session_id, selection.history)
+                -- Hydrate before the callback: it assigns this to
+                -- sidebar.chat_history and saves it, so an unhydrated summary
+                -- would clobber the stored conversation.
+                cb(selection.value, external_session_id, M.hydrate(selection.history))
               end
             end)
           end
@@ -523,6 +530,7 @@ local function show_telescope_picker(histories, bufnr, cb, pickers, finders, con
         map("n", "r", function()
           local selection = action_state.get_selected_entry()
           if selection and selection.history and not selection.is_new_thread then
+            selection.history = M.hydrate(selection.history)
             local current_title = selection.history.title or ""
             vim.ui.input({ prompt = "Rename thread: ", default = current_title }, function(new_title)
               if new_title and new_title ~= "" then
@@ -671,6 +679,35 @@ function M.open_with_telescope(bufnr, cb, opts)
     end)
   end)
   end)
+end
+
+---Load a thread's full contents.
+---
+---`list_all_histories` returns lightweight summaries: they carry no `messages`,
+---which is exactly why listing is fast. Anything that needs the conversation
+---itself -- the preview pane, opening a thread -- must hydrate first. Passing a
+---summary on unhydrated is not merely empty: callers save it back to disk,
+---which would overwrite the real history with a message-less stub.
+---@param history table
+---@return table history hydrated when possible, unchanged otherwise
+function M.hydrate(history)
+  if not history then return history end
+  -- Already full, or synthesized for a session with no local file.
+  if history.messages or history._is_external then return history end
+  if not history.path then return history end
+
+  local full = Path.history.from_file(PlPath:new(history.path))
+  if not full then
+    Utils.debug("Could not hydrate thread from " .. tostring(history.path))
+    return history
+  end
+
+  -- Keep summary-only fields the file does not carry.
+  full.path = history.path
+  if history.working_directory and not full.working_directory then
+    full.working_directory = history.working_directory
+  end
+  return full
 end
 
 ---Load thread summaries for every project.

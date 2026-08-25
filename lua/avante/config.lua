@@ -736,6 +736,11 @@ M._defaults = {
     sidebar = {
       cycle_mode = "<S-Tab>",
       expand_tool_use = "<C-e>",
+      -- Fold-style, mirroring vim's za/zM/zR. `expand_tool_use` stays bound to
+      -- the tool call under the cursor; these act on whole messages.
+      toggle_message_collapse = "za",
+      collapse_all_messages = "zM",
+      expand_all_messages = "zR",
       next_prompt = "]p",
       prev_prompt = "[p",
       apply_all = "A",
@@ -898,6 +903,16 @@ M._defaults = {
   disabled_tools = {}, ---@type string[]
   ---@type AvanteLLMToolPublic[] | fun(): AvanteLLMToolPublic[]
   custom_tools = {},
+  --- Templates for a new chat. Each may pin an ACP provider and a starter
+  --- prompt, so picking one both configures the agent and opens with a first
+  --- message already sent.
+  ---@class AvanteMode
+  ---@field name string
+  ---@field description string
+  ---@field prompt string|nil extra system prompt; nil uses the built-in plan prompt
+  ---@field additional_files string[]|nil
+  ---@field acp_provider string|nil key into `acp_providers`, overrides `provider` for this chat
+  ---@field starter_prompt string|nil sent automatically once the session is ready
   ---@type AvanteMode[]
   avante_modes = {
     {
@@ -921,6 +936,15 @@ M._defaults = {
   },
   ---@type string|nil Default avante mode for new chats (nil = show picker)
   default_avante_mode = nil,
+  --- Offer an ACP provider picker when starting a chat. A template's
+  --- `acp_provider` wins over the picker; the picker is skipped when fewer
+  --- than two ACP providers are configured.
+  ---@type boolean
+  ask_acp_provider_on_new_chat = true,
+  --- Collapse older messages when opening an existing thread, leaving only the
+  --- most recent expanded.
+  ---@type boolean
+  collapse_threads_on_open = true,
   ---@type AvanteSlashCommand[]
   slash_commands = {},
   ---@type boolean Enable passthrough of unknown slash commands to ACP agent

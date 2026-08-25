@@ -210,3 +210,134 @@ describe("acp.elicitation", function()
     end)
   end)
 end)
+
+describe("acp.elicitation rendering", function()
+  local Elicitation = require("avante.acp.elicitation")
+
+  describe("wrapping", function()
+    it("wraps long text on word boundaries", function()
+      local text = "Which approach should I take for the refactor, given that the module is shared?"
+      local lines = Elicitation._wrap_text(text, 30)
+
+      assert.is_true(#lines > 1)
+      for _, line in ipairs(lines) do
+        assert.is_true(vim.fn.strdisplaywidth(line) <= 30)
+      end
+      assert.equals(text, table.concat(lines, " "))
+    end)
+
+    it("never splits a word", function()
+      local lines = Elicitation._wrap_text("supercalifragilistic short", 10)
+
+      assert.equals("supercalifragilistic", lines[1])
+    end)
+
+    it("preserves explicit newlines as paragraphs", function()
+      local lines = Elicitation._wrap_text("one\n\ntwo", 40)
+
+      assert.same({ "one", "", "two" }, lines)
+    end)
+
+    it("returns nothing for empty input", function()
+      assert.same({}, Elicitation._wrap_text("", 40))
+      assert.same({}, Elicitation._wrap_text(nil, 40))
+    end)
+  end)
+
+  describe("question text", function()
+    it("prefers the message over the short header for a single question", function()
+      -- claude sends the question in `message` and a short header in `title`;
+      -- showing the header instead loses the actual question.
+      local question, header = Elicitation._question_text(
+        { title = "Colour" },
+        "Do you prefer red or blue?"
+      )
+
+      assert.equals("Do you prefer red or blue?", question)
+      assert.equals("Colour", header)
+    end)
+
+    it("prefers the field description for a multi-question form", function()
+      local question = Elicitation._question_text(
+        { title = "Colour", description = "Which colour?" },
+        "Please answer the following questions."
+      )
+
+      assert.equals("Which colour?", question)
+    end)
+
+    it("does not repeat the header when it equals the question", function()
+      local question, header = Elicitation._question_text({ title = "Same" }, "Same")
+
+      assert.equals("Same", question)
+      assert.is_nil(header)
+    end)
+  end)
+
+  describe("float contents", function()
+    local long = "Should I rewrite the module from scratch, or apply a targeted patch that keeps the existing structure intact?"
+
+    it("puts the full question in the body, wrapped", function()
+      local choices = Elicitation._build_choices(
+        { type = "string", oneOf = { { const = "Rewrite" }, { const = "Patch" } } },
+        false
+      )
+      local lines = Elicitation._build_lines(long, nil, choices, 40)
+
+      -- Every word of the question survives, across however many lines.
+      local body = table.concat(lines, " ")
+      for word in long:gmatch("%S+") do
+        assert.is_not_nil(body:find(word, 1, true), "missing word: " .. word)
+      end
+      for _, line in ipairs(lines) do
+        assert.is_true(vim.fn.strdisplaywidth(line) <= 46)
+      end
+    end)
+
+    it("numbers each choice and reports its line", function()
+      local choices = Elicitation._build_choices(
+        { type = "string", oneOf = { { const = "A" }, { const = "B" } } },
+        false
+      )
+      local lines, choice_lines = Elicitation._build_lines("Q?", nil, choices, 40)
+
+      -- 2 options + Skip
+      assert.equals(3, #choice_lines)
+      assert.is_not_nil(lines[choice_lines[1]]:find("1. A", 1, true))
+      assert.is_not_nil(lines[choice_lines[2]]:find("2. B", 1, true))
+      assert.is_not_nil(lines[choice_lines[3]]:find("Skip", 1, true))
+    end)
+
+    it("wraps option descriptions under their option", function()
+      local choices = Elicitation._build_choices({
+        type = "string",
+        oneOf = {
+          { const = "A", description = "A fairly long explanation of what this option actually does" },
+        },
+      }, false)
+      local lines = Elicitation._build_lines("Q?", nil, choices, 40)
+
+      local body = table.concat(lines, "\n")
+      assert.is_not_nil(body:find("explanation", 1, true))
+      for _, line in ipairs(lines) do
+        assert.is_true(vim.fn.strdisplaywidth(line) <= 46)
+      end
+    end)
+
+    it("includes the header above the question when present", function()
+      local choices = Elicitation._build_choices({ type = "string", oneOf = {} }, false)
+      local lines = Elicitation._build_lines("The question", "Header", choices, 40)
+
+      assert.equals("Header", lines[1])
+      assert.equals("The question", lines[3])
+    end)
+
+    it("offers a custom entry only when the schema has one", function()
+      local with = Elicitation._build_choices({ type = "string", oneOf = {} }, true)
+      local without = Elicitation._build_choices({ type = "string", oneOf = {} }, false)
+
+      assert.equals(2, #with) -- custom + skip
+      assert.equals(1, #without) -- skip only
+    end)
+  end)
+end)
