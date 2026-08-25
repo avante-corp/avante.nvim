@@ -146,6 +146,57 @@ async def test_new_session_returns_modes(nvim):
     assert result["modes"]["currentModeId"] == "agent"
 
 
+async def test_new_session_hands_the_agent_an_ask_tool(nvim):
+    # The fake provider is unknown, so it counts as unable to ask a question
+    # on its own and gets avante's own MCP server appended.
+    agent_id = await spawn(nvim)
+
+    result = await nvim.call(
+        "session/new", {"agentId": agent_id, "cwd": str(Path.cwd()), "mcpServers": []}
+    )
+
+    injected = [server for server in result["mcpServers"] if server["name"] == "avante"]
+    assert len(injected) == 1
+    assert injected[0]["url"].startswith("http://127.0.0.1:")
+    assert injected[0]["headers"][0]["name"] == "Authorization"
+
+
+async def test_the_ask_tool_can_be_turned_off(nvim):
+    agent_id = await spawn(nvim, askTool="never")
+
+    result = await nvim.call(
+        "session/new", {"agentId": agent_id, "cwd": str(Path.cwd()), "mcpServers": []}
+    )
+
+    assert result["mcpServers"] == []
+
+
+async def test_the_ask_tool_is_reused_across_sessions(nvim):
+    # One server per agent, not per session: a second listener per chat would
+    # leak ports for the life of the agent.
+    agent_id = await spawn(nvim)
+
+    first = await nvim.call(
+        "session/new", {"agentId": agent_id, "cwd": str(Path.cwd()), "mcpServers": []}
+    )
+    second = await nvim.call(
+        "session/new", {"agentId": agent_id, "cwd": str(Path.cwd()), "mcpServers": []}
+    )
+
+    assert first["mcpServers"][0]["url"] == second["mcpServers"][0]["url"]
+
+
+async def test_a_project_server_named_avante_is_not_displaced(nvim):
+    agent_id = await spawn(nvim)
+    mine = {"name": "avante", "command": "echo", "args": [], "env": []}
+
+    result = await nvim.call(
+        "session/new", {"agentId": agent_id, "cwd": str(Path.cwd()), "mcpServers": [mine]}
+    )
+
+    assert result["mcpServers"] == [mine]
+
+
 async def test_prompt_streams_events_and_returns_stop_reason(nvim):
     agent_id = await spawn(nvim)
     session_id = await new_session(nvim, agent_id)

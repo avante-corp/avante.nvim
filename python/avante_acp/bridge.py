@@ -82,12 +82,16 @@ class Bridge:
             cwd=params.get("cwd"),
             auto_approve=bool(params.get("autoApprove")),
             unstable=bool(params.get("unstable")),
+            log_transcript=params.get("logTranscript") is not False,
+            log_dir=params.get("logDir"),
+            ask_tool=params.get("askTool") or "auto",
         )
         return {
             "agentId": handle.agent_id,
             "capabilities": handle.capabilities,
             "authMethods": handle.auth_methods,
             "pid": getattr(handle.process, "pid", None),
+            "transcript": str(handle.transcript.path) if handle.transcript else None,
         }
 
     async def agent_kill(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -116,6 +120,8 @@ class Bridge:
             # reached any agent. Fall back to discovering them from disk.
             mcp_servers = providers.discover_mcp_servers(handle.provider, cwd)
 
+        mcp_servers = await self._with_ask_tool(handle, mcp_servers)
+
         result = await handle.conn.new_session(
             cwd=cwd,
             mcp_servers=mcp_servers,
@@ -140,11 +146,34 @@ class Bridge:
         result = await handle.conn.load_session(
             session_id=session_id,
             cwd=cwd,
-            mcp_servers=params.get("mcpServers")
-            or providers.discover_mcp_servers(handle.provider, cwd),
+            mcp_servers=await self._with_ask_tool(
+                handle,
+                params.get("mcpServers")
+                or providers.discover_mcp_servers(handle.provider, cwd),
+            ),
         )
         self.supervisor.bind_session(handle.agent_id, session_id)
         return {"sessionId": session_id, **(_dump(result) or {})}
+
+    async def _with_ask_tool(
+        self, handle: Any, mcp_servers: list[dict[str, Any]] | None
+    ) -> list[dict[str, Any]]:
+        """Append avante's ask_user_question server, for agents that need it.
+
+        Agents with no way to ask the user a question otherwise abandon the
+        attempt and ask in prose instead; see ask_server.py.
+        """
+        servers = list(mcp_servers or [])
+        entry = await handle.ask_server_entry()
+        if entry is None:
+            return servers
+        # A project's own mcp.json wins if it somehow claims the same name,
+        # rather than being silently displaced by ours.
+        if any(server.get("name") == entry["name"] for server in servers):
+            log.warning("An MCP server is already named %r; not injecting ours", entry["name"])
+            return servers
+        servers.append(entry)
+        return servers
 
     async def session_resume(self, params: dict[str, Any]) -> dict[str, Any]:
         """Reconnect without replaying history.

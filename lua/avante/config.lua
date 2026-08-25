@@ -54,6 +54,25 @@ M._defaults = {
   --- turning this off means the agent cannot ask you questions mid-turn.
   ---@type boolean
   acp_unstable = true,
+  --- How an agent asks you a question mid-turn. Most agents have no way to:
+  --- cursor decides its own AskQuestion tool is unavailable and asks in prose
+  --- instead. "auto" hands those agents an `ask_user_question` MCP tool that
+  --- avante hosts, so they get the same picker claude does. claude is left
+  --- alone, since its `elicitation/create` path already works.
+  ---@alias avante.AcpAskTool "auto" | "always" | "never"
+  ---@type avante.AcpAskTool
+  acp_ask_tool = "auto",
+  --- Record every JSON-RPC frame exchanged with an agent, so a bug in a real
+  --- session can be replayed instead of reproduced by guesswork.
+  ---@type boolean
+  acp_log_transcript = true,
+  --- Where transcripts go: <dir>/<YYYY-MM-DD>/<provider>-<sessionId>.log
+  ---@type string
+  acp_log_dir = "~/.avante/logs",
+  --- Where plans delivered over the protocol are saved, so /open-plan can
+  --- reach them: <dir>/<YYYY-MM-DD>/<session>-<name>.md
+  ---@type string
+  acp_plan_dir = "~/.avante/plans",
   ---@alias avante.ProviderName "claude" | "openai" | "azure" | "gemini" | "vertex" | "cohere" | "copilot" | "bedrock" | "ollama" | "watsonx_code_assistant" | string
   ---@type avante.ProviderName
   provider = "claude",

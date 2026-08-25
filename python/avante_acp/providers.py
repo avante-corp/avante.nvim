@@ -24,6 +24,10 @@ class Provider:
     auth_method: str | None = None
     # Where to look for MCP server definitions, relative to the project root.
     mcp_config_paths: tuple[str, ...] = ()
+    # Whether the agent can already ask the user a question on its own. When it
+    # cannot, avante injects its own ask_user_question MCP tool instead of
+    # letting the agent fall back to asking in prose. See ask_server.py.
+    native_questions: bool = False
     notes: str = ""
 
 
@@ -37,6 +41,10 @@ PROVIDERS: dict[str, Provider] = {
         args=("-y", "@agentclientprotocol/claude-agent-acp"),
         env={},
         mcp_config_paths=(".mcp.json",),
+        # Its AskUserQuestion tool rides on elicitation/create, which the
+        # bridge implements. A second ask-tool would only give the model two
+        # competing ways to do the same thing.
+        native_questions=True,
     ),
     # Cursor's docs render the invocation as `agent acp`, but the binary the
     # Cursor CLI installs is `cursor-agent`. Requires `cursor-agent login`, or
@@ -100,6 +108,21 @@ def build_command(
         resolved_env.update({k: str(v) for k, v in env.items()})
 
     return resolved_command, resolved_args, resolved_env
+
+
+def wants_ask_tool(name: str, mode: str = "auto") -> bool:
+    """Whether to inject avante's own ask_user_question MCP tool.
+
+    "auto" gives it to every agent that cannot already ask a question, which is
+    all of them except claude. An unknown provider counts as unable: assuming
+    it can ask means silently losing the question if it cannot.
+    """
+    if mode == "never":
+        return False
+    if mode == "always":
+        return True
+    provider = resolve(name)
+    return provider is None or not provider.native_questions
 
 
 def discover_mcp_servers(name: str, cwd: str) -> list[dict[str, Any]]:

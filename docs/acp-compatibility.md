@@ -51,7 +51,7 @@ Legend: ✅ implemented · ⚠️ partial · ❌ not implemented
 | `terminal/wait_for_exit` | ✅ (bridge) / ❌ (Lua) | |
 | `terminal/kill` | ✅ (bridge) / ❌ (Lua) | Reports the signal name. |
 | `terminal/release` | ✅ (bridge) / ❌ (Lua) | Kills the process if still running. |
-| `elicitation/create` | ⚠️ | Implemented in the Python bridge, but **gated behind `use_unstable_protocol` in `agent-client-protocol` 0.12.1** despite the v1 docs listing it as a client method. On a stable connection the agent gets `-32601`. Until it stabilises there is no supported way to feed a structured answer back into a tool; the `acp-wrapper.mjs` monkey-patch that used to do this has been removed. |
+| `elicitation/create` | ✅ (unstable) | Implemented in the Python bridge and rendered by `lua/avante/acp/elicitation.lua`. Still **gated behind `use_unstable_protocol` in `agent-client-protocol` 0.12.1** despite the v1 docs listing it as a client method, so on a stable connection the agent gets `-32601`; `acp_unstable = true` (the default) is what turns it on. claude-agent-acp maps its `AskUserQuestion` tool onto this and disables the tool outright unless the client advertises `elicitation.form`. |
 | `elicitation/complete` | ⚠️ | Same gate. Forwarded as an event when enabled. |
 | `$/cancel_request` | ⚠️ | Accepted and ignored — we have no long-running inbound work to abort. Never sent outbound. |
 | `_`-prefixed extensions | ⚠️ | No extension is implemented, but unknown requests now get the spec-required `-32601` and unknown notifications are silently ignored. |
@@ -141,6 +141,33 @@ configured in the Cursor dashboard are not available in ACP mode. Extension meth
 
 - Blocking (require a response): `cursor/ask_question`, `cursor/create_plan`
 - Notifications: `cursor/update_todos`, `cursor/task`, `cursor/generate_image`
+
+Routes for all five are registered in `vendor.py`, because the SDK's router only forwards
+`_`-prefixed methods to `Client.ext_method` and would otherwise reject these with `-32601`.
+
+**`cursor/ask_question` never arrives in practice.** In a real session cursor sends
+`cursor/create_plan` but decides its own AskQuestion tool is unavailable, thinks so out loud, and
+asks its question as prose in the chat instead. Cursor's docs name no client capability that
+enables it, so there is nothing to advertise. The route stays registered in case that changes.
+
+## Asking the user a question
+
+Three mechanisms, in the order they are preferred:
+
+| Agent | Mechanism |
+|---|---|
+| claude | `elicitation/create`, native |
+| cursor | `cursor/ask_question` — registered but never sent (above) |
+| everything else | avante's own `ask_user_question` MCP tool |
+
+The fallback lives in `python/avante_acp/ask_server.py`: a loopback MCP Streamable-HTTP server
+with one tool, injected into `session/new`'s `mcpServers` and authenticated with a per-agent
+bearer token. Its handler routes to the same `ui/elicitation` request the native path uses, so
+every agent renders through one float. `acp_ask_tool` controls it — `"auto"` (default) gives it to
+any provider whose `native_questions` is false, `"always"` and `"never"` override.
+
+Both the vendor path and the MCP tool build their form through `python/avante_acp/forms.py`, since
+`elicitation.lua` depends on the exact `question_<n>` / `oneOf` / `items.anyOf` shape.
 
 ---
 

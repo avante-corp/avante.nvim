@@ -487,6 +487,19 @@ function AcpThread:_track_file_edit(update)
   if not path and locations and #locations > 0 then
     path = locations[1].path
   end
+
+  -- ACP's `diff` tool-call content carries {path, oldText, newText}. Some
+  -- agents (cursor) report an edit *only* this way: rawInput and locations stay
+  -- empty and the title is a bare "Edit File", so without this the edit is
+  -- invisible to /files.
+  local diff_entry = nil
+  for _, item in ipairs(update.content or stored_acp.content or {}) do
+    if type(item) == "table" and item.type == "diff" and type(item.path) == "string" then
+      diff_entry = item
+      break
+    end
+  end
+  if not path and diff_entry then path = diff_entry.path end
   -- Also try to extract path from the title (e.g. "Write(src/foo.lua)" or "Edit(src/foo.lua)")
   if not path then
     local title_path = tool_title:match("^%w+%((.+)%)$")
@@ -499,6 +512,13 @@ function AcpThread:_track_file_edit(update)
     if not sidebar or not sidebar._current_session_ctx then return end
     local abs_path = vim.fn.fnamemodify(path, ":p")
     local Helpers = require("avante.llm_tools.helpers")
+
+    -- Prefer the agent's own "before" text: it is exact, and it survives the
+    -- case where the path only arrives after the file has already been written.
+    if diff_entry and type(diff_entry.oldText) == "string" then
+      Helpers.record_file_snapshot(abs_path, sidebar._current_session_ctx, diff_entry.oldText)
+    end
+
     if update.status == "completed" or update.status == "failed" then
       Helpers.track_edited_file(abs_path, sidebar._current_session_ctx, tool_title)
     else

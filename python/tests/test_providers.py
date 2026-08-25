@@ -183,3 +183,24 @@ def test_provider_without_mcp_paths_yields_nothing(tmp_path):
     )
 
     assert providers.discover_mcp_servers("goose", str(tmp_path)) == []
+
+
+def test_claude_asks_its_own_questions():
+    # It maps AskUserQuestion onto elicitation/create, so injecting a second
+    # ask-tool would give the model two ways to do one thing.
+    assert providers.wants_ask_tool("claude") is False
+    assert providers.wants_ask_tool("claude-code") is False
+
+
+def test_cursor_needs_an_ask_tool():
+    # It never sends cursor/ask_question and asks in prose instead.
+    assert providers.wants_ask_tool("cursor") is True
+
+
+def test_an_unknown_provider_is_assumed_unable_to_ask():
+    assert providers.wants_ask_tool("something-new") is True
+
+
+def test_the_mode_overrides_the_provider():
+    assert providers.wants_ask_tool("cursor", "never") is False
+    assert providers.wants_ask_tool("claude", "always") is True

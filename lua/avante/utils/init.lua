@@ -1767,6 +1767,13 @@ end
 ---@return string|nil
 function M.plan_find_file_path(history)
   if not history then return nil end
+
+  -- Recorded directly when the agent delivered the plan over the wire rather
+  -- than writing a file (cursor/create_plan). Scanning tool calls for a
+  -- `.claude/plans/` path only ever finds claude's.
+  if type(history.plan_file_path) == "string" and history.plan_file_path ~= "" then
+    return history.plan_file_path
+  end
   local ok, History = pcall(require, "avante.history")
   if not ok then return nil end
   local messages = History.get_history_messages(history)

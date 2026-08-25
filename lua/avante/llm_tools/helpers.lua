@@ -242,6 +242,22 @@ function M.snapshot_file_for_review(abs_path, session_ctx)
   end
 end
 
+--- Record the pre-edit content of a file directly.
+---
+--- `snapshot_file_for_review` reads from disk, which only works if we learn the
+--- path *before* the write. Some agents only report the path once the edit has
+--- completed, but hand back the previous content in the tool call's `diff`
+--- payload -- which is a better source anyway, since it cannot race the write.
+---@param abs_path string
+---@param session_ctx table
+---@param content string
+function M.record_file_snapshot(abs_path, session_ctx, content)
+  if not session_ctx or type(content) ~= "string" then return end
+  session_ctx.file_snapshots = session_ctx.file_snapshots or {}
+  if session_ctx.file_snapshots[abs_path] then return end
+  session_ctx.file_snapshots[abs_path] = content
+end
+
 --- Track that a file was edited by the agent
 ---@param abs_path string
 ---@param session_ctx table

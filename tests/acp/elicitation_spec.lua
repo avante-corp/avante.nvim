@@ -209,6 +209,50 @@ describe("acp.elicitation", function()
       end
     end)
   end)
+
+  describe("dismissal is visible", function()
+    -- A dismissed question is otherwise invisible from the sidebar: the agent
+    -- reports it only as "Tool use aborted", which reads as a bug.
+    local Utils = require("avante.utils")
+    local warn_stub, info_stub, notices
+
+    before_each(function()
+      notices = {}
+      warn_stub, info_stub = Utils.warn, Utils.info
+      Utils.warn = function(msg) table.insert(notices, { level = "warn", msg = msg }) end
+      Utils.info = function(msg) table.insert(notices, { level = "info", msg = msg }) end
+    end)
+
+    after_each(function()
+      Utils.warn, Utils.info = warn_stub, info_stub
+    end)
+
+    it("warns when the question is cancelled", function()
+      stub_select(function(_, _, on_choice) on_choice(nil) end)
+
+      run(single_select_params())
+
+      assert.equals(1, #notices)
+      assert.equals("warn", notices[1].level)
+    end)
+
+    it("notes a skip without raising it to a warning", function()
+      stub_select(function(items, _, on_choice) on_choice(items[#items]) end)
+
+      run(single_select_params())
+
+      assert.equals(1, #notices)
+      assert.equals("info", notices[1].level)
+    end)
+
+    it("stays quiet when the question is answered", function()
+      stub_select(function(items, _, on_choice) on_choice(items[1]) end)
+
+      run(single_select_params())
+
+      assert.same({}, notices)
+    end)
+  end)
 end)
 
 describe("acp.elicitation rendering", function()

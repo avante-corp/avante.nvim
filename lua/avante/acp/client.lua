@@ -105,18 +105,23 @@ local function install_handlers(bridge)
       return
     end
 
-    local lines = {}
-    if params.name then table.insert(lines, params.name) end
-    if params.overview then table.insert(lines, params.overview) end
-    for _, todo in ipairs(params.todos or {}) do
-      table.insert(lines, "  - " .. tostring(todo.content))
-    end
-    local message = table.concat(lines, "\n")
-
     vim.schedule(function()
-      vim.ui.select({ "Approve plan", "Reject plan" }, {
-        prompt = message ~= "" and message or "Approve the agent's plan?",
-      }, function(choice)
+      -- Save first: the plan only exists in this payload, so answering the
+      -- prompt without persisting it loses it entirely.
+      local ok_plan, Plan = pcall(require, "avante.acp.plan")
+      local path = ok_plan and Plan.store(params) or nil
+
+      local title = params.name or "the agent's plan"
+      local todo_count = #(params.todos or {})
+      local prompt = string.format(
+        "Approve %s? (%d todo%s)%s",
+        title,
+        todo_count,
+        todo_count == 1 and "" or "s",
+        path and "  ·  /open-plan to read it" or ""
+      )
+
+      vim.ui.select({ "Approve plan", "Reject plan" }, { prompt = prompt }, function(choice)
         if choice == nil then
           reply({})
           return
@@ -137,6 +142,17 @@ local function install_handlers(bridge)
       code = ACPBridge.ERROR_CODES.METHOD_NOT_FOUND,
       message = "Unsupported extension method: " .. tostring(params.method),
     })
+  end)
+
+  bridge:on_disconnect(function(reason)
+    -- Agent ids belong to the bridge process. Once it dies they refer to
+    -- nothing, and reusing one gets "Unknown agentId" from the replacement.
+    for agent_id, client in pairs(registry) do
+      Utils.debug("Dropping stale ACP agent " .. agent_id .. ": " .. tostring(reason))
+      client.agent_id = nil
+      client.state = "disconnected"
+      registry[agent_id] = nil
+    end
   end)
 
   bridge:on_event(function(event)
@@ -198,6 +214,11 @@ function Client:connect(callback)
       -- Advertises elicitation.form, without which claude-agent-acp disallows
       -- its AskUserQuestion tool outright.
       unstable = Config.acp_unstable ~= false,
+      -- Agents that cannot ask a question natively get one from us instead of
+      -- silently degrading to asking in prose.
+      askTool = Config.acp_ask_tool or "auto",
+      logTranscript = Config.acp_log_transcript ~= false,
+      logDir = Config.acp_log_dir,
     }, function(result, err)
       if err then
         self.state = "error"
@@ -211,7 +232,9 @@ function Client:connect(callback)
       registry[self.agent_id] = self
       self.state = "ready"
 
+      self.transcript_path = result.transcript
       Utils.debug("ACP agent ready via bridge: " .. tostring(self.agent_id))
+      if result.transcript then Utils.debug("ACP transcript: " .. result.transcript) end
       callback(nil)
     end)
   end)
@@ -334,6 +357,19 @@ function Client:send_prompt(session_id, prompt, mode_id, callback)
     mode_id = nil
   end
   callback = callback or function() end
+
+  -- Without this the request goes out with a nil agentId and comes back as
+  -- "Unknown sessionId", which recovery reads as "the session is gone" and
+  -- answers by starting an empty one. The session is usually still resumable;
+  -- what was lost is the agent, so say so.
+  if not self.agent_id then
+    callback(nil, {
+      code = M.ERROR_CODES.CONNECTION_CLOSED,
+      message = "ACP agent is no longer running",
+      data = { method = "session/prompt" },
+    })
+    return
+  end
 
   self._bridge:prompt({
     agentId = self.agent_id,

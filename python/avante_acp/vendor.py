@@ -26,6 +26,8 @@ from typing import Any
 
 from acp.router import Route
 
+from . import forms
+
 log = logging.getLogger(__name__)
 
 # Blocking: the agent waits for a response.
@@ -81,46 +83,38 @@ def register_vendor_routes(conn: Any, client: Any) -> list[str]:
 
 def ask_question_to_elicitation(params: dict[str, Any]) -> dict[str, Any]:
     """Convert a cursor/ask_question request into elicitation-style params."""
-    questions = params.get("questions") or []
-    properties: dict[str, Any] = {}
+    raw_questions = params.get("questions") or []
+    title = params.get("title")
+
+    questions = []
     # Cursor keys answers by its own question id; remember the mapping so the
     # response can be built back up.
     order: list[str] = []
 
-    for index, question in enumerate(questions):
+    for index, question in enumerate(raw_questions):
         if not isinstance(question, dict):
             continue
-        field = f"question_{index}"
-        order.append(str(question.get("id") or field))
-        options = [
-            {"const": str(option.get("id")), "title": option.get("label") or str(option.get("id"))}
+        order.append(str(question.get("id") or forms.field_name(index)))
+        options = tuple(
+            forms.Option(value=str(option.get("id")), label=option.get("label") or str(option.get("id")))
             for option in (question.get("options") or [])
             if isinstance(option, dict)
-        ]
-        schema: dict[str, Any] = {
-            "title": params.get("title"),
-            "description": question.get("prompt"),
-        }
-        if question.get("allowMultiple"):
-            schema["type"] = "array"
-            schema["items"] = {"anyOf": options}
-        else:
-            schema["type"] = "string"
-            schema["oneOf"] = options
-        properties[field] = {k: v for k, v in schema.items() if v is not None}
+        )
+        questions.append(
+            forms.Question(
+                prompt=question.get("prompt") or "",
+                title=title,
+                options=options,
+                multi=bool(question.get("allowMultiple")),
+                # Cursor's response schema carries option ids and has no slot
+                # for free text, so there is nowhere to put a custom answer.
+                allow_custom=False,
+            )
+        )
 
-    single = len(questions) == 1
-    message = (
-        (questions[0].get("prompt") if single and isinstance(questions[0], dict) else None)
-        or params.get("title")
-        or "The agent has a question."
-    )
-
-    return {
-        "message": message,
-        "mode": {"requestedSchema": {"type": "object", "properties": properties}},
-        "_questionIds": order,
-    }
+    request = forms.build_form(questions, title=title)
+    request["_questionIds"] = order
+    return request
 
 
 def elicitation_to_ask_question(answer: dict[str, Any], question_ids: list[str]) -> dict[str, Any]:
@@ -131,16 +125,14 @@ def elicitation_to_ask_question(answer: dict[str, Any], question_ids: list[str])
     if action != "accept":
         return {"outcome": {"outcome": "cancelled"}}
 
-    content = (answer or {}).get("content") or {}
-    answers = []
-    for index, question_id in enumerate(question_ids):
-        value = content.get(f"question_{index}")
-        if value is None:
-            # A free-text "other" answer has no option id to report, and the
-            # schema has no slot for one, so treat it as unanswered.
-            continue
-        selected = value if isinstance(value, list) else [value]
-        answers.append({"questionId": question_id, "selectedOptionIds": [str(v) for v in selected]})
+    parsed = forms.read_answers((answer or {}).get("content"), len(question_ids))
+    answers = [
+        {"questionId": question_id, "selectedOptionIds": list(given.values)}
+        for question_id, given in zip(question_ids, parsed)
+        # A free-text answer has no option id to report, so it counts as
+        # unanswered here even though the user did type something.
+        if given.values
+    ]
 
     if not answers:
         return {"outcome": {"outcome": "skipped"}}

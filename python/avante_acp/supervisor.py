@@ -23,7 +23,8 @@ from acp.schema import (
     Implementation,
 )
 
-from . import providers, vendor
+from . import providers, transcript as transcript_mod, vendor
+from .ask_server import AskServer
 from .client import BridgeClient
 from .jsonrpc import Peer, RpcError
 from .terminal import TerminalManager
@@ -73,6 +74,10 @@ class AgentHandle:
         self._stack = contextlib.AsyncExitStack()
         self._stderr_tail: list[str] = []
         self._stderr_task: asyncio.Task[None] | None = None
+        self.transcript: Any = None
+        self.ask_tool: str = "auto"
+        self.ask_server: AskServer | None = None
+        self._peer: Peer | None = None
 
     async def start(
         self,
@@ -84,8 +89,20 @@ class AgentHandle:
         cwd: str | None,
         auto_approve: bool,
         unstable: bool,
+        log_transcript: bool = True,
+        log_dir: str | None = None,
+        ask_tool: str = "auto",
     ) -> None:
+        self._peer = peer
+        self.ask_tool = ask_tool
         client = BridgeClient(self.agent_id, peer, self.terminals, auto_approve=auto_approve)
+
+        observers = []
+        if log_transcript:
+            self.transcript = transcript_mod.open_transcript(
+                self.provider, self.agent_id, command=command, args=args, cwd=cwd, log_dir=log_dir
+            )
+            observers.append(self.transcript.observer())
 
         self.conn, self.process = await self._stack.enter_async_context(
             spawn_agent_process(
@@ -95,6 +112,7 @@ class AgentHandle:
                 env=env,
                 cwd=cwd,
                 use_unstable_protocol=unstable,
+                observers=observers or None,
             )
         )
 
@@ -140,6 +158,8 @@ class AgentHandle:
                 if not line:
                     break
                 text = line.decode("utf-8", errors="replace").rstrip()
+                if self.transcript is not None:
+                    self.transcript.note("stderr", line=text)
                 self._stderr_tail.append(text)
                 del self._stderr_tail[:-50]
                 await peer.notify(
@@ -153,6 +173,32 @@ class AgentHandle:
 
     def recent_stderr(self) -> str:
         return "\n".join(self._stderr_tail)
+
+    async def ask_server_entry(self) -> dict[str, Any] | None:
+        """The ask_user_question MCP server for this agent, started on demand.
+
+        Returns None for agents that can already ask a question themselves, and
+        when the server cannot be started -- losing the question UI is worth
+        less than failing the whole session over it.
+        """
+        if not providers.wants_ask_tool(self.provider, self.ask_tool):
+            return None
+        if self._peer is None:
+            return None
+
+        if self.ask_server is None:
+            server = AskServer(self.agent_id, self._peer)
+            try:
+                await server.start()
+            except OSError:
+                log.exception("Could not start the ask_user_question server for %s", self.agent_id)
+                return None
+            # Registered on the agent's stack so it dies with the agent, and
+            # ahead of the process teardown already on there so it goes first.
+            self._stack.push_async_callback(server.stop)
+            self.ask_server = server
+
+        return self.ask_server.mcp_server_entry()
 
     def supports(self, *path: str) -> bool:
         """Whether a capability is advertised.
@@ -172,6 +218,9 @@ class AgentHandle:
         return node is not None and node is not False
 
     async def stop(self) -> None:
+        if self.transcript is not None:
+            self.transcript.close(reason="agent stopped")
+
         if self._stderr_task is not None:
             self._stderr_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
@@ -208,6 +257,9 @@ class Supervisor:
         cwd: str | None = None,
         auto_approve: bool = False,
         unstable: bool = False,
+        log_transcript: bool = True,
+        log_dir: str | None = None,
+        ask_tool: str = "auto",
     ) -> AgentHandle:
         resolved_command, resolved_args, resolved_env = providers.build_command(
             provider, command=command, args=args, env=env
@@ -225,6 +277,9 @@ class Supervisor:
                 cwd=cwd,
                 auto_approve=auto_approve,
                 unstable=unstable,
+                log_transcript=log_transcript,
+                log_dir=log_dir,
+                ask_tool=ask_tool,
             )
         except FileNotFoundError as exc:
             raise RpcError(

@@ -21,7 +21,11 @@ local function replay(sequence)
 
   local Helpers = require("avante.llm_tools.helpers")
   local real_snapshot, real_track = Helpers.snapshot_file_for_review, Helpers.track_edited_file
-  Helpers.snapshot_file_for_review = function(path) table.insert(calls.snapshots, path) end
+  local real_record = Helpers.record_file_snapshot
+  Helpers.snapshot_file_for_review = function(path) table.insert(calls.snapshots, { path = path }) end
+  Helpers.record_file_snapshot = function(path, _, content)
+    table.insert(calls.snapshots, { path = path, content = content })
+  end
   Helpers.track_edited_file = function(path) table.insert(calls.tracked, path) end
 
   local stored = nil
@@ -37,6 +41,7 @@ local function replay(sequence)
   vim.wait(200)
 
   Helpers.snapshot_file_for_review, Helpers.track_edited_file = real_snapshot, real_track
+  Helpers.record_file_snapshot = real_record
   package.loaded["avante"] = previous_avante
   return calls
 end
@@ -63,7 +68,7 @@ describe("acp file tracking", function()
     local calls = replay(edit_sequence())
 
     assert.is_true(#calls.snapshots > 0, "no snapshot was taken before completion")
-    assert.equals(PATH, calls.snapshots[1])
+    assert.equals(PATH, calls.snapshots[1].path)
   end)
 
   it("records the file once the edit completes", function()
@@ -139,5 +144,109 @@ describe("acp file tracking", function()
     })
 
     assert.same({ PATH }, calls.tracked)
+  end)
+end)
+
+describe("acp file tracking via diff content", function()
+  --- Exactly what cursor-agent emits for an edit: rawInput and locations stay
+  --- empty, the title is a bare "Edit File", and the path only ever appears
+  --- inside the completed update's `diff` content.
+  local function cursor_edit_sequence(path)
+    return {
+      {
+        sessionUpdate = "tool_call",
+        toolCallId = "c1",
+        title = "Edit File",
+        kind = "edit",
+        status = "pending",
+        rawInput = {},
+      },
+      { sessionUpdate = "tool_call_update", toolCallId = "c1", status = "in_progress" },
+      {
+        sessionUpdate = "tool_call_update",
+        toolCallId = "c1",
+        status = "completed",
+        content = {
+          {
+            type = "diff",
+            path = path,
+            oldText = "line one\nline two\n",
+            newText = "line one\nline TWO\n",
+          },
+        },
+      },
+    }
+  end
+
+  local PATH = "/tmp/avante-track-test/cursor.txt"
+
+  it("tracks an edit whose path is only in the diff content", function()
+    local calls = replay(cursor_edit_sequence(PATH))
+
+    assert.same({ PATH }, calls.tracked)
+  end)
+
+  it("takes the before-content from the diff rather than the disk", function()
+    -- The completed event arrives after the write, so there is no moment at
+    -- which a filesystem snapshot would be correct.
+    local calls = replay(cursor_edit_sequence(PATH))
+
+    assert.equals(PATH, calls.snapshots[1] and calls.snapshots[1].path)
+    assert.equals("line one\nline two\n", calls.snapshots[1] and calls.snapshots[1].content)
+  end)
+
+  it("still ignores read-only tools that carry content", function()
+    local calls = replay({
+      {
+        sessionUpdate = "tool_call",
+        toolCallId = "r1",
+        title = "Read File",
+        kind = "read",
+        status = "pending",
+      },
+      {
+        sessionUpdate = "tool_call_update",
+        toolCallId = "r1",
+        status = "completed",
+        content = { { type = "diff", path = PATH, oldText = "a", newText = "b" } },
+      },
+    })
+
+    assert.same({}, calls.tracked)
+  end)
+
+  it("prefers an explicit rawInput path over the diff path", function()
+    local calls = replay({
+      {
+        sessionUpdate = "tool_call",
+        toolCallId = "m1",
+        title = "Edit",
+        kind = "edit",
+        status = "pending",
+        rawInput = { file_path = "/tmp/explicit.txt" },
+      },
+      {
+        sessionUpdate = "tool_call_update",
+        toolCallId = "m1",
+        status = "completed",
+        content = { { type = "diff", path = "/tmp/from-diff.txt", oldText = "a", newText = "b" } },
+      },
+    })
+
+    assert.same({ "/tmp/explicit.txt" }, calls.tracked)
+  end)
+
+  it("ignores diff entries with no path", function()
+    local calls = replay({
+      { sessionUpdate = "tool_call", toolCallId = "n1", title = "Edit", kind = "edit", status = "pending" },
+      {
+        sessionUpdate = "tool_call_update",
+        toolCallId = "n1",
+        status = "completed",
+        content = { { type = "diff", oldText = "a", newText = "b" } },
+      },
+    })
+
+    assert.same({}, calls.tracked)
   end)
 end)

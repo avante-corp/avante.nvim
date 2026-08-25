@@ -317,12 +317,26 @@ function M.prompt(params, reply)
   local content = {}
   local index = 1
 
+  ---Answer the agent, leaving a trace when nothing was answered.
+  ---
+  ---A dismissal is otherwise invisible from the sidebar: the agent reports it
+  ---as an opaque tool failure ("Tool use aborted"), so without this a question
+  ---that was asked and dropped looks like a bug rather than a choice.
+  local function finish(answer)
+    if answer.action == "cancel" then
+      Utils.warn("Agent question dismissed; the agent was told you did not answer")
+    elseif answer.action == "decline" then
+      Utils.info("Agent question skipped")
+    end
+    reply(answer)
+  end
+
   local function next_field()
     if index > #fields then
       if vim.tbl_isempty(content) then
-        reply({ action = "decline" })
+        finish({ action = "decline" })
       else
-        reply({ action = "accept", content = content })
+        finish({ action = "accept", content = content })
       end
       return
     end
@@ -333,7 +347,7 @@ function M.prompt(params, reply)
 
     ask(properties[field], params.message, has_custom, function(value, cancelled, is_custom)
       if cancelled then
-        reply({ action = "cancel" })
+        finish({ action = "cancel" })
         return
       end
       if value ~= nil then

@@ -1451,7 +1451,16 @@ function M._stream_acp(opts)
 
           -- Auto-approve plan mode transitions — these are state signals, not dangerous actions
           local tool_title_for_approval = tool_call.title or ""
-          if tool_title_for_approval:match("ExitPlanMode") or tool_title_for_approval:match("EnterPlanMode") then
+          -- avante's own ask_user_question MCP tool (see python/avante_acp/ask_server.py)
+          -- draws a question and does nothing else. Prompting for permission to
+          -- ask a question, immediately before asking it, is pure noise — and
+          -- the float itself is where the user gets to say no.
+          local is_avante_ask = tool_title_for_approval:match("mcp__avante__ask_user_question")
+          if
+            is_avante_ask
+            or tool_title_for_approval:match("ExitPlanMode")
+            or tool_title_for_approval:match("EnterPlanMode")
+          then
             local acp_mapped_options = ACPConfirmAdapter.map_acp_options(options)
             permission_answers[tool_call.toolCallId] = "Auto-approved"
             callback(acp_mapped_options.yes or acp_mapped_options.all)
@@ -2092,19 +2101,42 @@ function M._continue_stream_acp(opts, acp_client, session_id)
       end
       -- The Python bridge rejects a session it no longer knows with
       -- INVALID_PARAMS before the request ever reaches the agent, so recovery
-      -- must recognise that shape too.
+      -- must recognise that shape too. "Unknown agentId" means the bridge
+      -- process itself was replaced, taking every agent with it: reconnecting
+      -- re-spawns the agent and reloads the session, so it recovers the same way.
       if not is_session_not_found and err_.code == -32602 and type(err_.message) == "string" then
         is_session_not_found = err_.message:match("^Unknown sessionId") ~= nil
       end
 
-      if recovery_enabled and is_session_not_found and not rawget(opts, "_session_recovery_attempted") then
+      -- The agent was lost rather than the session: either the bridge handed
+      -- back "Unknown agentId" (its process was replaced, taking every agent
+      -- with it) or it died mid-request. The session itself may well still be
+      -- resumable, so recover by reconnecting *without* discarding the id.
+      local is_agent_lost = err_.code == -32004
+        or (
+          err_.code == -32602
+          and type(err_.message) == "string"
+          and err_.message:match("^Unknown agentId") ~= nil
+        )
+
+      if
+        recovery_enabled
+        and (is_session_not_found or is_agent_lost)
+        and not rawget(opts, "_session_recovery_attempted")
+      then
         -- Mark recovery attempt to prevent infinite loops
         rawset(opts, "_session_recovery_attempted", true)
 
-        Utils.debug("Session recovery: session not found, will create new via connect_acp")
+        if is_agent_lost then
+          Utils.debug("Session recovery: agent lost, reconnecting and resuming the session")
+        else
+          Utils.debug("Session recovery: session not found, will create new via connect_acp")
+        end
 
-        -- Clear invalid session ID on sidebar
-        if opts.sidebar and opts.sidebar.chat_history then
+        -- Clear the session id only when the session is genuinely gone. When
+        -- just the agent was lost, keeping it lets connect_acp resume instead
+        -- of starting an empty thread.
+        if is_session_not_found and opts.sidebar and opts.sidebar.chat_history then
           opts.sidebar.chat_history.acp_session_id = nil
         end
 
@@ -2180,10 +2212,11 @@ function M._continue_stream_acp(opts, acp_client, session_id)
 
           Utils.info("Session recovery retry with " .. #(opts.history_messages or {}) .. " history messages")
 
-          -- Use connect_acp to create a new session, then retry the stream
+          -- Reconnect, then retry the stream. force_new only when the session
+          -- itself is gone; a lost agent should resume the existing session.
           if opts.sidebar then
             opts.sidebar:connect_acp({
-              force_new = true,
+              force_new = not is_agent_lost,
               on_ready = function()
                 -- Update opts with the new client and session_id
                 opts.acp_client = opts.sidebar.acp_client

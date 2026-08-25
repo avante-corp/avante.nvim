@@ -121,6 +121,7 @@ function M.new()
     methods = {},
     handlers = {},
     event_handlers = {},
+    disconnect_handlers = {},
     stderr_tail = {},
     state = "stopped",
     _buffer = "",
@@ -255,6 +256,7 @@ function Bridge:_on_exit(code, signal)
 
   self:_teardown_process()
   self:_fail_pending(reason)
+  self:_notify_disconnect(reason)
   self:_finish_start({ code = M.ERROR_CODES.CONNECTION_CLOSED, message = reason })
 end
 
@@ -274,6 +276,7 @@ function Bridge:stop()
   end
   self:_teardown_process()
   self:_fail_pending("ACP bridge stopped")
+  self:_notify_disconnect("ACP bridge stopped")
   self.state = "stopped"
 end
 
@@ -518,6 +521,32 @@ end
 ---@param method string
 ---@param handler fun(params: table, reply: fun(result: any, err: table|nil))
 function Bridge:on(method, handler) self.handlers[method] = handler end
+
+---Called when the bridge process goes away.
+---
+---Agent ids are handed out by the bridge process, so when it dies every id a
+---client is holding becomes meaningless. Subscribers use this to drop them
+---rather than sending requests the new bridge will reject.
+---@param handler fun(reason: string)
+---@return fun() unsubscribe
+function Bridge:on_disconnect(handler)
+  table.insert(self.disconnect_handlers, handler)
+  return function()
+    for i, existing in ipairs(self.disconnect_handlers) do
+      if existing == handler then
+        table.remove(self.disconnect_handlers, i)
+        return
+      end
+    end
+  end
+end
+
+function Bridge:_notify_disconnect(reason)
+  for _, handler in ipairs(self.disconnect_handlers) do
+    local ok, err = pcall(handler, reason)
+    if not ok then Utils.error("ACP disconnect handler failed: " .. tostring(err)) end
+  end
+end
 
 ---@param handler fun(event: table)
 ---@return fun() unsubscribe

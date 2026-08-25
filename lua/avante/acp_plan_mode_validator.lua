@@ -33,6 +33,7 @@ M.ALLOWED_TOOLS_IN_PLAN_MODE = {
   "TodoWrite", -- Todo management is allowed in plan mode
   "TodoRead",
   "AskUserQuestion",
+  "ask_user_question", -- avante's own, for agents that cannot ask natively
   "EnterPlanMode",
   "ExitPlanMode",
   "WebFetch",

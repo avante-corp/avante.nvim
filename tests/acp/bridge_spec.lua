@@ -289,3 +289,64 @@ describe("acp.bridge", function()
     end)
   end)
 end)
+
+describe("acp.bridge disconnect", function()
+  local Bridge = require("avante.acp.bridge")
+
+  it("notifies subscribers when the process exits", function()
+    -- Agent ids belong to the bridge process; holders must be told to drop them.
+    local bridge = Bridge.new()
+    local reasons = {}
+    bridge:on_disconnect(function(reason) table.insert(reasons, reason) end)
+
+    bridge:_on_exit(0, 15)
+
+    assert.equals(1, #reasons)
+    assert.is_not_nil(reasons[1]:find("signal=15", 1, true))
+  end)
+
+  it("notifies subscribers on an explicit stop", function()
+    local bridge = Bridge.new()
+    local called = false
+    bridge:on_disconnect(function() called = true end)
+
+    bridge:stop()
+
+    assert.is_true(called)
+  end)
+
+  it("unsubscribes cleanly", function()
+    local bridge = Bridge.new()
+    local count = 0
+    local unsubscribe = bridge:on_disconnect(function() count = count + 1 end)
+
+    bridge:stop()
+    unsubscribe()
+    bridge:_on_exit(0, 15)
+
+    assert.equals(1, count)
+  end)
+
+  it("keeps notifying when one subscriber raises", function()
+    local bridge = Bridge.new()
+    local reached = false
+    bridge:on_disconnect(function() error("bad subscriber") end)
+    bridge:on_disconnect(function() reached = true end)
+
+    bridge:stop()
+
+    assert.is_true(reached)
+  end)
+
+  it("fails in-flight requests before notifying", function()
+    local bridge = Bridge.new()
+    bridge.state = "running"
+    bridge._send = function() return true end
+    local err
+    bridge:request("session/prompt", {}, { timeout = 0 }, function(_, e) err = e end)
+
+    bridge:stop()
+
+    assert.equals(Bridge.ERROR_CODES.CONNECTION_CLOSED, err.code)
+  end)
+end)
