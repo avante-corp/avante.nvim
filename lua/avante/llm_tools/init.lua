@@ -2,7 +2,8 @@
 ---@brief [[
 ---Custom tools can run shell commands, scripts, or Lua functions
 ---Here's an example of a custom tool that runs Go unit tests:
----<lua
+---
+--->lua
 ---   vim.g.avante = {
 ---     custom_tools = {
 ---       {
@@ -33,7 +34,7 @@
 ---       },
 ---     },
 ---   }
---->
+---<
 ---@brief ]]
 ---
 ---@mod avante-tools avante tools
@@ -41,8 +42,8 @@
 ---
 --- Agentic mode enables tool use. If a model does not support tools, disable
 --- them for that provider:
---->
----   require("avante").setup({
+--->lua
+---   vim.g.avante = {
 ---     providers = {
 ---       claude = {
 ---         disable_tools = true,

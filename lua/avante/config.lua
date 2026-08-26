@@ -300,9 +300,9 @@ M.instructions_file = "avante.md"
 ---@field prompt_logger avante.Config.PromptLogger Prompt logging options.
 ---@field windows table
 ---@field disabled_tools string[] You can choose to disable tools by their names in case you want to avoid its usage (like Claude 3.7 overusing the python tool). For example: `{ "python" }`
----@field custom_tools AvanteSlashCommand[] see |*avante-custom-tools*|
----@field slash_commands AvanteSlashCommand[] see |*avante-slashcommands*|
----@field shortcuts AvanteShortcut[]  see |*avante-shortcuts*|
+---@field custom_tools AvanteSlashCommand[] see |avante-custom-tools|
+---@field slash_commands AvanteSlashCommand[] see |avante-slashcommands|
+---@field shortcuts AvanteShortcut[]  see |avante-shortcuts|
 ---@field ask_opts AskOptions
 
 M._defaults = {
