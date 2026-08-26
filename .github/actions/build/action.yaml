@@ -70,8 +70,6 @@ runs:
       if: ${{ inputs.os_name != 'windows' }}
       shell: bash
       run: |
-        mkdir -p results
-        cp -v lua/avante_*.so results/
         tar zcvf avante_lib-${{ inputs.os_name }}-${{ inputs.arch }}-${{ matrix.feature }}.tar.gz results/*.so
 
     - name: Handle binaries (Windows)
