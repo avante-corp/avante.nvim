@@ -1,6 +1,7 @@
 name: Release
 
 on:
+  workflow_dispatch:
   push:
     branches: ["release-v*"]
     tags: ["v*"]
@@ -30,7 +31,7 @@ jobs:
         shell: bash
         run: |
           if [[ "$GITHUB_REF_TYPE" == "branch" ]]; then
-            echo "tag=${GITHUB_REF_NAME#release-}" >> "$GITHUB_OUTPUT"
+            echo "tag=${GITHUB_REF_NAME#release-}-rc" >> "$GITHUB_OUTPUT"
           else
             echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
           fi
@@ -105,7 +106,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run:
           gh release upload "${{ needs.create-release.outputs.release_tag }}"
-            "./results/avante_lib-${{ matrix.config.os_name }}-${{ matrix.config.arch }}-${{ matrix.feature }}.zip"
+            "./avante_lib-${{ matrix.config.os_name }}-${{ matrix.config.arch }}-${{ matrix.feature }}.zip"
             --clobber
 
   publish-release:

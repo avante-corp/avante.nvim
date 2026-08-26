@@ -51,13 +51,6 @@ runs:
         ls -la lua
 
 
-    - name: Build all crates (Windows)
-      if: ${{ inputs.os_name == 'windows' }}
-      shell: bash
-      run: |
-        # TODO run AvanteBuild instead
-        cargo build --release --features ${{ matrix.feature }} --target ${{ inputs.rust_target }}
-
     - name: Build all crates (Linux) with glibc 2.17 # for glibc 2.17
       shell: bash
       if: ${{ inputs.container != null }}
@@ -70,9 +63,15 @@ runs:
       if: ${{ inputs.os_name != 'windows' }}
       shell: bash
       run: |
-        mkdir -p results
-        cp -v lua/avante_*.so results/
-        tar zcvf avante_lib-${{ inputs.os_name }}-${{ inputs.arch }}-${{ matrix.feature }}.tar.gz results/*.so
+        # AvanteBuild put the libraries in `lua/`
+        (cd lua && tar cvf - *.so | gzip ) > avante_lib-${{ inputs.os_name }}-${{ inputs.arch }}-${{ matrix.feature }}.tar.gz
+
+    - name: Build all crates (Windows)
+      if: ${{ inputs.os_name == 'windows' }}
+      shell: bash
+      run: |
+        # TODO run AvanteBuild instead
+        cargo build --release --features ${{ matrix.feature }} --target ${{ inputs.rust_target }}
 
     - name: Handle binaries (Windows)
       if: ${{ inputs.os_name == 'windows' }}
@@ -80,13 +79,12 @@ runs:
       run: |
         New-Item -ItemType Directory -Force -Path results
 
+        # we can probably remove that
         $TargetDir = "target\${{ inputs.rust_target }}\release"
-        Copy-Item -Path "$TargetDir\avante_templates.dll" -Destination "results\avante_templates.dll"
-        Copy-Item -Path "$TargetDir\avante_tokenizers.dll" -Destination "results\avante_tokenizers.dll"
-        Copy-Item -Path "$TargetDir\avante_repo_map.dll" -Destination "results\avante_repo_map.dll"
-        Copy-Item -Path "$TargetDir\avante_html2md.dll" -Destination "results\avante_html2md.dll"
-
-        Set-Location -Path results
+        Copy-Item -Path "$TargetDir\avante_templates.dll" -Destination "avante_templates.dll"
+        Copy-Item -Path "$TargetDir\avante_tokenizers.dll" -Destination "avante_tokenizers.dll"
+        Copy-Item -Path "$TargetDir\avante_repo_map.dll" -Destination "avante_repo_map.dll"
+        Copy-Item -Path "$TargetDir\avante_html2md.dll" -Destination "avante_html2md.dll"
 
         $dllFiles = Get-ChildItem -Filter "*.dll" | Select-Object -ExpandProperty Name
         Compress-Archive -Path $dllFiles -DestinationPath "avante_lib-${{ inputs.os_name }}-${{ inputs.arch }}-${{ matrix.feature }}.zip"
