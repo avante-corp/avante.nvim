@@ -1,11 +1,13 @@
 ---@mod avante-custom-tools Custom tools
 ---@brief [[
 ---Custom tools can run shell commands, scripts, or Lua functions
----Here's an example of a custom tool that runs Go unit tests:
 ---
 --->lua
 ---   vim.g.avante = {
 ---     custom_tools = {
+---     -- adds a builtin but disabled by default searxng web search tool
+---     require'web_search_searxng,
+---       -- Here's an example of a custom tool that runs Go unit tests:
 ---       {
 ---         name = "run_go_tests",
 ---         description = "Run Go unit tests and return results",
@@ -41,7 +43,7 @@
 ---@brief [[
 ---
 --- Agentic mode enables tool use. If a model does not support tools, disable
---- them for that provider:
+--- them for that provider with:
 --->lua
 ---   vim.g.avante = {
 ---     providers = {
@@ -52,7 +54,20 @@
 ---   })
 ---<
 ---
+---You can see enabled tools with:
 ---
+--->lua
+---   vim.print(require'avante.llm_tools'.get_tool_names())
+---<
+---
+---See |avante-custom-tools| on how to add your own tools.
+---
+---You can disable tools like this:
+--->lua
+---  vim.g.avante = {
+---   disabled_tools = { "web_search_tavily" }
+---  }
+---<
 ---@brief ]]
 ---@tag avante-tools-builtins
 ---@brief [[

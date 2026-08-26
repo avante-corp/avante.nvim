@@ -1,7 +1,8 @@
 ---@mod avante-providers-ollama Ollama provider
 ---Ollama is disabled by default. Configure its endpoint check to enable it:
----@usage [[
----   require("avante").setup({
+---
+--->lua
+---   vim.g.avante = {
 ---     provider = "ollama",
 ---     providers = {
 ---       ollama = {
@@ -10,6 +11,7 @@
 ---       },
 ---     },
 ---   })
+---<
 ---@usage ]]
 
 local Utils = require("avante.utils")
