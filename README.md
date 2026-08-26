@@ -35,6 +35,10 @@ If you like this project, please consider supporting me on Patreon, as it helps 
 - **AI-Powered Code Assistance**: Interact with AI to ask questions about your current code file and receive intelligent suggestions for improvement or modification.
 - **One-Click Application**: Quickly apply the AI's suggested changes to your source code with a single command, streamlining the editing process and saving time.
 - **Project-Specific Instruction Files**: Customize AI behavior by adding a markdown file (`avante.md` by default) in the project root. This file is automatically referenced during workspace changes. You can also configure a custom file name for tailored project instructions.
+- **ACP support**: Agent Client Protocol support (codex, gemini, ...)
+- **Many providers supported**: openai, anthropic, mistral, deepseek, ollama,
+  llama-cpp, ...
+- **RAG (optional)**: you can with some extra configuration run a local RAG
 
 ## Avante Zen Mode
 
@@ -141,7 +145,7 @@ For building binary if you wish to build from source, then `cargo` is required. 
 
 <details open>
 
-  <summary><a href="https://github.com/folke/lazy.nvim">lazy.nvim</a> (recommended)</summary>
+  <summary><a href="https://github.com/folke/lazy.nvim">lazy.nvim</a></summary>
 
 ```lua
 {
@@ -436,11 +440,22 @@ require('avante').setup({
 >
 > Any rendering plugins that support markdown should work with Avante as long as you add the supported filetype `Avante`. See <https://github.com/yetone/avante.nvim/issues/175> and [this comment](https://github.com/yetone/avante.nvim/issues/175#issuecomment-2313749363) for more information.
 
-### Default setup configuration
+### Configuration
 
-_See [config.lua#L9](./lua/avante/config.lua) for the full config_
+You can configure avante.nvim using a global variable:
 
-You can pass options directly to `setup()`:
+```lua
+vim.g.avante = {
+  provider = "claude",
+  behaviour = {
+    auto_suggestions = false,
+  },
+}
+
+```
+
+
+You can also pass options directly to `setup()`:
 
 ```lua
 require("avante").setup({
@@ -451,23 +466,12 @@ require("avante").setup({
 })
 ```
 
-Alternatively, define the same options in `vim.g.avante` before calling `setup()`:
-
-```lua
-vim.g.avante = {
-  provider = "claude",
-  behaviour = {
-    auto_suggestions = false,
-  },
-}
-
-require("avante").setup()
-```
-
 If both are used, options passed to `setup()` override values from `vim.g.avante`.
 
 <details>
 <summary>Default configuration</summary>
+
+_See [config.lua#L9](./lua/avante/config.lua) for the up to date full default configuration_
 
 ```lua
 {
@@ -643,7 +647,7 @@ If both are used, options passed to `setup()` override values from `vim.g.avante
 
 </details>
 
-## Blink.cmp users
+### Blink.cmp users
 
 For blink cmp users (nvim-cmp alternative) view below instruction for configuration
 This is achieved by emulating nvim-cmp using blink.compat
@@ -1172,23 +1176,6 @@ The process uses a specialized prompt format that includes:
 
 This approach ensures that the apply model can quickly and accurately merge your changes without the overhead of full code generation.
 
-## Ollama
-
-Ollama is a first-class provider for avante.nvim. To start using it you need to set `provider = "ollama"`
-in the configuration, set the `model` field in `ollama` to the model you want to use. Ollama is disabled
-by default, you need to provide an implementation for its `is_env_set` method to properly enable it.
-For example:
-
-```lua
-provider = "ollama",
-providers = {
-  ollama = {
-    model = "qwq:32b",
-    is_env_set = require("avante.providers.ollama").check_endpoint_alive,
-  },
-}
-```
-
 ## ACP Support
 
 Avante.nvim now supports the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/overview/introduction), enabling seamless integration with AI agents that follow this standardized communication protocol. ACP provides a unified way for AI agents to interact with development environments, offering enhanced capabilities for code editing, file operations, and tool execution.
@@ -1311,13 +1298,12 @@ Tool list
 
 > rag_search, python, git_diff, git_commit, glob, search_keyword, read_file_toplevel_symbols,
 > read_file, create_file, move_path, copy_path, delete_path, create_dir, bash,
-> web_search_tavily, web_search_serpapi, web_search_searchapi, web_search_google,
-> web_search_kagi, web_search_brave, web_search_searxng, fetch
+> web_search_tavily
+
 
 ## Custom Tools
 
 See `:h avante-custom-tools`.
-
 
 ## MCP
 
