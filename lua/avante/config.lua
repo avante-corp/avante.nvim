@@ -1026,6 +1026,25 @@ function M.setup(opts)
 
   local migration_url = "https://github.com/yetone/avante.nvim/wiki/Provider-configuration-migration-guide"
 
+  if type(opts.web_search_engine) == "table" then
+    if opts.web_search_engine.providers ~= nil then
+      Utils.warn(
+        string.format(
+          "[DEPRECATED] `web_search_engine.providers` is no longer supported. Add your custom search engines to `custom_tools` instead; see |avante-custom-tools| or %s.",
+          migration_url
+        )({ title = "Avante" })
+      )
+    end
+    if opts.web_search_engine.provider ~= nil and opts.web_search_engine.provider ~= "tavily" then
+      Utils.warn(
+        string.format(
+          "[DEPRECATED]`web_search_engine.provider' is no longer supported. Configure your favorite search engine via the tools API see %s.",
+          migration_url
+        )
+      )
+    end
+  end
+
   if opts.providers ~= nil then
     for k, v in pairs(opts.providers) do
       local extra_request_body
