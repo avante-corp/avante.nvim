@@ -51,12 +51,22 @@ runs:
         ls -la lua
 
 
+    - uses: rhysd/action-setup-vim@v1
+      if: ${{ inputs.os_name == 'windows' }}
+      with:
+        neovim: true
+        version: v0.12.0
+
     - name: Build all crates (Windows)
       if: ${{ inputs.os_name == 'windows' }}
       shell: bash
       run: |
         # TODO run AvanteBuild instead
-        cargo build --release --features ${{ matrix.feature }} --target ${{ inputs.rust_target }}
+        nvim -V3nvim.log --headless -u NONE --cmd "set rtp^=."  -c "runtime plugin/avante.lua" -c  "lua vim.g.avante = { debug= vim.log.levels.INFO }" -c "AvanteBuild source=true" +quit!
+
+        # to help diagnose failures
+        cat nvim.log
+        ls -lRa lua
 
     - name: Build all crates (Linux) with glibc 2.17 # for glibc 2.17
       shell: bash
