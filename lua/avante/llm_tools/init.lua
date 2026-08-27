@@ -311,9 +311,14 @@ function M.web_search(input, opts)
   if on_log then on_log("query: " .. input.query) end
   local search_engine = Config.web_search_engine.providers[provider_type]
   if search_engine == nil then return nil, "No search engine found: " .. provider_type end
-  if provider_type ~= "searxng" and search_engine.api_key_name == "" then return nil, "No API key provided" end
-  local api_key = provider_type ~= "searxng" and Utils.environment.parse(search_engine.api_key_name) or nil
-  if provider_type ~= "searxng" and api_key == nil or api_key == "" then
+  if provider_type ~= "searxng" and provider_type ~= "duckduckgo" and search_engine.api_key_name == "" then
+    return nil, "No API key provided"
+  end
+  local api_key = provider_type ~= "searxng"
+      and provider_type ~= "duckduckgo"
+      and Utils.environment.parse(search_engine.api_key_name)
+    or nil
+  if (provider_type ~= "searxng" and provider_type ~= "duckduckgo") and (api_key == nil or api_key == "") then
     return nil, "Environment variable " .. search_engine.api_key_name .. " is not set"
   end
   if provider_type == "tavily" then
@@ -450,6 +455,36 @@ function M.web_search(input, opts)
     })
     if resp.status ~= 200 then return nil, "Error: " .. resp.body end
     local jsn = vim.json.decode(resp.body)
+    return search_engine.format_response_body(jsn)
+  elseif provider_type == "duckduckgo" then
+    local query_params = vim.tbl_deep_extend("force", { q = input.query }, search_engine.extra_request_body)
+    local query_string = ""
+    for key, value in pairs(query_params) do
+      query_string = query_string .. key .. "=" .. vim.uri_encode(value) .. "&"
+    end
+    local resp = curl.post("https://html.duckduckgo.com/html/?" .. query_string, {
+      headers = search_engine.extra_headers or {},
+    })
+    if resp.status >= 300 then return nil, "Error: " .. resp.status end
+    local function clean_html(html)
+      return html:gsub("</?b[^>]*>", ""):gsub("<[^>]+>", " "):gsub("%s+", " "):gsub("^%s*(.-)%s*$", "%1")
+    end
+    local jsn = {}
+    for href, title, snippet in
+      resp.body:gmatch(
+        '<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]*)"[^>]*>(.-)</a>.-'
+          .. '<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*href="[^"]*"[^>]*>(.-)</a>'
+      )
+    do
+      table.insert(jsn, {
+        title = clean_html(title),
+        url = href,
+        snippet = clean_html(snippet),
+      })
+    end
+    if #jsn < 1 and resp.body:find("challenge-form", 1, true) then
+      return nil, "Error: Search engine thinks you're a bot"
+    end
     return search_engine.format_response_body(jsn)
   end
   return nil, "Error: No search engine found"

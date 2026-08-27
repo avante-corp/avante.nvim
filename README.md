@@ -1256,17 +1256,18 @@ Avante's tools include some web search engines, currently support:
 - [Kagi](https://help.kagi.com/kagi/api/search.html)
 - [Brave Search](https://api-dashboard.search.brave.com/app/documentation/web-search/get-started)
 - [SearXNG](https://searxng.github.io/searxng/)
+- [DuckDuckGo](https://duckduckgo.com/)
 
 The default is Tavily, and can be changed through configuring `Config.web_search_engine.provider`:
 
 ```lua
 web_search_engine = {
-  provider = "tavily", -- tavily, serpapi, google, kagi, brave, or searxng
+  provider = "tavily", -- tavily, serpapi, google, kagi, brave, searxng, or duckduckgo
   proxy = nil, -- proxy support, e.g., http://127.0.0.1:7890
 }
 ```
 
-Environment variables required for providers:
+**Environment variables required for providers:**
 
 - Tavily: `TAVILY_API_KEY`
 - SerpApi: `SERPAPI_API_KEY`
@@ -1276,6 +1277,24 @@ Environment variables required for providers:
 - Kagi: `KAGI_API_KEY` as the [API Token](https://kagi.com/settings?p=api)
 - Brave Search: `BRAVE_API_KEY` as the [API key](https://api-dashboard.search.brave.com/app/keys)
 - SearXNG: `SEARXNG_API_URL` as the [API URL](https://docs.searxng.org/dev/search_api.html)
+
+**DuckDuckGo headers configuration:**
+
+DuckDuckGo uses browser-mimicking headers to avoid bot detection. You can override to match your browser fingerprint:
+
+```lua
+web_search_engine = {
+  provider = "duckduckgo",
+  providers = {
+    duckduckgo = {
+      extra_headers = {
+        ["User-Agent"] = "Mozilla/5.0 (X11; Linux x86_64; rv:135.0) Gecko/20100101 Firefox/135.0",
+        -- ... other headers matching your browser
+      },
+    },
+  },
+}
+```
 
 ## Disable Tools
 

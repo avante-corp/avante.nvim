@@ -1059,10 +1059,12 @@ Sidebar:render_input({ask?})                       *avante-sidebar:render_input*
 Sidebar:bind_expand_tool_use_key()     *avante-sidebar:bind_expand_tool_use_key*
 
 
-Sidebar:unbind_expand_tool_use_key() *avante-sidebar:unbind_expand_tool_use_key*
+                                     *avante-sidebar:unbind_expand_tool_use_key*
+Sidebar:unbind_expand_tool_use_key()
 
 
-Sidebar:bind_edit_user_request_key() *avante-sidebar:bind_edit_user_request_key*
+                                     *avante-sidebar:bind_edit_user_request_key*
+Sidebar:bind_edit_user_request_key()
 
 
                                    *avante-sidebar:unbind_edit_user_request_key*
@@ -1146,7 +1148,8 @@ Sidebar:should_auto_scroll()                 *avante-sidebar:should_auto_scroll*
         (boolean)
 
 
-Sidebar:update_content({content}, {opts?})       *avante-sidebar:update_content*
+                                                 *avante-sidebar:update_content*
+Sidebar:update_content({content}, {opts?})
 
     Parameters: ~
         {content}  (string)                                                                   concatenated content of the buffer
@@ -1235,8 +1238,7 @@ Sidebar:new_chat()                                     *avante-sidebar:new_chat*
 Sidebar:save_history()                             *avante-sidebar:save_history*
 
 
-                                        *avante-sidebar:delete_history_messages*
-Sidebar:delete_history_messages({uuids})
+Sidebar:delete_history_messages({uuids})*avante-sidebar:delete_history_messages*
 
     Parameters: ~
         {uuids}  (string[])
@@ -1271,7 +1273,8 @@ Sidebar:create_selected_code_container()
 Sidebar:close_input_hint()                     *avante-sidebar:close_input_hint*
 
 
-Sidebar:get_input_float_window_row() *avante-sidebar:get_input_float_window_row*
+                                     *avante-sidebar:get_input_float_window_row*
+Sidebar:get_input_float_window_row()
 
 
 Sidebar:show_input_hint()                       *avante-sidebar:show_input_hint*
@@ -1335,14 +1338,16 @@ Sidebar:get_input_value()                       *avante-sidebar:get_input_value*
 Sidebar:get_selected_code_container_height()
 
 
-Sidebar:get_todos_container_height() *avante-sidebar:get_todos_container_height*
+                                     *avante-sidebar:get_todos_container_height*
+Sidebar:get_todos_container_height()
 
 
                                     *avante-sidebar:get_result_container_height*
 Sidebar:get_result_container_height()
 
 
-Sidebar:get_result_container_width() *avante-sidebar:get_result_container_width*
+                                     *avante-sidebar:get_result_container_width*
+Sidebar:get_result_container_width()
 
 
                                  *avante-sidebar:adjust_result_container_layout*
@@ -1405,7 +1410,8 @@ avante.SlashCommands                                      *avante.SlashCommands*
         {get_builtin_commands}  (fun():AvanteSlashCommand[])
 
 
-M.get_builtin_commands()             *avante-slashcommands.get_builtin_commands*
+                                     *avante-slashcommands.get_builtin_commands*
+M.get_builtin_commands()
 
     Returns: ~
         (AvanteSlashCommand[])
@@ -1461,8 +1467,7 @@ MentionsSource:is_available()                   *avante-completion:is_available*
 MentionsSource.get_position_encoding_kind()
 
 
-                                      *avante-completion:get_trigger_characters*
-MentionsSource:get_trigger_characters()
+MentionsSource:get_trigger_characters()*avante-completion:get_trigger_characters*
 
 
 MentionsSource:get_keyword_pattern()     *avante-completion:get_keyword_pattern*
@@ -1540,7 +1545,8 @@ M.get_data_path()                             *avante-rag-service.get_data_path*
 M.get_current_image()                     *avante-rag-service.get_current_image*
 
 
-M.get_rag_service_runner()           *avante-rag-service.get_rag_service_runner*
+                                     *avante-rag-service.get_rag_service_runner*
+M.get_rag_service_runner()
 
 
 M.launch_rag_service({cb})               *avante-rag-service.launch_rag_service*
@@ -1552,7 +1558,8 @@ M.launch_rag_service({cb})               *avante-rag-service.launch_rag_service*
 M.stop_rag_service()                       *avante-rag-service.stop_rag_service*
 
 
-M.get_rag_service_status()           *avante-rag-service.get_rag_service_status*
+                                     *avante-rag-service.get_rag_service_status*
+M.get_rag_service_status()
 
 
 M.get_scheme()                                   *avante-rag-service.get_scheme*
@@ -1601,7 +1608,8 @@ AvanteRagServiceRetrieveResponse              *AvanteRagServiceRetrieveResponse*
         {sources}   (AvanteRagServiceRetrieveSource[])
 
 
-M.retrieve({base_uri}, {query}, {on_complete})     *avante-rag-service.retrieve*
+                                                   *avante-rag-service.retrieve*
+M.retrieve({base_uri}, {query}, {on_complete})
 
     Parameters: ~
         {base_uri}     (string)
@@ -1792,7 +1800,8 @@ M.python()                                                 *avante-tools.python*
     Default container is python:3.14-slim-bookworm
 
 
-M.get_tools({user_input}, {history_messages})           *avante-tools.get_tools*
+                                                        *avante-tools.get_tools*
+M.get_tools({user_input}, {history_messages})
 
     Parameters: ~
         {user_input}        (string)
@@ -2031,7 +2040,8 @@ M.toggle_wrap({toggle})                               *avante-utils.toggle_wrap*
         {toggle}  (ToggleBind)
 
 
-M.safe_keymap_set({mode}, {lhs}, {rhs}, {opts?})  *avante-utils.safe_keymap_set*
+                                                  *avante-utils.safe_keymap_set*
+M.safe_keymap_set({mode}, {lhs}, {rhs}, {opts?})
 
     Parameters: ~
         {mode}   (string|string[])      Mode short-name, see |nvim_set_keymap()|.
@@ -2052,7 +2062,8 @@ M.trim({str}, {opts?})                                       *avante-utils.trim*
 M.in_visual_mode()                                 *avante-utils.in_visual_mode*
 
 
-M.get_visual_selection_and_range() *avante-utils.get_visual_selection_and_range*
+                                   *avante-utils.get_visual_selection_and_range*
+M.get_visual_selection_and_range()
     Get the selected content and range in Visual mode
 
     Returns: ~
@@ -2240,7 +2251,8 @@ M.try_find_match({original_lines}, {target_lines}, {compare_fn})
         (integer|nil)  end_line
 
 
-M.fuzzy_match({original_lines}, {target_lines})       *avante-utils.fuzzy_match*
+                                                      *avante-utils.fuzzy_match*
+M.fuzzy_match({original_lines}, {target_lines})
 
     Parameters: ~
         {original_lines}  (string[])
@@ -2387,7 +2399,8 @@ M.extract_shortcuts({content})                  *avante-utils.extract_shortcuts*
         (boolean)  has_shortcuts
 
 
-M.open_buffer({path}, {set_current_buf?})             *avante-utils.open_buffer*
+                                                      *avante-utils.open_buffer*
+M.open_buffer({path}, {set_current_buf?})
 
     Parameters: ~
         {path}              (string)
@@ -2436,8 +2449,7 @@ M.trim_think_content({content})                *avante-utils.trim_think_content*
 M.get_filetype()                                     *avante-utils.get_filetype*
 
 
-                                       *avante-utils.read_file_from_buf_or_disk*
-M.read_file_from_buf_or_disk({filepath})
+M.read_file_from_buf_or_disk({filepath})*avante-utils.read_file_from_buf_or_disk*
 
     Parameters: ~
         {filepath}  (string)
@@ -2455,7 +2467,8 @@ M.icons_enabled()                                   *avante-utils.icons_enabled*
         (boolean)
 
 
-M.icon({string_with_icon}, {utf8_fallback})                  *avante-utils.icon*
+                                                             *avante-utils.icon*
+M.icon({string_with_icon}, {utf8_fallback})
     Display an string with icon, if an icon plugin is available.
     Dev icons are an optional install for avante, this function prevents ugly chars
     being displayed by displaying fallback options or nothing at all.
@@ -2716,19 +2729,22 @@ avante.acp.BaseContent                                  *avante.acp.BaseContent*
         {type}  ()
 
 
-avante.acp.TextContent : avante.acp.BaseContent         *avante.acp.TextContent*
+                                                        *avante.acp.TextContent*
+avante.acp.TextContent : avante.acp.BaseContent
 
     Fields: ~
         {type}  ()
 
 
-avante.acp.ImageContent : avante.acp.BaseContent       *avante.acp.ImageContent*
+                                                       *avante.acp.ImageContent*
+avante.acp.ImageContent : avante.acp.BaseContent
 
     Fields: ~
         {type}  ()
 
 
-avante.acp.AudioContent : avante.acp.BaseContent       *avante.acp.AudioContent*
+                                                       *avante.acp.AudioContent*
+avante.acp.AudioContent : avante.acp.BaseContent
 
     Fields: ~
         {type}  ()
@@ -2741,7 +2757,8 @@ avante.acp.ResourceLinkContent : avante.acp.BaseContent
         {type}  ()
 
 
-avante.acp.ResourceContent : avante.acp.BaseContent *avante.acp.ResourceContent*
+                                                    *avante.acp.ResourceContent*
+avante.acp.ResourceContent : avante.acp.BaseContent
 
     Fields: ~
         {type}  ()
@@ -2899,7 +2916,8 @@ avante.acp.ToolCallUpdate : avante.acp.BaseSessionUpdate
         {sessionUpdate}  ()
 
 
-avante.acp.PlanUpdate : avante.acp.BaseSessionUpdate     *avante.acp.PlanUpdate*
+                                                         *avante.acp.PlanUpdate*
+avante.acp.PlanUpdate : avante.acp.BaseSessionUpdate
 
     Fields: ~
         {sessionUpdate}  ()
@@ -3054,7 +3072,8 @@ ACPClient:_send_result({id}, {result})                 *avante-acp:_send_result*
         (nil)
 
 
-ACPClient:_send_error({id}, {message}, {code?})         *avante-acp:_send_error*
+                                                        *avante-acp:_send_error*
+ACPClient:_send_error({id}, {message}, {code?})
     Send JSON-RPC error
 
     Parameters: ~
@@ -3082,7 +3101,8 @@ ACPClient:_handle_notification({method}, {params})
         {params}  (table)
 
 
-ACPClient:_handle_session_update({params})   *avante-acp:_handle_session_update*
+                                             *avante-acp:_handle_session_update*
+ACPClient:_handle_session_update({params})
     Handle session update notification
 
     Parameters: ~
@@ -3134,7 +3154,8 @@ ACPClient:initialize({callback})                         *avante-acp:initialize*
         {callback}  (fun(err:avante.acp.ACPError|nil))
 
 
-ACPClient:authenticate({method_id}, {callback})        *avante-acp:authenticate*
+                                                       *avante-acp:authenticate*
+ACPClient:authenticate({method_id}, {callback})
     Authentication (if required)
 
     Parameters: ~
@@ -3165,7 +3186,8 @@ ACPClient:set_config_option({session_id}, {config_id}, {value}, {callback})
         {callback}    (fun(config_options:avante.acp.ConfigOption[]|nil,err:avante.acp.ACPError|nil))
 
 
-ACPClient:set_mode({session_id}, {mode_id}, {callback})    *avante-acp:set_mode*
+                                                           *avante-acp:set_mode*
+ACPClient:set_mode({session_id}, {mode_id}, {callback})
     Set session mode via legacy session/set_mode API
 
     Parameters: ~
@@ -3174,7 +3196,8 @@ ACPClient:set_mode({session_id}, {mode_id}, {callback})    *avante-acp:set_mode*
         {callback}    (fun(config_options:avante.acp.ConfigOption[]|nil,err:avante.acp.ACPError|nil))
 
 
-ACPClient:set_model({session_id}, {model_id}, {callback}) *avante-acp:set_model*
+                                                          *avante-acp:set_model*
+ACPClient:set_model({session_id}, {model_id}, {callback})
     Set session model via non-standard session/set_model API.
     Some agents (e.g. OpenCode) support this even without configOptions.
     Agents that don't support it will return -32601 (Method not found).
@@ -3230,8 +3253,7 @@ ACPClient:create_audio_content()               *avante-acp:create_audio_content*
         (table)
 
 
-                                       *avante-acp:create_resource_link_content*
-ACPClient:create_resource_link_content()
+ACPClient:create_resource_link_content()*avante-acp:create_resource_link_content*
 
     Returns: ~
         (table)
@@ -3488,7 +3510,8 @@ Anthropic provider                                     *avante-providers-claude*
 
  Set the Claude provider `auth_type` to `"max"`:
 
-AvanteAnthropicProvider : AvanteDefaultBaseProvider    *AvanteAnthropicProvider*
+                                                       *AvanteAnthropicProvider*
+AvanteAnthropicProvider : AvanteDefaultBaseProvider
 
     Fields: ~
         {auth_type}  ()
@@ -3544,7 +3567,8 @@ M:transform_tool({self}, {tool}, {use_prefix?})
         (AvanteClaudeTool)
 
 
-M:is_disable_stream()                *avante-providers-claude:is_disable_stream*
+                                     *avante-providers-claude:is_disable_stream*
+M:is_disable_stream()
 
 
 M:parse_messages()                      *avante-providers-claude:parse_messages*
