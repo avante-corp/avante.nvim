@@ -1530,10 +1530,10 @@ avante.nvim is licensed under the Apache 2.0 License. For more details, please r
 # Star History
 
 <p align="center">
-  <a target="_blank" href="https://star-history.dera.page/#yetone/avante.nvim&Date">
+  <a target="_blank" href="https://star-history.dera.page/#avante-corp/avante.nvim&Date">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=yetone/avante.nvim&type=Date&theme=dark">
-      <img alt="NebulaGraph Data Intelligence Suite(ngdi)" src="https://star-history.dera.page/svg?repos=yetone/avante.nvim&type=Date">
+      <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=avante-corp/avante.nvim&type=Date&theme=dark">
+      <img alt="NebulaGraph Data Intelligence Suite(ngdi)" src="https://star-history.dera.page/svg?repos=avante-corp/avante.nvim&type=Date">
     </picture>
   </a>
 </p>
