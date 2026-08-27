@@ -46,6 +46,7 @@ jobs:
           commit: ${{ github.sha }}
           allowUpdates: true
           generateReleaseNotes: true
+          prerelease: true
 
   releases-matrix:
     needs: [create-release]
