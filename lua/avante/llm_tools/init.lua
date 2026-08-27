@@ -5,8 +5,8 @@
 --->lua
 ---   vim.g.avante = {
 ---     custom_tools = {
----     -- adds a builtin but disabled by default searxng web search tool
----     require'web_search_searxng,
+---       -- adds a builtin (but disabled by default) web search_google tool
+---       require'avante.llm_tools.web_search'.web_search_google,
 ---       -- Here's an example of a custom tool that runs Go unit tests:
 ---       {
 ---         name = "run_go_tests",

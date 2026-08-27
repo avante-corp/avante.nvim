@@ -99,6 +99,8 @@ local function web_search_tavily_func(input, opts)
 end
 
 ---@type AvanteLLMToolFunc<{ query: string }>
+---Export your key as SERPAPI_API_KEY
+---Free plan asks for phone number
 local function web_search_serpapi_func(input, opts)
   log_search("serpapi", input, opts)
   local api_key, api_key_err = get_api_key("SERPAPI_API_KEY")
@@ -178,6 +180,11 @@ local function web_search_searchapi_func(input, opts)
 end
 
 ---@type AvanteLLMToolFunc<{ query: string }>
+---Lets you ask your custom search engine
+--- Note: Closed to new customers: https://developers.google.com/custom-search/v1/overview
+---Needs:
+---- GOOGLE_SEARCH_API_KEY: get it from https://console.cloud.google.com ("customsearch" section)
+---- GOOGLE_SEARCH_ENGINE_ID: create one from https://programmablesearchengine.google.com
 local function web_search_google_func(input, opts)
   log_search("google", input, opts)
   local api_key, api_key_err = get_api_key("GOOGLE_SEARCH_API_KEY")
@@ -254,6 +261,7 @@ local function web_search_kagi_func(input, opts)
 end
 
 ---@type AvanteLLMToolFunc<{ query: string }>
+---Paying service. Export your key as BRAVE_API_KEY
 local function web_search_brave_func(input, opts)
   log_search("brave", input, opts)
   local api_key, api_key_err = get_api_key("BRAVE_API_KEY")
