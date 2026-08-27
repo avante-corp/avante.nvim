@@ -3,12 +3,12 @@
 ---@brief [[
 ---The recommended way to configure avante.nvim is to use the global variable
 ---vim.g.avante . The setup() function still needs to be called.
----<
+--->lua
 --- vim.g.avante = {
 ---   log_level =  vim.log.levels.ERROR,
 ---   -- Example: Using snacks.nvim as input provider
 ---   input = {
----     provider = "snacks", -- "native" | "dressing" | "snacks"
+---     provider = "snacks", -- "native" | "snacks"
 ---     provider_opts = {
 ---       -- Snacks input configuration
 ---       title = "Avante Input",
@@ -18,7 +18,7 @@
 ---   },
 ---   -- Your other config here!
 --- })
---->
+---<
 ---@brief ]]
 ---@see avante.Config
 ---

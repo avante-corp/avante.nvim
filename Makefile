@@ -120,7 +120,7 @@ rusttest:
 
 .PHONY: luatest
 luatest:
-	@./scripts/run-luatest.sh
+	./scripts/run-luatest.sh
 
 # upgrade / pin CI actions
 .PHONY: upgrade-actions
