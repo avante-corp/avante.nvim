@@ -14,7 +14,7 @@ if ($remoteUrl -match "github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$") {
     $REPO_OWNER = $matches[1]
     $REPO_NAME = $matches[2]
 } else {
-    $REPO_OWNER = "yetone"
+    $REPO_OWNER = "avante-corp"
     $REPO_NAME = "avante.nvim"
 }
 

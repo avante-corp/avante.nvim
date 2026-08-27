@@ -95,17 +95,13 @@ elif [[ "$latest_tag" != "$built_tag" && -n "$latest_tag" ]]; then
   echo "Local build is out of date $built_tag. Downloading latest $latest_tag."
 
   # Get the artifact download URL
-  ARTIFACT_URL=$(curl -s "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/tags/$latest_tag" | grep "browser_download_url" | cut -d '"' -f 4 | grep "$ARTIFACT_NAME_PATTERN")
+  DOWNLOAD_URL=$(curl -sSL "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/tags/$latest_tag" | grep "browser_download_url")
+  ARTIFACT_URL=$(echo "$DOWNLOAD_URL" | cut -d '"' -f 4 | grep "$ARTIFACT_NAME_PATTERN")
 
   mkdir -p "$TARGET_DIR"
 
   curl -L "$ARTIFACT_URL" | tar -zxv -C "$TARGET_DIR"
   save_tag
 else
-  echo "No latest tag found. Building from source."
-  cargo build --release --features="$LUA_VERSION"
-  for f in target/release/lib*."$CARGO_EXT"; do
-    filename=$(basename "$f" | sed 's/^lib//' | sed "s/\.$CARGO_EXT$/.$LIB_EXT/")
-    cp "$f" "${TARGET_DIR}/${filename}"
-  done
+  echo "No latest tag found. Run ':AvanteBuild source=true'."
 fi
