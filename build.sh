@@ -102,11 +102,5 @@ elif [[ "$latest_tag" != "$built_tag" && -n "$latest_tag" ]]; then
   curl -L "$ARTIFACT_URL" | tar -zxv -C "$TARGET_DIR"
   save_tag
 else
-  echo "No latest tag found. Building from source."
-  # TODO call make instead for a single source of truth
-  cargo build --release --features="$LUA_VERSION"
-  for f in target/release/lib*."$CARGO_EXT"; do
-    filename=$(basename "$f" | sed 's/^lib//' | sed "s/\.$CARGO_EXT$/.$LIB_EXT/")
-    cp "$f" "${TARGET_DIR}/${filename}"
-  done
+  echo "No latest tag found. Run ':AvanteBuild source=true'."
 fi
