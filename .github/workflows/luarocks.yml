@@ -10,7 +10,7 @@ on:
 
 jobs:
   luarocks-upload:
-    if: github.repository == 'yetone/avante.nvim'
+    if: github.repository == 'avante-corp/avante.nvim'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
