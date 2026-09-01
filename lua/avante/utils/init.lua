@@ -365,6 +365,19 @@ function M.is_valid_container(container, check_winid)
   return true
 end
 
+--- Keep a prompt buffer free of auto-formatting. A global 'textwidth' combined
+--- with a 'formatoptions' containing "t" or "a" hard-wraps and reflows text as
+--- it is typed, which mangles prompts mid-sentence.
+---@param bufnr integer | nil
+---@param opts { textwidth: integer?, formatoptions: string? } | nil
+function M.disable_auto_format(bufnr, opts)
+  if bufnr == nil or not api.nvim_buf_is_valid(bufnr) then return end
+  opts = opts or {}
+  api.nvim_set_option_value("textwidth", opts.textwidth or 0, { buf = bufnr })
+  api.nvim_set_option_value("formatoptions", opts.formatoptions or "jql", { buf = bufnr })
+  api.nvim_set_option_value("wrapmargin", 0, { buf = bufnr })
+end
+
 ---@param name string?
 ---@return table
 function M.get_hl(name)

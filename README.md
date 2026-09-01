@@ -496,6 +496,32 @@ _See [config.lua#L9](./lua/avante/config.lua) for the full config_
       normal = "<C-p>", -- load the previous (older) prompt log in normal mode
       insert = "<C-p>",
     },
+    -- Arrow-key recall of earlier prompts into the input box. Fills the box for
+    -- editing, never submits.
+    recall = {
+      enabled = true,
+      ---@type "thread" | "project" | "thread_then_project"
+      source = "thread_then_project", -- this thread's prompts newest-first, then the project-wide log
+      edge_only = true, -- only recall when the cursor cannot move further up/down
+      prev = {
+        normal = "<Up>", -- load the previous (older) prompt
+        insert = "<Up>",
+      },
+      next = {
+        normal = "<Down>", -- load the next (newer) prompt
+        insert = "<Down>",
+      },
+      -- Recall from anywhere in the buffer, ignoring edge_only. Needs a terminal
+      -- that sends shift+arrow; rebind to <C-Up>/<C-Down> if yours does not.
+      force_prev = {
+        normal = "<S-Up>",
+        insert = "<S-Up>",
+      },
+      force_next = {
+        normal = "<S-Down>",
+        insert = "<S-Down>",
+      },
+    },
   },
   mappings = {
     --- @class AvanteConflictMappings
@@ -561,6 +587,8 @@ _See [config.lua#L9](./lua/avante/config.lua) for the full config_
     input = {
       prefix = "> ",
       height = 8, -- Height of the input window in vertical layout
+      textwidth = 0, -- 0 = never hard-wrap what you type. Set a number to restore auto-wrapping.
+      formatoptions = "jql", -- omits 't' (auto-wrap) and 'a' (paragraph reflow) so typing is never reformatted
     },
     edit = {
       border = "rounded",

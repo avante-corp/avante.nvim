@@ -684,6 +684,33 @@ M._defaults = {
       normal = "<C-p>", -- load the previous (older) prompt log in normal mode
       insert = "<C-p>",
     },
+
+    -- Arrow-key recall of previous prompts into the input box (never submits)
+    recall = {
+      enabled = true,
+      ---@alias AvantePromptRecallSource "thread" | "project" | "thread_then_project"
+      ---@type AvantePromptRecallSource
+      source = "thread_then_project", -- this thread's prompts newest-first, then the project-wide log
+      edge_only = true, -- only recall when the cursor cannot move further up/down
+      prev = {
+        normal = "<Up>", -- load the previous (older) prompt
+        insert = "<Up>",
+      },
+      next = {
+        normal = "<Down>", -- load the next (newer) prompt
+        insert = "<Down>",
+      },
+      -- Recall from anywhere in the buffer, ignoring edge_only. Requires a
+      -- terminal that sends shift+arrow; rebind to <C-Up>/<C-Down> if not.
+      force_prev = {
+        normal = "<S-Up>",
+        insert = "<S-Up>",
+      },
+      force_next = {
+        normal = "<S-Down>",
+        insert = "<S-Down>",
+      },
+    },
   },
   history = {
     max_tokens = 4096,
@@ -854,6 +881,8 @@ M._defaults = {
     input = {
       prefix = "> ",
       height = 8, -- Height of the input window in vertical layout
+      textwidth = 0, -- 0 = never hard-wrap what you type. Set a number to restore auto-wrapping.
+      formatoptions = "jql", -- omits 't' (auto-wrap) and 'a' (paragraph reflow) so typing is never reformatted
     },
     selected_files = {
       height = 6, -- Maximum height of the selected files window

@@ -492,18 +492,12 @@ function M.init()
   filtered_entries = entries
 end
 
----Read log entry (maintains compatibility with Ctrl+N/P)
----@param delta number
+---Entries loaded from the index only hold a 100 char preview, so swap in the
+---full prompt from disk the first time an entry is actually used.
+---@param entry table|nil
 ---@return table|nil
-local function _read_log(delta)
-  -- index of array starts from 1 in lua, while this idx starts from 0
-  idx = ((idx - delta) % #filtered_entries + #filtered_entries) % #filtered_entries
-
-  local entry = filtered_entries[idx + 1]
-  
-  -- Lazy load full content if this is a preview
+local function resolve_entry_input(entry)
   if entry and entry.filepath and entry.input and #entry.input <= 100 then
-    -- This might be a preview, try to load full content
     if current_project_root then
       local prompts_dir = get_prompts_dir(current_project_root)
       local prompt_file = prompts_dir:joinpath(entry.filepath)
@@ -518,8 +512,31 @@ local function _read_log(delta)
       end
     end
   end
-  
+
   return entry
+end
+
+---Read log entry (maintains compatibility with Ctrl+N/P)
+---@param delta number
+---@return table|nil
+local function _read_log(delta)
+  -- index of array starts from 1 in lua, while this idx starts from 0
+  idx = ((idx - delta) % #filtered_entries + #filtered_entries) % #filtered_entries
+
+  return resolve_entry_input(filtered_entries[idx + 1])
+end
+
+---Logged prompts for the current project, newest first, with full prompt text.
+---The last in-memory entry is the placeholder holding the current input, so it
+---is excluded here.
+---@return table[]
+function M.list_entries()
+  local result = {}
+  for i = #entries - 1, 1, -1 do
+    local entry = resolve_entry_input(entries[i])
+    if entry and entry.input and entry.input ~= "" then table.insert(result, entry) end
+  end
+  return result
 end
 
 ---Update current input (maintains compatibility)

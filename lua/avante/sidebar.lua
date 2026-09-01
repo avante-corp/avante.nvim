@@ -12,6 +12,7 @@ local Diff = require("avante.diff")
 local Llm = require("avante.llm")
 local Utils = require("avante.utils")
 local PromptLogger = require("avante.utils.promptLogger")
+local InputHistory = require("avante.utils.input_history")
 local Highlights = require("avante.highlights")
 local RepoMap = require("avante.repo_map")
 local FileSelector = require("avante.file_selector")
@@ -1660,6 +1661,7 @@ function Sidebar:clear_input()
   if not Utils.is_valid_container(self.containers.input) then return end
   api.nvim_buf_set_lines(self.containers.input.bufnr, 0, -1, false, {})
   api.nvim_win_set_cursor(self.containers.input.winid, { 1, 0 })
+  InputHistory.reset(self.containers.input.bufnr)
 end
 
 function Sidebar:handle_expand_message(message_uuid, expanded)
@@ -4161,6 +4163,7 @@ function Sidebar:submit_input()
   if request == "" then return end
   api.nvim_buf_set_lines(self.containers.input.bufnr, 0, -1, false, {})
   api.nvim_win_set_cursor(self.containers.input.winid, { 1, 0 })
+  InputHistory.reset(self.containers.input.bufnr)
   self:handle_submit(request)
 end
 
@@ -4571,6 +4574,8 @@ function Sidebar:create_input_container()
 
   self.containers.input:mount()
   PromptLogger.init()
+  InputHistory.reset(self.containers.input.bufnr)
+  Utils.disable_auto_format(self.containers.input.bufnr, Config.windows.input)
 
   local function place_sign_at_first_line(bufnr)
     local group = "avante_input_prompt_group"
@@ -4628,6 +4633,26 @@ function Sidebar:create_input_container()
     self.containers.input:map("i", Config.prompt_logger.prev_prompt.insert, PromptLogger.on_log_retrieve(1))
   end
 
+  local recall = Config.prompt_logger.recall
+  if recall and recall.enabled then
+    local function map_recall(keys, delta, force)
+      if not keys then return end
+      for mode, key in pairs({ n = keys.normal, i = keys.insert }) do
+        if key then
+          self.containers.input:map(mode, key, InputHistory.make_handler(self, delta, key, { force = force }), {
+            noremap = true,
+            silent = true,
+          }, true)
+        end
+      end
+    end
+
+    map_recall(recall.prev, 1)
+    map_recall(recall.next, -1)
+    map_recall(recall.force_prev, 1, true)
+    map_recall(recall.force_next, -1, true)
+  end
+
   if Config.mappings.sidebar.close_from_input ~= nil then
     if Config.mappings.sidebar.close_from_input.normal ~= nil then
       self.containers.input:map("n", Config.mappings.sidebar.close_from_input.normal, function() self:shutdown() end)
@@ -4661,6 +4686,15 @@ function Sidebar:create_input_container()
   end
 
   api.nvim_set_option_value("filetype", "AvanteInput", { buf = self.containers.input.bufnr })
+  -- ftplugins and user autocmds run after the filetype is set and can bring
+  -- 'textwidth'/'formatoptions' back, so re-apply here and on every entry
+  Utils.disable_auto_format(self.containers.input.bufnr, Config.windows.input)
+  api.nvim_create_autocmd({ "BufEnter", "InsertEnter", "FileType" }, {
+    group = self.augroup,
+    buffer = self.containers.input.bufnr,
+    desc = "Keep the avante input buffer free of auto-wrapping",
+    callback = function() Utils.disable_auto_format(self.containers.input.bufnr, Config.windows.input) end,
+  })
 
   -- Setup completion
   api.nvim_create_autocmd("InsertEnter", {
@@ -4680,6 +4714,7 @@ function Sidebar:create_input_container()
     callback = function()
       debounced_show_input_hint()
       place_sign_at_first_line(self.containers.input.bufnr)
+      InputHistory.on_text_changed(self.containers.input.bufnr)
     end,
   })
 
@@ -4687,6 +4722,12 @@ function Sidebar:create_input_container()
     group = self.augroup,
     buffer = self.containers.input.bufnr,
     callback = function() self:close_input_hint() end,
+  })
+
+  api.nvim_create_autocmd({ "BufDelete", "BufWipeout" }, {
+    group = self.augroup,
+    buffer = self.containers.input.bufnr,
+    callback = function(ev) InputHistory.reset(ev.buf) end,
   })
 
   api.nvim_create_autocmd("WinClosed", {
