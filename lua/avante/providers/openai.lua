@@ -323,6 +323,10 @@ function M:parse_messages(opts)
                 }
 
                 tool_call_message.reasoning_content = pending_reasoning_content
+                if tool_call_message.reasoning_content == nil and not self.is_mistral(provider_conf.endpoint) then
+                  -- Strict-schema OpenAI-compatible servers (e.g. some Mistral deployments) reject unknown fields entirely
+                  tool_call_message.reasoning_content = ""
+                end
                 pending_reasoning_content = nil
 
                 table.insert(messages, tool_call_message)
