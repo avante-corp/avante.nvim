@@ -704,9 +704,11 @@ function M.curl(opts)
           vim.schedule(function()
             if not completed then
               completed = true
+              local error_msg = "API request failed with status " .. result.status
+              if result.status == 404 then error_msg = error_msg .. " (" .. spec.url .. ")" end
               handler_opts.on_stop({
                 reason = "error",
-                error = "API request failed with status " .. result.status .. ". Body: " .. vim.inspect(result.body),
+                error = error_msg .. ". Body:\n" .. vim.inspect(result.body),
               })
             end
           end)
