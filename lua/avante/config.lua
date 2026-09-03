@@ -461,6 +461,14 @@ M._defaults = {
       },
     },
     ---@type AvanteSupportedProvider
+    deepseek = {
+      __inherited_from = "openai",
+      endpoint = "https://api.deepseek.com",
+      timeout = 30000,
+      model = "deepseek-chat",
+      api_key_name = "DEEPSEEK_API_KEY",
+    },
+    ---@type AvanteSupportedProvider
     ---@diagnostic disable-next-line: missing-fields
     bedrock = {
       model = "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
