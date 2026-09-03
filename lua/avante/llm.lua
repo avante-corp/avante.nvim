@@ -1576,6 +1576,25 @@ function M._continue_stream_acp(opts, acp_client, session_id)
           .. user_messages_added
           .. " recent user messages</system_context>",
       })
+    elseif #prompt == 0 then
+      -- Session continuation without any history user messages (e.g. the edit
+      -- flow, which submits only `instructions`): fall back to the freshly
+      -- generated prompts, same as the branch below. Without this, an empty
+      -- prompt array is sent, which ACP agents reject (opencode/GLM: "The
+      -- messages parameter is illegal").
+      local prompt_opts = M.generate_prompts(opts)
+      table.insert(prompt, {
+        type = "text",
+        text = prompt_opts.system_prompt,
+      })
+      for _, message in ipairs(prompt_opts.messages) do
+        if message.role == "user" then
+          table.insert(prompt, {
+            type = "text",
+            text = message.content,
+          })
+        end
+      end
     end
   else
     if donot_use_builtin_system_prompt then
