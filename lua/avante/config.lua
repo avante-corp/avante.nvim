@@ -420,6 +420,14 @@ M._defaults = {
       },
     },
     ---@type AvanteSupportedProvider
+    cerebras = {
+      __inherited_from = "openai",
+      endpoint = "https://api.cerebras.ai/v1",
+      model = "gpt-oss-120b",
+      timeout = 30000,
+      api_key_name = "CEREBRAS_API_KEY",
+    },
+    ---@type AvanteSupportedProvider
     copilot = {
       endpoint = "https://api.githubcopilot.com",
       model = "gpt-4o-2024-11-20",
