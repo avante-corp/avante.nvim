@@ -638,9 +638,11 @@ M.focus({opts?})                                              *avante-api.focus*
         {opts?}  (AskOptions)
 
 
-M.select_model()                                       *avante-api.select_model*
-    Select a model
-    Saves the choice to stdpath("state")
+M.select_model({all?})                                 *avante-api.select_model*
+    Select a model from current provider (default) or all providers
+
+    Parameters: ~
+        {all?}  (boolean)  Saves the choice to stdpath("state")
 
 
 M.select_acp_model()                               *avante-api.select_acp_model*

@@ -80,7 +80,9 @@ local function create_model_entries(provider_name, provider_cfg)
   return res
 end
 
-function M.open()
+---Open a modal to select a specific model
+---@param all? boolean loop over all providers if true
+function M.open(all)
   M.list_models_invoked = {}
   M.list_models_returned = {}
   local models = {}
@@ -88,8 +90,10 @@ function M.open()
   Utils.info("listing models")
 
   -- Collect models from providers
-  for provider_name, _ in pairs(Config.providers) do
+  local provider_names = all and vim.tbl_keys(Config.providers) or { Config.provider }
+  for _, provider_name in ipairs(provider_names) do
     local provider_cfg = Providers[provider_name]
+    if not provider_cfg then goto continue end
     if provider_cfg.hide_in_model_selector then goto continue end
     if not provider_cfg.is_env_set() then goto continue end
     local entries = create_model_entries(provider_name, provider_cfg)
@@ -155,7 +159,7 @@ function M.open()
   end
 
   local selector = Selector:new({
-    title = "Select Avante Model",
+    title = "Select Avante Model: ",
     items = items,
     default_item_id = default_item and default_item.name or nil,
     provider = Config.selector.provider,

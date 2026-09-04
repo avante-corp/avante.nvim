@@ -256,9 +256,10 @@ function M.focus(opts)
   end
 end
 
----Select a model
+---Select a model from current provider (default) or all providers
+---@param all? boolean
 ---Saves the choice to stdpath("state")
-function M.select_model() require("avante.model_selector").open() end
+function M.select_model(all) require("avante.model_selector").open(all) end
 
 function M.select_acp_model() require("avante.acp_config_selector").open_model() end
 
