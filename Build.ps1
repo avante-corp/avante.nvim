@@ -104,7 +104,53 @@ function Main {
         Write-Host "Building for $Version..."
         Build-FromSource $Version
     } else {
-        $latestTag = git describe --tags --abbrev=0 2>&1 | Where-Object { $_ -ne $null }
+        function Test-GitTagLocal($tag) {
+            try {
+                $null = git rev-parse $tag 2>$null
+                return $true
+            } catch {
+                return $false
+            }
+        }
+
+        function Sync-GitTag($remoteUrl, $tagRef) {
+            try {
+                git fetch $remoteUrl "$tagRef`:$tagRef" 2>$null
+            } catch {
+                # Ignore individual fetch failures
+            }
+        }
+
+        function Fetch-RemoteTags {
+            try {
+                $tags = git ls-remote --tags $remoteUrl 2>$null | Select-String "refs/tags/v"
+                if ($null -eq $tags) { return }
+
+                foreach ($line in $tags) {
+                    $parts = ($line.ToString() -split "\s+")
+                    if ($parts.Length -lt 2) { continue }
+
+                    $tagRef = $parts[1]
+                    $tag = $tagRef -replace "^refs/tags/", ""
+
+                    if (-not (Test-GitTagLocal $tag)) {
+                        Sync-GitTag $remoteUrl $tagRef
+                    }
+                }
+            } catch {
+                # Ignore tag fetching errors
+            }
+        }
+
+        Fetch-RemoteTags
+
+        $latestTag = $null
+        try {
+            $latestTag = git describe --tags --abbrev=0 --match "v*" 2>$null
+        } catch {
+            $latestTag = $null
+        }
+
         $builtTag = if (Test-Path "lua/.tag") {
             Get-Content "lua/.tag"
         } else {
