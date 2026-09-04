@@ -877,6 +877,37 @@ You may need to run `AvanteSwitchProvider claude` to initiate the authentication
 
 ```
 
+### Using OrcaRouter
+
+[OrcaRouter](https://www.orcarouter.ai) is an AI gateway that exposes 180+ models
+(OpenAI, Anthropic, Google, DeepSeek, and more) behind a single OpenAI-compatible
+endpoint. It also runs gateway-level, zero-trust security for AI agents on the
+same endpoint — screening every prompt/response and governing every tool call on a
+default-deny basis, with no application code changes.
+
+Select the built-in `orcarouter` provider and export your API key:
+
+```lua
+  provider = "orcarouter", -- The provider used in Aider mode or in the planning phase of Cursor Planning Mode
+```
+
+```sh
+export ORCAROUTER_API_KEY=your-api-key
+# or scoped: export AVANTE_ORCAROUTER_API_KEY=your-api-key
+```
+
+The default model is `orcarouter/auto`, which routes each request to the best
+model for the task. You can pick any model from the catalog
+(https://www.orcarouter.ai/models) instead:
+
+```lua
+  providers = {
+    orcarouter = {
+      model = "openai/gpt-5.5",
+    },
+  },
+```
+
 ### Basic Functionality
 
 Given its early stage, `avante.nvim` currently supports the following basic functionalities:
@@ -899,6 +930,7 @@ Given its early stage, `avante.nvim` currently supports the following basic func
 > export AVANTE_CO_API_KEY=your-cohere-api-key
 > export AVANTE_AIHUBMIX_API_KEY=your-aihubmix-api-key
 > export AVANTE_MOONSHOT_API_KEY=your-moonshot-api-key
+> export AVANTE_ORCAROUTER_API_KEY=your-orcarouter-api-key
 > ```
 >
 > **Global API Keys (Legacy)**
