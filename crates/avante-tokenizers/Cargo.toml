@@ -12,7 +12,7 @@ license = { workspace = true }
 workspace = true
 
 [dependencies]
-dirs = "5.0.1"
+dirs = "6.0.0"
 regex = "1.13.1"
 hf-hub = { git = "https://github.com/yetone/hf-hub", branch='main', features = ["default", "ureq"] }
 ureq = { version = "2.12.1", features = ["json", "socks-proxy"] }

@@ -4,7 +4,7 @@ resolver = "3"
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.86"
+rust-version = "1.94"
 license = "Apache-2.0"
 version = "0.2.0"
 
@@ -22,9 +22,9 @@ minijinja = { version = "2.24.0", features = [
   "custom_syntax",
   "loop_controls",
 ] }
-mlua = { version = "0.10.5", features = ["module", "serialize"] }
-tiktoken-rs = { version = "0.6.0" }
-tokenizers = { version = "0.20.4", features = [
+mlua = { version = "0.12.1", features = ["module", "serialize"] }
+tiktoken-rs = { version = "0.12.0" }
+tokenizers = { version = "0.23.2", features = [
   "esaxx_fast",
   "http",
   "unstable_wasm",
