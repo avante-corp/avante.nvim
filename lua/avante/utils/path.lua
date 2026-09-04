@@ -16,6 +16,7 @@ function M.is_win() return IS_WIN end
 ---@param filepath                      string
 ---@return boolean
 function M.is_absolute(filepath)
+  if type(filepath) ~= "string" or filepath == "" then return false end
   if IS_WIN then return #filepath > 1 and string.byte(filepath, 2, 2) == BYTE_COLON end
   return string.byte(filepath, 1, 1) == BYTE_PATHSEP
 end
