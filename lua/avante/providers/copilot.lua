@@ -109,51 +109,82 @@ function H.get_oauth_token()
   elseif vim.tbl_contains({ "linux", "darwin" }, os_name) then
     config_dir = vim.fn.expand("~/.config")
   else
-    -- config_dir = vim.fn.expand("~/AppData/Local")
     config_dir = vim.fn.expand("$LOCALAPPDATA")
   end
 
-  --- hosts.json (copilot.lua), apps.json (copilot.vim)
+  local copilot_dir = Path:new(config_dir):joinpath("github-copilot")
+
+  -- Try the new SQLite auth.db first (copilot.lua >= 2025.12)
+  local db_path = copilot_dir:joinpath("auth.db")
+  if db_path:exists() then
+    local token = H.read_token_from_authdb(tostring(db_path))
+    if token then return token end
+  end
+
+  -- Fall back to legacy JSON files: hosts.json (copilot.lua) / apps.json (copilot.vim)
   ---@type Path[]
-  local paths = vim.iter({ "hosts.json", "apps.json" }):fold({}, function(acc, path)
-    local yason = Path:new(config_dir):joinpath("github-copilot", path)
-    if yason:exists() then table.insert(acc, yason) end
+  local json_files = vim.iter({ "hosts.json", "apps.json" }):fold({}, function(acc, name)
+    local p = copilot_dir:joinpath(name)
+    if p:exists() then table.insert(acc, p) end
     return acc
   end)
-  if #paths == 0 then error("You must setup copilot with either copilot.lua or copilot.vim", 2) end
 
-  -- Note: copilot must be configured this way.
-  -- {
-  --   "zbirenbaum/copilot.lua",
-  --   config = function()
-  --     require("copilot").setup({
-  --       server_opts_overrides = {
-  --         settings = {
-  --           ["github"] = { -- For standard copilot.
-  --             endpoint = "https://api.githubcopilot.com",
-  --           },
-  --           ["github-enterprise"] = { -- For GHE enterprise copilot server.
-  --             uri = "https://my-enterprise.ghe.com",
-  --           },
-  --         },
-  --       },
-  --     })
-  --   end,
-  -- }
-  local yason = paths[1]
+  if #json_files > 0 then
+    local token = H.read_token_from_json(json_files[1])
+    if token then return token end
+  end
+
+  error(
+    "Could not find a Copilot OAuth token.\n"
+      .. "Make sure you are signed in: run :Copilot auth (copilot.lua) or :Copilot setup (copilot.vim).",
+    2
+  )
+end
+
+--- Read the OAuth token from the new SQLite auth.db.
+--- Returns nil on any failure so the caller can fall back gracefully.
+---@param db_path string Absolute path to auth.db
+---@return string|nil
+function H.read_token_from_authdb(db_path)
+  -- Preferred: query via sqlite3 CLI
+  if vim.fn.executable("sqlite3") == 1 then
+    local query = "SELECT cast(token_ciphertext as text) FROM oauth_tokens LIMIT 1;"
+    local obj = vim.system({ "sqlite3", "-batch", "-noheader", db_path, query }):wait()
+    if obj.code == 0 and obj.stdout then
+      local token = vim.trim(obj.stdout):match("^(gh[uco]_[%w_-]+)$")
+      if token then return token end
+    end
+  end
+
+  -- Last resort: scan the raw bytes of the db (and its WAL) for a token
+  -- that matches the well-known GitHub OAuth prefix.  This works because
+  -- schema_version 0 stores the token as a plaintext BLOB; it will stop
+  -- working if/when GitHub encrypts the column for real
+  local function scan_file(path)
+    local f = io.open(path, "rb")
+    if not f then return nil end
+    local content = f:read("*a")
+    f:close()
+    return content:match("gh[uco]_[a-zA-Z0-9_%-]+")
+  end
+
+  return scan_file(db_path) or scan_file(db_path .. "-wal")
+end
+
+--- Read the OAuth token from a legacy hosts.json / apps.json file.
+---@param json_path Path
+---@return string|nil
+function H.read_token_from_json(json_path)
+  local ok, data = pcall(vim.json.decode, json_path:read())
+  if not ok or type(data) ~= "table" then return nil end
+
   return vim
-    .iter(
-      ---@type table<string, OAuthToken>
-      ---@diagnostic disable-next-line: param-type-mismatch
-      vim.json.decode(yason:read())
-    )
+    .iter(data)
     :filter(function(k, _) return k:match("github%.com") or k:match("ghe%.com") end)
-    ---@param acc {oauth_token: string}
     :fold({}, function(acc, _, v)
       acc.oauth_token = v.oauth_token
       return acc
-    end)
-    .oauth_token
+    end).oauth_token
 end
 
 local function _get_chat_auth_url()
