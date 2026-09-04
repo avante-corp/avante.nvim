@@ -57,14 +57,6 @@ if Config.support_paste_image() then
   end)(vim.paste)
 end
 
----@param suffix string command suffix
----@param callback vim.api.keyset.user_command.callback
----@param opts vim.api.keyset.user_command.opts
-local function cmd(suffix, callback, opts)
-  opts = vim.tbl_extend("force", { nargs = 0 }, opts or {})
-  api.nvim_create_user_command("Avante" .. suffix, callback, opts)
-end
-
 local function ask_complete(prefix, _, _)
   local candidates = {} ---@type string[]
   vim.list_extend(
@@ -80,7 +72,7 @@ local function ask_complete(prefix, _, _)
   return vim.tbl_filter(function(candidate) return vim.startswith(candidate, prefix) end, candidates)
 end
 
-cmd("Ask", function(opts)
+api.nvim_create_user_command("AvanteAsk", function(opts)
   ---@type AskOptions
   local args = { question = nil, win = {} }
 
@@ -101,7 +93,7 @@ end, {
   nargs = "*",
   complete = ask_complete,
 })
-cmd("Chat", function(opts)
+api.nvim_create_user_command("AvanteChat", function(opts)
   local args = Utils.parse_args(opts.fargs)
   args.ask = false
 
@@ -111,14 +103,17 @@ end, {
   nargs = "*",
   complete = ask_complete,
 })
-cmd("ChatNew", function(opts)
+api.nvim_create_user_command("AvanteChatNew", function(opts)
   local args = Utils.parse_args(opts.fargs)
   args.ask = false
   args.new_chat = true
   require("avante.api").ask(args)
 end, { desc = "avante: create new chat", nargs = "*", complete = ask_complete })
-cmd("Toggle", function() require("avante").toggle() end, { desc = "avante: toggle AI panel" })
-cmd("Build", function(opts)
+api.nvim_create_user_command("AvanteToggle", function() require("avante").toggle() end, {
+  desc = "avante: toggle AI panel",
+  nargs = 0,
+})
+api.nvim_create_user_command("AvanteBuild", function(opts)
   local args = Utils.parse_args(opts.fargs)
 
   if args.source == nil then args.source = false end
@@ -129,14 +124,20 @@ end, {
   nargs = "*",
   complete = function(_, _, _) return { "source=true", "source=false" } end,
 })
-cmd(
-  "Edit",
+api.nvim_create_user_command(
+  "AvanteEdit",
   function(opts) require("avante.api").edit(vim.trim(opts.args), opts.line1, opts.line2) end,
   { desc = "avante: edit selected block", nargs = "*", range = 2 }
 )
-cmd("Refresh", function() require("avante.api").refresh() end, { desc = "avante: refresh windows" })
-cmd("Focus", function() require("avante.api").focus() end, { desc = "avante: switch focus windows" })
-cmd("SwitchProvider", function(_opts)
+api.nvim_create_user_command("AvanteRefresh", function() require("avante.api").refresh() end, {
+  desc = "avante: refresh windows",
+  nargs = 0,
+})
+api.nvim_create_user_command("AvanteFocus", function() require("avante.api").focus() end, {
+  desc = "avante: switch focus windows",
+  nargs = 0,
+})
+api.nvim_create_user_command("AvanteSwitchProvider", function(_opts)
   local providers = vim.tbl_keys(Config.providers)
   vim.list_extend(providers, vim.tbl_keys(Config.acp_providers))
   vim.ui.select(providers, { prompt = "Provider> " }, function(choice, idx)
@@ -146,24 +147,28 @@ end, {
   nargs = 0,
   desc = "avante: switch provider",
 })
-cmd(
-  "SwitchSelectorProvider",
+api.nvim_create_user_command(
+  "AvanteSwitchSelectorProvider",
   function(opts) require("avante.api").switch_selector_provider(vim.trim(opts.args or "")) end,
   {
     nargs = 1,
     desc = "avante: switch selector provider",
   }
 )
-cmd("SwitchInputProvider", function(opts) require("avante.api").switch_input_provider(vim.trim(opts.args or "")) end, {
-  nargs = 1,
-  desc = "avante: switch input provider",
-  complete = function(_, line, _)
-    local prefix = line:match("AvanteSwitchInputProvider%s*(.*)$") or ""
-    local providers = { "native", "dressing", "snacks" }
-    return vim.tbl_filter(function(key) return key:find(prefix, 1, true) == 1 end, providers)
-  end,
-})
-cmd("Clear", function(opts)
+api.nvim_create_user_command(
+  "AvanteSwitchInputProvider",
+  function(opts) require("avante.api").switch_input_provider(vim.trim(opts.args or "")) end,
+  {
+    nargs = 1,
+    desc = "avante: switch input provider",
+    complete = function(_, line, _)
+      local prefix = line:match("AvanteSwitchInputProvider%s*(.*)$") or ""
+      local providers = { "native", "dressing", "snacks" }
+      return vim.tbl_filter(function(key) return key:find(prefix, 1, true) == 1 end, providers)
+    end,
+  }
+)
+api.nvim_create_user_command("AvanteClear", function(opts)
   local arg = vim.trim(opts.args or "")
   arg = arg == "" and "history" or arg
   if arg == "history" then
@@ -187,9 +192,27 @@ end, {
   nargs = "?",
   complete = function(_, _, _) return { "history", "cache" } end,
 })
-cmd("ShowRepoMap", function() require("avante.repo_map").show() end, { desc = "avante: show repo map" })
-cmd("Models", function() require("avante.model_selector").open() end, { desc = "avante: show models" })
-cmd("ACPModels", function() require("avante.api").select_acp_model() end, { desc = "avante: switch ACP model" })
-cmd("ACPModes", function() require("avante.api").select_acp_mode() end, { desc = "avante: switch ACP mode" })
-cmd("History", function() require("avante.api").select_history() end, { desc = "avante: show histories" })
-cmd("Stop", function() require("avante.api").stop() end, { desc = "avante: stop current AI request" })
+api.nvim_create_user_command("AvanteShowRepoMap", function() require("avante.repo_map").show() end, {
+  desc = "avante: show repo map",
+  nargs = 0,
+})
+api.nvim_create_user_command("AvanteModels", function() require("avante.model_selector").open() end, {
+  desc = "avante: show models",
+  nargs = 0,
+})
+api.nvim_create_user_command("AvanteACPModels", function() require("avante.api").select_acp_model() end, {
+  desc = "avante: switch ACP model",
+  nargs = 0,
+})
+api.nvim_create_user_command("AvanteACPModes", function() require("avante.api").select_acp_mode() end, {
+  desc = "avante: switch ACP mode",
+  nargs = 0,
+})
+api.nvim_create_user_command("AvanteHistory", function() require("avante.api").select_history() end, {
+  desc = "avante: show histories",
+  nargs = 0,
+})
+api.nvim_create_user_command("AvanteStop", function() require("avante.api").stop() end, {
+  desc = "avante: stop current AI request",
+  nargs = 0,
+})
