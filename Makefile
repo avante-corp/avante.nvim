@@ -99,13 +99,13 @@ docgen:
 	nvim -u NONE -i NONE --headless +'helptags doc' +'quit!'
 
 luacheck:
-	@luacheck `find \( -path './target' -prune \) -o -name "*.lua" -print` --codes
+	luacheck `find \( -path './target' -prune \) -o -name "*.lua" -print` --codes
 
 luastylecheck:
-	@stylua --check lua/ plugin/ tests/
+	stylua --check lua/ plugin/ tests/
 
 stylefix:
-	@stylua lua/ plugin/
+	stylua lua/ plugin/
 
 .PHONY: ruststylecheck
 ruststylecheck:
