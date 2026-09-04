@@ -179,75 +179,69 @@ function H.keymaps()
     sg:prev()
   end, { noremap = true, silent = true })
 
+  local has_lazy, _ = pcall(require, "lazy.core.handler")
+
+  local safe_keymap_set = vim.keymap.set
+
+  if has_lazy then
+    safe_keymap_set = Utils.safe_keymap_set
+    Utils.debug("lazy.nvim is available. Using Utils.safe_keymap_set")
+  end
+
   if Config.behaviour.auto_set_keymaps then
-    Utils.safe_keymap_set({ "n", "v" }, Config.mappings.ask, "<Plug>(AvanteAsk)", { desc = "avante: ask" })
-    Utils.safe_keymap_set(
+    safe_keymap_set({ "n", "v" }, Config.mappings.ask, "<Plug>(AvanteAsk)", { desc = "avante: ask" })
+    safe_keymap_set(
       { "n", "v" },
       Config.mappings.zen_mode,
       "<Plug>(AvanteZenMode)",
       { desc = "avante: toggle Zen Mode" }
     )
-    Utils.safe_keymap_set(
-      { "n", "v" },
-      Config.mappings.new_ask,
-      "<Plug>(AvanteAskNew)",
-      { desc = "avante: create new ask" }
-    )
-    Utils.safe_keymap_set("v", Config.mappings.edit, "<Plug>(AvanteEdit)", { desc = "avante: edit" })
-    Utils.safe_keymap_set("n", Config.mappings.stop, "<Plug>(AvanteStop)", { desc = "avante: stop" })
-    Utils.safe_keymap_set("n", Config.mappings.refresh, "<Plug>(AvanteRefresh)", { desc = "avante: refresh" })
-    Utils.safe_keymap_set("n", Config.mappings.focus, "<Plug>(AvanteFocus)", { desc = "avante: focus" })
+    safe_keymap_set({ "n", "v" }, Config.mappings.new_ask, "<Plug>(AvanteAskNew)", { desc = "avante: create new ask" })
+    safe_keymap_set("v", Config.mappings.edit, "<Plug>(AvanteEdit)", { desc = "avante: edit" })
+    safe_keymap_set("n", Config.mappings.stop, "<Plug>(AvanteStop)", { desc = "avante: stop" })
+    safe_keymap_set("n", Config.mappings.refresh, "<Plug>(AvanteRefresh)", { desc = "avante: refresh" })
+    safe_keymap_set("n", Config.mappings.focus, "<Plug>(AvanteFocus)", { desc = "avante: focus" })
 
-    Utils.safe_keymap_set("n", Config.mappings.toggle.default, "<Plug>(AvanteToggle)", { desc = "avante: toggle" })
-    Utils.safe_keymap_set(
-      "n",
-      Config.mappings.toggle.debug,
-      "<Plug>(AvanteToggleDebug)",
-      { desc = "avante: toggle debug" }
-    )
-    Utils.safe_keymap_set(
+    safe_keymap_set("n", Config.mappings.toggle.default, "<Plug>(AvanteToggle)", { desc = "avante: toggle" })
+    safe_keymap_set("n", Config.mappings.toggle.debug, "<Plug>(AvanteToggleDebug)", { desc = "avante: toggle debug" })
+    safe_keymap_set(
       "n",
       Config.mappings.toggle.selection,
       "<Plug>(AvanteToggleSelection)",
       { desc = "avante: toggle selection" }
     )
-    Utils.safe_keymap_set(
+    safe_keymap_set(
       "n",
       Config.mappings.toggle.suggestion,
       "<Plug>(AvanteToggleSuggestion)",
       { desc = "avante: toggle suggestion" }
     )
-    Utils.safe_keymap_set("n", Config.mappings.toggle.repomap, "<Plug>(AvanteShowRepoMap)", {
+    safe_keymap_set("n", Config.mappings.toggle.repomap, "<Plug>(AvanteShowRepoMap)", {
       desc = "avante: display repo map",
       noremap = true,
       silent = true,
     })
-    Utils.safe_keymap_set(
-      "n",
-      Config.mappings.select_model,
-      "<Plug>(AvanteSelectModel)",
-      { desc = "avante: select model" }
-    )
-    Utils.safe_keymap_set(
+    safe_keymap_set("n", Config.mappings.select_model, "<Plug>(AvanteSelectModel)", { desc = "avante: select model" })
+    safe_keymap_set(
       "n",
       Config.mappings.select_history,
       "<Plug>(AvanteSelectHistory)",
       { desc = "avante: select history" }
     )
-    Utils.safe_keymap_set(
+    safe_keymap_set(
       "n",
       Config.mappings.select_acp_model,
       "<Plug>(AvanteSelectACPModel)",
       { desc = "avante: select ACP model" }
     )
-    Utils.safe_keymap_set(
+    safe_keymap_set(
       "n",
       Config.mappings.select_acp_mode,
       "<Plug>(AvanteSelectACPMode)",
       { desc = "avante: select ACP mode" }
     )
 
-    Utils.safe_keymap_set(
+    safe_keymap_set(
       "n",
       Config.mappings.files.add_all_buffers,
       "<Plug>(AvanteAddAllBuffers)",
@@ -256,25 +250,25 @@ function H.keymaps()
   end
 
   if Config.behaviour.auto_suggestions then
-    Utils.safe_keymap_set("i", Config.mappings.suggestion.accept, "<Plug>(AvanteSuggestionAccept)", {
+    safe_keymap_set("i", Config.mappings.suggestion.accept, "<Plug>(AvanteSuggestionAccept)", {
       desc = "avante: accept suggestion",
       noremap = true,
       silent = true,
     })
 
-    Utils.safe_keymap_set("i", Config.mappings.suggestion.dismiss, "<Plug>(AvanteSuggestionDismiss)", {
+    safe_keymap_set("i", Config.mappings.suggestion.dismiss, "<Plug>(AvanteSuggestionDismiss)", {
       desc = "avante: dismiss suggestion",
       noremap = true,
       silent = true,
     })
 
-    Utils.safe_keymap_set("i", Config.mappings.suggestion.next, "<Plug>(AvanteSuggestionNext)", {
+    safe_keymap_set("i", Config.mappings.suggestion.next, "<Plug>(AvanteSuggestionNext)", {
       desc = "avante: next suggestion",
       noremap = true,
       silent = true,
     })
 
-    Utils.safe_keymap_set("i", Config.mappings.suggestion.prev, "<Plug>(AvanteSuggestionPrev)", {
+    safe_keymap_set("i", Config.mappings.suggestion.prev, "<Plug>(AvanteSuggestionPrev)", {
       desc = "avante: previous suggestion",
       noremap = true,
       silent = true,
