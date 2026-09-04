@@ -544,6 +544,13 @@ M._defaults = {
         },
       },
     },
+    openrouter = {
+      __inherited_from = "openai",
+      endpoint = "https://openrouter.ai/api/v1",
+      timeout = 30000,
+      api_key_name = "OPENROUTER_API_KEY",
+      model = "openrouter/free",
+    },
     ---@type AvanteSupportedProvider
     watsonx_code_assistant = {
       endpoint = "https://api.dataplatform.cloud.ibm.com/v2/wca/core/chat/text/generation",
