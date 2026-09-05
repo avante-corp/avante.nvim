@@ -47,7 +47,7 @@ $(foreach lua_version,$(LUA_VERSIONS),$(eval $(call make_definitions,$(lua_versi
 
 define build_package
 $1-$2:
-	cargo build --release --features=$1 -p avante-$2 $(if $(CARGO_TARGET),--target $(CARGO_TARGET))
+	cargo build --release --no-default-features --features=$1 -p avante-$2 $(if $(CARGO_TARGET),--target $(CARGO_TARGET))
 	cp $(TARGET_DIR)/libavante_$(shell echo $2 | tr - _).$(CARGO_EXT) $(BUILD_DIR)/avante_$(shell echo $2 | tr - _).$(EXT)
 endef
 
