@@ -48,8 +48,8 @@
 ---         Stop the current AI request.
 ---
 ---                                                     *:AvanteSwitchProvider*
---- :AvanteSwitchProvider
----         Switch AI provider.
+--- :AvanteSwitchProvider [--save]
+---         Switch AI provider. Pass `--save` to persist the choice.
 ---
 ---                                                     *:AvanteSwitchSelectorProvider*
 --- :AvanteSwitchSelectorProvider {provider}

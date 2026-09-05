@@ -137,16 +137,17 @@ api.nvim_create_user_command("AvanteFocus", function() require("avante.api").foc
   desc = "avante: switch focus windows",
   nargs = 0,
 })
-api.nvim_create_user_command("AvanteSwitchProvider", function(_opts)
+api.nvim_create_user_command("AvanteSwitchProvider", function(opts)
   local providers = vim.tbl_keys(Config.providers)
   vim.list_extend(providers, vim.tbl_keys(Config.acp_providers))
   table.sort(providers)
   vim.ui.select(providers, { prompt = "Provider> " }, function(choice, idx)
-    if idx ~= nil then require("avante.api").switch_provider(vim.trim(choice)) end
+    if idx ~= nil then require("avante.api").switch_provider(vim.trim(choice), opts.args == "--save") end
   end)
 end, {
-  nargs = 0,
+  nargs = "?",
   desc = "avante: switch provider",
+  complete = function() return { "--save" } end,
 })
 api.nvim_create_user_command(
   "AvanteSwitchSelectorProvider",

@@ -261,6 +261,11 @@ function M.refresh(provider_name)
   local sidebar = require("avante").get()
   if sidebar and sidebar:is_open() then sidebar:render_result() end
   Utils.info("Switch to provider: " .. provider_name, { once = true, title = "Avante" })
+
+  local provider = Providers[provider_name]
+  local provider_model = provider and provider.model
+
+  Config.save_last_model(provider_model, provider_name)
 end
 
 ---@param opts AvanteProvider | AvanteSupportedProvider | AvanteAnthropicProvider | AvanteProviderFunctor | AvanteBedrockProviderFunctor
