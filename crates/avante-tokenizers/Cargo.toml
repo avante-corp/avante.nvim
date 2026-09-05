@@ -12,7 +12,7 @@ license = { workspace = true }
 workspace = true
 
 [dependencies]
-dirs = "5.0.1"
+dirs = "6.0.0"
 regex = "1.13.1"
 hf-hub = { git = "https://github.com/yetone/hf-hub", branch='main', features = ["default", "ureq"] }
 ureq = { version = "2.12.1", features = ["json", "socks-proxy"] }
@@ -21,6 +21,7 @@ tiktoken-rs = { workspace = true }
 tokenizers = { workspace = true }
 
 [features]
+default = ["luajit"]
 lua51 = ["mlua/lua51"]
 lua52 = ["mlua/lua52"]
 lua53 = ["mlua/lua53"]
