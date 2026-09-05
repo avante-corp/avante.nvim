@@ -1047,7 +1047,7 @@ The following key bindings are available for use with `avante.nvim`:
 | `:AvanteFocus`                     | Switch focus to/from the sidebar                                                                            |                                                     |
 | `:AvanteRefresh`                   | Refresh all Avante windows                                                                                  |                                                     |
 | `:AvanteStop`                      | Stop the current AI request                                                                                 |                                                     |
-| `:AvanteSwitchProvider`            | Switch AI provider (e.g. openai)                                                                            |                                                     |
+| `:AvanteSwitchProvider [--save]`   | Switch AI provider; `--save` restores it on startup, overriding the configured default                                           |                                                     |
 | `:AvanteShowRepoMap`               | Show repo map for project's structure                                                                       |                                                     |
 | `:AvanteToggle`                    | Toggle the Avante sidebar                                                                                   |                                                     |
 | `:AvanteModels`                    | Show model list                                                                                             |                                                     |

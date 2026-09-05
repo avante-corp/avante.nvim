@@ -422,7 +422,8 @@ avante.Config                                                    *avante.Config*
                                                                        See https://github.com/avante-corp/avante.nvim/wiki#custom-providers for more details
         {acp_providers}               ({string:AvanteACPProvider})     Agent Client Protocol providers.  |avante-acp|
         {provider?}                   (avante.ProviderName)
-                                                                       Default provider on startup. If undefined, avante loads the last provider used.
+                                                                       Default provider on startup. An explicit :AvanteSwitchProvider --save choice takes precedence.
+                                                                       If undefined, avante loads the last provider used.
         {system_prompt?}              (string|nil|fun():string)
                                                                        System prompt
         {override_prompt_dir}         (string|nil|fun():string)         override_prompt_dir allows you to specify a directory containing your own custom prompt templates, which will override the built-in templates. This is useful if you want to maintain a set of custom prompts outside of your Neovim configuration.
@@ -499,11 +500,14 @@ avante.SelectorProvider                                *avante.SelectorProvider*
         
 
 
-M.save_last_model({model_name})                  *avante-config.save_last_model*
+                                                 *avante-config.save_last_model*
+M.save_last_model({model_name}, {provider_name}, {save_provider?})
      Function to save the last used model
 
     Parameters: ~
-        {model_name}  (string)
+        {model_name}      (string|nil)
+        {provider_name}   (string)
+        {save_provider?}  (boolean)     Override the configured startup provider
 
 
 M.get_last_used_model({known_providers})     *avante-config.get_last_used_model*
@@ -513,8 +517,12 @@ M.get_last_used_model({known_providers})     *avante-config.get_last_used_model*
         {known_providers}  (table<string,AvanteSupportedProvider>)
 
     Returns: ~
-        (string|nil)  name
-        (string|nil)  name
+        (string|nil)   name
+        (string|nil)   name
+        (boolean|nil)  the configured startup provider
+
+    See: ~
+        |save_last_model|
 
 
 M.setup({opts})                                            *avante-config.setup*
@@ -573,10 +581,11 @@ M.switch_input_provider({target_provider})    *avante-api.switch_input_provider*
         {target_provider}  (avante.InputProvider)
 
 
-M.switch_provider({target})                         *avante-api.switch_provider*
+M.switch_provider({provider_name}, {save_choice?})  *avante-api.switch_provider*
 
     Parameters: ~
-        {target}  (avante.ProviderName)
+        {provider_name}  (avante.ProviderName)  the provider to switch to
+        {save_choice?}   (boolean)              Persist the provider as the startup choice
 
 
 M.build({opts?})                                              *avante-api.build*
@@ -716,8 +725,10 @@ Commands (:AvanteAsk,...)                                      *avante-commands*
          Stop the current AI request.
 
                                                      *:AvanteSwitchProvider*
- :AvanteSwitchProvider
-         Switch AI provider.
+ :AvanteSwitchProvider [--save]
+         Switch AI provider. Pass `--save` to restore the choice on startup,
+         overriding the configured default provider. Without it, the switch
+         only affects the current session.
 
                                                      *:AvanteSwitchSelectorProvider*
  :AvanteSwitchSelectorProvider {provider}

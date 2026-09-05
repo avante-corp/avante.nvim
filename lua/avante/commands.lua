@@ -48,8 +48,10 @@
 ---         Stop the current AI request.
 ---
 ---                                                     *:AvanteSwitchProvider*
---- :AvanteSwitchProvider
----         Switch AI provider.
+--- :AvanteSwitchProvider [--save]
+---         Switch AI provider. Pass `--save` to restore the choice on startup,
+---         overriding the configured default provider. Without it, the switch
+---         only affects the current session.
 ---
 ---                                                     *:AvanteSwitchSelectorProvider*
 --- :AvanteSwitchSelectorProvider {provider}

@@ -271,7 +271,8 @@ M.instructions_file = "avante.md"
 ---Agent Client Protocol providers.  |avante-acp|
 ---@field acp_providers {string: AvanteACPProvider}
 ---
----Default provider on startup. If undefined, avante loads the last provider used.
+---Default provider on startup. An explicit :AvanteSwitchProvider --save choice takes precedence.
+---If undefined, avante loads the last provider used.
 ---@field provider? avante.ProviderName
 ---
 ---System prompt
@@ -938,23 +939,36 @@ local function get_config_dir_path() return vim.fs.joinpath(vim.fn.stdpath("stat
 local function get_config_file_path() return vim.fs.joinpath(get_config_dir_path(), "config.json") end
 
 --- Function to save the last used model
----@param model_name string
-function M.save_last_model(model_name, provider_name)
+---@param model_name string|nil
+---@param provider_name string
+---@param save_provider? boolean Override the configured startup provider
+function M.save_last_model(model_name, provider_name, save_provider)
   local config_dir = get_config_dir_path()
   local storage_path = get_config_file_path()
 
   if not Utils.path_exists(config_dir) then vim.fn.mkdir(config_dir, "p") end
 
-  local Providers = require("avante.providers")
-  local provider = Providers[provider_name]
+  ---@type AvanteACPProvider|AvanteProvider
+  local provider = M.acp_providers[provider_name] or require("avante.providers")[provider_name]
   local provider_model = provider and provider.model
+
+  if save_provider == nil then
+    local known_providers = vim.tbl_extend("force", M.providers, M.acp_providers)
+    local _, last_provider, previously_saved = M.get_last_used_model(known_providers)
+    save_provider = previously_saved and last_provider == provider_name or nil
+  end
 
   local file = io.open(storage_path, "w")
   if file then
-    file:write(
-      vim.json.encode({ last_model = model_name, last_provider = provider_name, provider_model = provider_model })
-    )
+    file:write(vim.json.encode({
+      last_model = model_name,
+      last_provider = provider_name,
+      provider_model = provider_model,
+      save_provider = save_provider,
+    }))
     file:close()
+  else
+    Utils.warn("Could not write to " .. storage_path)
   end
 end
 
@@ -962,6 +976,8 @@ end
 ---@param known_providers table<string, AvanteSupportedProvider>
 ---@return string|nil Model name
 ---@return string|nil Provider name
+---@return boolean|nil Override the configured startup provider
+---@see save_last_model
 function M.get_last_used_model(known_providers)
   local storage_path = get_config_file_path()
   local file = io.open(storage_path, "r")
@@ -976,7 +992,15 @@ function M.get_last_used_model(known_providers)
     end
 
     local success, data = pcall(vim.json.decode, content)
-    if not success or not data or not data.last_model or data.last_model == "" or data.last_provider == "" then
+    if
+      not success
+      or type(data) ~= "table"
+      or (type(data.last_model) ~= "string" and type(data.last_provider) ~= "string")
+      or (data.last_model ~= nil and type(data.last_model) ~= "string")
+      or (data.last_provider ~= nil and type(data.last_provider) ~= "string")
+      or data.last_model == ""
+      or data.last_provider == ""
+    then
       Utils.warn("Invalid or corrupt JSON in last used model file: " .. storage_path)
       -- Rename instead of deleting so user can examine contents
       os.rename(storage_path, storage_path .. ".bad")
@@ -993,27 +1017,30 @@ function M.get_last_used_model(known_providers)
         return
       end
       if data.provider_model and provider.model and provider.model ~= data.provider_model then
-        return provider.model, data.last_provider
+        return provider.model, data.last_provider, data.save_provider == true
       end
     end
 
-    return data.last_model, data.last_provider
+    return data.last_model, data.last_provider, data.save_provider == true
   end
 end
 
 ---Applies given model and provider to the config
 ---@param config avante.Config
----@param model_name string
+---@param model_name string|nil
 ---@param provider_name? string
 local function apply_model_selection(config, model_name, provider_name)
   local provider_list = config.providers or {}
   local current_provider_name = config.provider
-  if config.acp_providers[current_provider_name] then return end
-
   local target_provider_name = provider_name or current_provider_name
+  if config.acp_providers[target_provider_name] then
+    config.provider = target_provider_name
+    return
+  end
   local target_provider = provider_list[target_provider_name]
 
   if not target_provider then return end
+  model_name = model_name or target_provider.model
 
   local current_provider_data = provider_list[current_provider_name]
   local current_model_name = current_provider_data and current_provider_data.model
@@ -1191,9 +1218,10 @@ function M.setup(opts)
     }
   )
 
-  local last_model, last_provider = M.get_last_used_model(merged.providers or {})
-  if last_model then
-    if provider_configured then
+  local known_providers = vim.tbl_extend("force", merged.providers or {}, merged.acp_providers or {})
+  local last_model, last_provider, save_provider = M.get_last_used_model(known_providers)
+  if last_model or last_provider then
+    if provider_configured and not save_provider then
       if last_provider == nil or last_provider == merged.provider then apply_model_selection(merged, last_model) end
     else
       apply_model_selection(merged, last_model, last_provider)
