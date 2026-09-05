@@ -21,6 +21,7 @@ tiktoken-rs = { workspace = true }
 tokenizers = { workspace = true }
 
 [features]
+default = ["luajit"]
 lua51 = ["mlua/lua51"]
 lua52 = ["mlua/lua52"]
 lua53 = ["mlua/lua53"]
