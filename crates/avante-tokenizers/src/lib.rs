@@ -3,16 +3,16 @@ use mlua::prelude::*;
 use regex::Regex;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tiktoken_rs::{CoreBPE, get_bpe_from_model};
+use tiktoken_rs::{CoreBPE, bpe_for_model};
 use tokenizers::Tokenizer;
 
 struct Tiktoken {
-    bpe: CoreBPE,
+    bpe: &'static CoreBPE,
 }
 
 impl Tiktoken {
     fn new(model: &str) -> Self {
-        let bpe = get_bpe_from_model(model).unwrap();
+        let bpe = bpe_for_model(model).unwrap();
         Self { bpe }
     }
 
