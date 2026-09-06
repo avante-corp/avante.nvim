@@ -1032,56 +1032,6 @@ The following key bindings are available for use with `avante.nvim`:
 > If you are using `lazy.nvim`, then all keymap here will be safely set, meaning if `<leader>aa` is already binded, then avante.nvim won't bind this mapping.
 > In this case, user will be responsible for setting up their own. See [notes on keymaps](https://github.com/yetone/avante.nvim/wiki#keymaps-and-api-i-guess) for more details.
 
-### Neotree shortcut
-
-In the neotree sidebar, you can also add a new keyboard shortcut to quickly add `file/folder` to `Avante Selected Files`.
-
-<details>
-<summary>Neotree configuration</summary>
-
-```lua
-return {
-  {
-    'nvim-neo-tree/neo-tree.nvim',
-    config = function()
-      require('neo-tree').setup({
-        filesystem = {
-          commands = {
-            avante_add_files = function(state)
-              local node = state.tree:get_node()
-              local filepath = node:get_id()
-              local relative_path = require('avante.utils').relative_path(filepath)
-
-              local sidebar = require('avante').get()
-
-              local open = sidebar:is_open()
-              -- ensure avante sidebar is open
-              if not open then
-                require('avante.api').ask()
-                sidebar = require('avante').get()
-              end
-
-              sidebar.file_selector:add_selected_file(relative_path)
-
-              -- remove neo tree buffer
-              if not open then
-                sidebar.file_selector:remove_selected_file('neo-tree filesystem [1]')
-              end
-            end,
-          },
-          window = {
-            mappings = {
-              ['oa'] = 'avante_add_files',
-            },
-          },
-        },
-      })
-    end,
-  },
-}
-```
-
-</details>
 
 ## Commands
 
@@ -1429,21 +1379,20 @@ If you have the following structure:
 
 ## Integrations
 
-Avante.nvim can be extended to work with other plugins by using its extension modules. For instance with [`nvim-tree`](https://github.com/nvim-tree/nvim-tree.lua), see [the wiki](https://github.com/yetone/avante.nvim/wiki/plugin%E2%80%90integrations).
+Avante.nvim can be extended to work with other plugins by using its extension modules:
+- [`nvim-tree`](https://github.com/nvim-tree/nvim-tree.lua)
+- neotree
+
+See [the wiki](https://github.com/yetone/avante.nvim/wiki/plugin%E2%80%90integrations) for details.
 
 ## TODOs
 
-- [x] Chat with current file
-- [x] Apply diff patch
 - [x] Chat with the selected block
-- [x] Slash commands
 - [x] Edit the selected block
 - [x] Smart Tab (Cursor Flow)
 - [x] Chat with project (You can use `@codebase` to chat with the whole project)
-- [x] Chat with selected files
-- [x] Tool use
-- [x] MCP
-- [x] ACP
+- [ ] better debugging capabilities (for prompts notably)
+- [ ] provide an helper to report bugs more effectively
 - [ ] Better codebase indexing
 
 ## Roadmap
