@@ -24,6 +24,27 @@
 
 <https://github.com/user-attachments/assets/86140bfd-08b4-483d-a887-1b701d9e37dd>
 
+## Table of contents
+
+- [Features](#features)
+- [Avante Zen Mode](#avante-zen-mode)
+- [Project instructions](#project-instructions-with-avantemd)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Key Bindings](#key-bindings)
+- [Commands](#commands)
+- [Highlight Groups](#highlight-groups)
+- [Fast Apply](#fast-apply)
+- [ACP Support](#acp-support)
+- [RAG Service](#rag-service)
+- [Web Search Engines](#web-search-engines)
+- [Custom Tools](#custom-tools)
+- [MCP](#mcp)
+- [Integrations](#integrations)
+- [FAQ](#faq)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Sponsorship ❤️
 
 If you like this project, please consider supporting me on Patreon, as it helps me to continue maintaining and improving it:
