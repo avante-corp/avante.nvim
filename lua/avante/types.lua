@@ -367,7 +367,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field on_error? fun(result: table<string, any>): nil
 ---@field transform_tool? fun(self: AvanteProviderFunctor, tool: AvanteLLMTool, use_prefix?: boolean): AvanteOpenAITool | AvanteClaudeTool
 ---@field get_rate_limit_sleep_time? fun(self: AvanteProviderFunctor, headers: table<string, string>): integer | nil
----@field list_models? fun(self): AvanteProviderModelList | nil
+---@field list_models? fun(self, timeout?: integer): AvanteProviderModelList | nil
 ---
 ---@alias AvanteBedrockPayloadBuilder fun(self: AvanteBedrockModelHandler | AvanteBedrockProviderFunctor, prompt_opts: AvantePromptOptions, request_body: table<string, any>): table<string, any>
 ---

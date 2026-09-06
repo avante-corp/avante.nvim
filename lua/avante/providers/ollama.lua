@@ -349,11 +349,12 @@ local function query_models(opts, timeout)
 end
 
 -- List available models using Ollama's tags API
-function M:list_models()
+---@param timeout? integer Timeout in milliseconds
+function M:list_models(timeout)
   -- Return cached models if available
   if self._model_list_cache then return self._model_list_cache end
 
-  local result, error = query_models(self)
+  local result, error = query_models(self, timeout)
   if not result then
     assert(error)
     Utils.error(error)

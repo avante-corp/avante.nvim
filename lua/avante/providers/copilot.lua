@@ -251,7 +251,8 @@ function M:is_disable_stream() return false end
 
 setmetatable(M, { __index = OpenAI })
 
-function M:list_models()
+---@param timeout? integer Timeout in milliseconds, overriding the provider configuration
+function M:list_models(timeout)
   if M._model_list_cache then return M._model_list_cache end
   if not M._is_setup then M.setup() end
   -- refresh token synchronously, only if it has expired
@@ -261,7 +262,7 @@ function M:list_models()
   local headers = self:build_headers()
   local curl_opts = {
     headers = Utils.tbl_override(headers, self.extra_headers),
-    timeout = provider_conf.timeout,
+    timeout = timeout or provider_conf.timeout,
     proxy = provider_conf.proxy,
     insecure = provider_conf.allow_insecure,
   }

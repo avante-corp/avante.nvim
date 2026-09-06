@@ -51,8 +51,9 @@ function M.is_openrouter(url) return url:match("^https://openrouter%.ai/") end
 function M.is_mistral(url) return url:match("^https://api%.mistral%.ai/") end
 
 ---Asking remote provider to list available models
+---@param timeout? integer Timeout in milliseconds, overriding the provider configuration
 ---@return AvanteProviderModelList
-function M:list_models()
+function M:list_models(timeout)
   Utils.info("Asking remote for available models")
   if self == nil or self == M then
     local ok, provider = pcall(function() return Providers[Config.provider] end)
@@ -86,7 +87,7 @@ function M:list_models()
     headers = Utils.tbl_override(headers, self.extra_headers),
     proxy = provider_conf.proxy,
     insecure = provider_conf.allow_insecure,
-    timeout = provider_conf.timeout,
+    timeout = timeout or provider_conf.timeout,
   })
 
   if response.status ~= 200 then
