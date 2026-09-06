@@ -736,8 +736,9 @@ Commands (:AvanteAsk,...)                                      *avante-commands*
          Toggle the Avante sidebar.
 
                                                      *:AvanteModels*
- :AvanteModels
-         Show the model list. See |avante-api.select_model|
+ :AvanteModels [--all] [timeout]
+         Show the model list, optionally querying all providers and overriding
+         the model-list timeout in milliseconds. See |avante-api.select_model|
 
                                                      *:AvanteACPModels*
  :AvanteACPModels
@@ -3657,7 +3658,10 @@ M.on_error({result})                          *avante-providers-ollama.on_error*
         {result}  (table)
 
 
-M:list_models()                            *avante-providers-ollama:list_models*
+M:list_models({timeout?})                  *avante-providers-ollama:list_models*
+
+    Parameters: ~
+        {timeout?}  (integer)  Timeout in milliseconds
 
 
 M.check_endpoint_alive()          *avante-providers-ollama.check_endpoint_alive*
@@ -3695,8 +3699,11 @@ M.is_mistral()                              *avante-providers-openai.is_mistral*
         (boolean)
 
 
-M:list_models()                            *avante-providers-openai:list_models*
+M:list_models({timeout?})                  *avante-providers-openai:list_models*
     Asking remote provider to list available models
+
+    Parameters: ~
+        {timeout?}  (integer)  Timeout in milliseconds, overriding the provider configuration
 
     Returns: ~
         (AvanteProviderModelList)

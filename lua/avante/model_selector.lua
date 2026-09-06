@@ -15,8 +15,9 @@ local list_models_cached_result = {}
 --- Calls provider's list_models and caches result
 ---@param provider_name string
 ---@param provider_cfg table
+---@param timeout? integer Timeout in milliseconds
 ---@return table
-local function create_model_entries(provider_name, provider_cfg)
+local function create_model_entries(provider_name, provider_cfg, timeout)
   local res = {}
   if provider_cfg.list_models then
     local models
@@ -28,7 +29,7 @@ local function create_model_entries(provider_name, provider_cfg)
       if cached_result then
         models = cached_result
       else
-        models = provider_cfg:list_models()
+        models = provider_cfg:list_models(timeout)
         list_models_cached_result[cache_key] = models
       end
     else
@@ -81,8 +82,9 @@ local function create_model_entries(provider_name, provider_cfg)
 end
 
 ---Open a modal to select a specific model
----@param all? boolean loop over all providers if true
-function M.open(all)
+---@param all? boolean Loop over all providers if true
+---@param timeout? integer Timeout in milliseconds for listing models
+function M.open(all, timeout)
   M.list_models_invoked = {}
   M.list_models_returned = {}
   local models = {}
@@ -96,7 +98,7 @@ function M.open(all)
     if not provider_cfg then goto continue end
     if provider_cfg.hide_in_model_selector then goto continue end
     if not provider_cfg.is_env_set() then goto continue end
-    local entries = create_model_entries(provider_name, provider_cfg)
+    local entries = create_model_entries(provider_name, provider_cfg, timeout)
     models = vim.list_extend(models, entries)
     ::continue::
   end

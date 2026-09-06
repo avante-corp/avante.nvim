@@ -196,15 +196,27 @@ api.nvim_create_user_command("AvanteShowRepoMap", function() require("avante.rep
   desc = "avante: show repo map",
   nargs = 0,
 })
-api.nvim_create_user_command(
-  "AvanteModels",
-  function(opts) require("avante.model_selector").open(opts.args == "--all") end,
-  {
-    desc = "avante: show models",
-    nargs = "?",
-    complete = function() return { "--all" } end,
-  }
-)
+api.nvim_create_user_command("AvanteModels", function(opts)
+  local all = false
+  local timeout
+  for _, arg in ipairs(opts.fargs) do
+    if arg == "--all" and not all then
+      all = true
+    else
+      local value = tonumber(arg)
+      if timeout ~= nil or not value or value <= 0 or value % 1 ~= 0 then
+        Utils.error("Invalid arguments. Usage: AvanteModels [--all] [timeout]")
+        return
+      end
+      timeout = value
+    end
+  end
+  require("avante.model_selector").open(all, timeout)
+end, {
+  desc = "avante: show models",
+  nargs = "*",
+  complete = function() return { "--all" } end,
+})
 api.nvim_create_user_command("AvanteACPModels", function() require("avante.api").select_acp_model() end, {
   desc = "avante: switch ACP model",
   nargs = 0,

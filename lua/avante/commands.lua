@@ -68,8 +68,9 @@
 ---         Toggle the Avante sidebar.
 ---
 ---                                                     *:AvanteModels*
---- :AvanteModels
----         Show the model list. See |avante-api.select_model|
+--- :AvanteModels [--all] [timeout]
+---         Show the model list, optionally querying all providers and overriding
+---         the model-list timeout in milliseconds. See |avante-api.select_model|
 ---
 ---                                                     *:AvanteACPModels*
 --- :AvanteACPModels
