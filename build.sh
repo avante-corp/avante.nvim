@@ -2,7 +2,7 @@
 
 set -e
 
-REMOTE_URL="${1:-https://github.com/yetone/avante.nvim.git}"
+REMOTE_URL="${1:-https://github.com/avante-corp/avante.nvim.git}"
 
 if [[ "$REMOTE_URL" == *"github.com"* ]]; then
   tmp="${REMOTE_URL#*github.com[:/]}"
@@ -10,7 +10,7 @@ if [[ "$REMOTE_URL" == *"github.com"* ]]; then
   REPO_OWNER="${tmp%/*}"
   REPO_NAME="${tmp#*/}"
 else
-  REPO_OWNER="yetone"
+  REPO_OWNER="avante-corp"
   REPO_NAME="avante.nvim"
 fi
 
@@ -82,7 +82,7 @@ if [ ! -d "$TARGET_DIR" ]; then
 fi
 
 fetch_remote_tags
-latest_tag="$(git describe --tags --abbrev=0 --match "v*" || true)" # will be empty in clone repos
+latest_tag="$(git tag -l 'v*' --sort=-version:refname | head -n1 || true)"
 built_tag="$(cat "${TARGET_DIR}/.tag" 2>/dev/null || true)"
 
 save_tag() {
@@ -95,8 +95,7 @@ elif [[ "$latest_tag" != "$built_tag" && -n "$latest_tag" ]]; then
   echo "Local build is out of date $built_tag. Downloading latest $latest_tag."
 
   # Get the artifact download URL
-  DOWNLOAD_URL=$(curl -sSL "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/tags/$latest_tag" | grep "browser_download_url")
-  ARTIFACT_URL=$(echo "$DOWNLOAD_URL" | cut -d '"' -f 4 | grep "$ARTIFACT_NAME_PATTERN")
+  ARTIFACT_URL="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$latest_tag/avante_lib-$PLATFORM-$ARCH-$LUA_VERSION.tar.gz"
 
   mkdir -p "$TARGET_DIR"
 
