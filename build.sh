@@ -82,7 +82,7 @@ if [ ! -d "$TARGET_DIR" ]; then
 fi
 
 fetch_remote_tags
-latest_tag="$(git tag -l 'v*' --sort=-version:refname | head -n1 || true)"
+latest_tag="$(git tag -l 'v*' --sort=-version:refname --no-column | head -n1 || true)"
 built_tag="$(cat "${TARGET_DIR}/.tag" 2>/dev/null || true)"
 
 save_tag() {
