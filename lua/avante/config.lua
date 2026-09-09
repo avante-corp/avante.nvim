@@ -648,6 +648,12 @@ M._defaults = {
         max_tokens = 4096, -- to avoid using the unsupported max_completion_tokens
       },
     },
+    orcarouter = {
+      __inherited_from = "openai",
+      endpoint = "https://api.orcarouter.ai/v1",
+      model = "orcarouter/auto",
+      api_key_name = "ORCAROUTER_API_KEY",
+    },
   },
   ---Specify the special dual_boost mode
   ---1. enabled: Whether to enable dual_boost mode. Default to false.
