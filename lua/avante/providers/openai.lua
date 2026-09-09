@@ -900,7 +900,7 @@ function M:parse_curl_args(prompt_opts)
       end
     end
 
-    if has_function_outputs and self.last_response_id then
+    if has_function_outputs and self.last_response_id and provider_conf.support_previous_response_id then
       -- When sending function outputs, use previous_response_id
       base_body.previous_response_id = self.last_response_id
       -- Only send the function outputs, not the full history
