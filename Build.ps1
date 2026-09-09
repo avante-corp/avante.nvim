@@ -146,7 +146,7 @@ function Main {
 
         $latestTag = $null
         try {
-            $latestTag = git describe --tags --abbrev=0 --match "v*" 2>$null
+            $latestTag = git tag --sort=-version:refname | Where-Object { $_ -like "v*" } | Select-Object -First 1
         } catch {
             $latestTag = $null
         }
