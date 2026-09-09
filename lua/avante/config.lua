@@ -939,6 +939,7 @@ local function get_config_file_path() return vim.fs.joinpath(get_config_dir_path
 
 --- Function to save the last used model
 ---@param model_name string
+---@param provider_name string
 function M.save_last_model(model_name, provider_name)
   local config_dir = get_config_dir_path()
   local storage_path = get_config_file_path()
@@ -962,6 +963,7 @@ end
 ---@param known_providers table<string, AvanteSupportedProvider>
 ---@return string|nil Model name
 ---@return string|nil Provider name
+---@see save_last_model
 function M.get_last_used_model(known_providers)
   local storage_path = get_config_file_path()
   local file = io.open(storage_path, "r")
@@ -1196,6 +1198,7 @@ function M.setup(opts)
     if provider_configured then
       if last_provider == nil or last_provider == merged.provider then apply_model_selection(merged, last_model) end
     else
+      Utils.debug("Loaded model choice from saved state")
       apply_model_selection(merged, last_model, last_provider)
     end
   end

@@ -33,8 +33,15 @@ function M.switch_input_provider(target_provider)
   })
 end
 
----@param target avante.ProviderName
-function M.switch_provider(target) require("avante.providers").refresh(target) end
+---@param provider_name avante.ProviderName the provider to switch to
+---@param save_choice boolean save the choice or not ?
+function M.switch_provider(provider_name, save_choice)
+  require("avante.providers").refresh(provider_name)
+  if save_choice then
+    -- TODO find model
+    Config.save_last_model(nil, provider_name)
+  end
+end
 
 ---@param path string
 local function to_windows_path(path)
