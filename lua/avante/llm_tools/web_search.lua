@@ -21,7 +21,6 @@
 
 local Config = require("avante.config")
 local Utils = require("avante.utils")
-local curl = require("plenary.curl")
 
 ---@alias WebSearchProviderName
 ---| '"tavily"'
@@ -62,40 +61,49 @@ local function encode_query(query_params)
   return query_string
 end
 
----@param resp { status: integer, body: string }
+---@param resp { body: string }
 ---@param formatter WebSearchResponseFormatter
 ---@return string? result
 ---@return string? error
-local function format_response(resp, formatter)
-  if resp.status ~= 200 then return nil, "Error: " .. resp.body end
-  return formatter(vim.json.decode(resp.body))
-end
+local function format_response(resp, formatter) return formatter(vim.json.decode(resp.body)) end
 
----@param opts table
-local function add_proxy(opts)
-  if Config.web_search_engine.proxy then opts.proxy = Config.web_search_engine.proxy end
-  return opts
+---@param method string
+---@param url string
+---@param request_opts table
+---@param opts AvanteLLMToolFuncOpts
+---@param formatter WebSearchResponseFormatter
+local function request(method, url, request_opts, opts, formatter)
+  if Config.web_search_engine.proxy then return nil, "web_search_engine.proxy is not supported by vim.net" end
+  --- TODO: Remove this suppression when the vendored Neovim 0.12 runtime annotations include the method overload.
+  ---@diagnostic disable-next-line: redundant-parameter, param-type-mismatch
+  vim.net.request(method, url, request_opts, function(err, resp)
+    if err then
+      opts.on_complete(nil, err)
+      return
+    end
+    assert(resp)
+    local result, format_err = format_response(resp, formatter)
+    opts.on_complete(result, format_err)
+  end)
+  return nil, nil
 end
 
 ---@type AvanteLLMToolFunc<{ query: string }>
+---Expects TAVILY_API_KEY in environment
 local function web_search_tavily_func(input, opts)
   log_search("tavily", input, opts)
   local api_key, api_key_err = get_api_key("TAVILY_API_KEY")
   if not api_key then return nil, api_key_err end
-  local resp = curl.post(
-    "https://api.tavily.com/search",
-    add_proxy({
-      headers = {
-        ["Content-Type"] = "application/json",
-        ["Authorization"] = "Bearer " .. api_key,
-      },
-      body = vim.json.encode({
-        query = input.query,
-        include_answer = "basic",
-      }),
-    })
-  )
-  return format_response(resp, function(body) return body.answer, nil end)
+  return request("POST", "https://api.tavily.com/search", {
+    headers = {
+      ["Content-Type"] = "application/json",
+      ["Authorization"] = "Bearer " .. api_key,
+    },
+    body = vim.json.encode({
+      query = input.query,
+      include_answer = "basic",
+    }),
+  }, opts, function(body) return body.answer, nil end)
 end
 
 ---@type AvanteLLMToolFunc<{ query: string }>
@@ -111,33 +119,35 @@ local function web_search_serpapi_func(input, opts)
     engine = "google",
     google_domain = "google.com",
   })
-  local resp = curl.get(
+  return request(
+    "GET",
     "https://serpapi.com/search?" .. query,
-    add_proxy({
+    {
       headers = { ["Content-Type"] = "application/json" },
-    })
-  )
-  return format_response(resp, function(body)
-    if body.answer_box ~= nil and body.answer_box.result ~= nil then return body.answer_box.result, nil end
-    if body.organic_results ~= nil then
-      local results = vim
-        .iter(body.organic_results)
-        :map(
-          function(result)
-            return {
-              title = result.title,
-              link = result.link,
-              snippet = result.snippet,
-              date = result.date,
-            }
-          end
-        )
-        :take(10)
-        :totable()
-      return vim.json.encode(results), nil
+    },
+    opts,
+    function(body)
+      if body.answer_box ~= nil and body.answer_box.result ~= nil then return body.answer_box.result, nil end
+      if body.organic_results ~= nil then
+        local results = vim
+          .iter(body.organic_results)
+          :map(
+            function(result)
+              return {
+                title = result.title,
+                link = result.link,
+                snippet = result.snippet,
+                date = result.date,
+              }
+            end
+          )
+          :take(10)
+          :totable()
+        return vim.json.encode(results), nil
+      end
+      return "", nil
     end
-    return "", nil
-  end)
+  )
 end
 
 ---@type AvanteLLMToolFunc<{ query: string }>
@@ -150,33 +160,35 @@ local function web_search_searchapi_func(input, opts)
     q = input.query,
     engine = "google",
   })
-  local resp = curl.get(
+  return request(
+    "GET",
     "https://searchapi.io/api/v1/search?" .. query,
-    add_proxy({
+    {
       headers = { ["Content-Type"] = "application/json" },
-    })
-  )
-  return format_response(resp, function(body)
-    if body.answer_box ~= nil then return body.answer_box.result, nil end
-    if body.organic_results ~= nil then
-      local results = vim
-        .iter(body.organic_results)
-        :map(
-          function(result)
-            return {
-              title = result.title,
-              link = result.link,
-              snippet = result.snippet,
-              date = result.date,
-            }
-          end
-        )
-        :take(10)
-        :totable()
-      return vim.json.encode(results), nil
+    },
+    opts,
+    function(body)
+      if body.answer_box ~= nil then return body.answer_box.result, nil end
+      if body.organic_results ~= nil then
+        local results = vim
+          .iter(body.organic_results)
+          :map(
+            function(result)
+              return {
+                title = result.title,
+                link = result.link,
+                snippet = result.snippet,
+                date = result.date,
+              }
+            end
+          )
+          :take(10)
+          :totable()
+        return vim.json.encode(results), nil
+      end
+      return "", nil
     end
-    return "", nil
-  end)
+  )
 end
 
 ---@type AvanteLLMToolFunc<{ query: string }>
@@ -196,31 +208,33 @@ local function web_search_google_func(input, opts)
     cx = engine_id,
     q = input.query,
   })
-  local resp = curl.get(
+  return request(
+    "GET",
     "https://www.googleapis.com/customsearch/v1?" .. query,
-    add_proxy({
+    {
       headers = { ["Content-Type"] = "application/json" },
-    })
-  )
-  return format_response(resp, function(body)
-    if body.items ~= nil then
-      local results = vim
-        .iter(body.items)
-        :map(
-          function(result)
-            return {
-              title = result.title,
-              link = result.link,
-              snippet = result.snippet,
-            }
-          end
-        )
-        :take(10)
-        :totable()
-      return vim.json.encode(results), nil
+    },
+    opts,
+    function(body)
+      if body.items ~= nil then
+        local results = vim
+          .iter(body.items)
+          :map(
+            function(result)
+              return {
+                title = result.title,
+                link = result.link,
+                snippet = result.snippet,
+              }
+            end
+          )
+          :take(10)
+          :totable()
+        return vim.json.encode(results), nil
+      end
+      return "", nil
     end
-    return "", nil
-  end)
+  )
 end
 
 ---@type AvanteLLMToolFunc<{ query: string }>
@@ -229,35 +243,37 @@ local function web_search_kagi_func(input, opts)
   local api_key, api_key_err = get_api_key("KAGI_API_KEY")
   if not api_key then return nil, api_key_err end
   local query = encode_query({ q = input.query, limit = "10" })
-  local resp = curl.get(
+  return request(
+    "GET",
     "https://kagi.com/api/v0/search?" .. query,
-    add_proxy({
+    {
       headers = {
         ["Authorization"] = "Bot " .. api_key,
         ["Content-Type"] = "application/json",
       },
-    })
-  )
-  return format_response(resp, function(body)
-    if body.data ~= nil then
-      local results = vim
-        .iter(body.data)
-        :filter(function(result) return result.t == 0 end)
-        :map(
-          function(result)
-            return {
-              title = result.title,
-              url = result.url,
-              snippet = result.snippet,
-            }
-          end
-        )
-        :take(10)
-        :totable()
-      return vim.json.encode(results), nil
+    },
+    opts,
+    function(body)
+      if body.data ~= nil then
+        local results = vim
+          .iter(body.data)
+          :filter(function(result) return result.t == 0 end)
+          :map(
+            function(result)
+              return {
+                title = result.title,
+                url = result.url,
+                snippet = result.snippet,
+              }
+            end
+          )
+          :take(10)
+          :totable()
+        return vim.json.encode(results), nil
+      end
+      return "", nil
     end
-    return "", nil
-  end)
+  )
 end
 
 ---@type AvanteLLMToolFunc<{ query: string }>
@@ -267,28 +283,30 @@ local function web_search_brave_func(input, opts)
   local api_key, api_key_err = get_api_key("BRAVE_API_KEY")
   if not api_key then return nil, api_key_err end
   local query = encode_query({ q = input.query, count = "10", result_filter = "web" })
-  local resp = curl.get(
+  return request(
+    "GET",
     "https://api.search.brave.com/res/v1/web/search?" .. query,
-    add_proxy({
+    {
       headers = {
         ["Content-Type"] = "application/json",
         ["X-Subscription-Token"] = api_key,
       },
-    })
+    },
+    opts,
+    function(body)
+      if body.web == nil then return "", nil end
+      local results = vim.iter(body.web.results):map(
+        function(result)
+          return {
+            title = result.title,
+            url = result.url,
+            snippet = result.description,
+          }
+        end
+      )
+      return vim.json.encode(results), nil
+    end
   )
-  return format_response(resp, function(body)
-    if body.web == nil then return "", nil end
-    local results = vim.iter(body.web.results):map(
-      function(result)
-        return {
-          title = result.title,
-          url = result.url,
-          snippet = result.description,
-        }
-      end
-    )
-    return vim.json.encode(results), nil
-  end)
 end
 
 ---@type AvanteLLMToolFunc<{ query: string }>
@@ -297,22 +315,25 @@ local function web_search_searxng_func(input, opts)
   local api_url = Utils.environment.parse("SEARXNG_API_URL")
   if api_url == nil or api_url == "" then return nil, "Environment variable SEARXNG_API_URL is not set" end
   local query = encode_query({ q = input.query, format = "json" })
-  local resp = curl.get(api_url .. "?" .. query, {
-    headers = { ["Content-Type"] = "application/json" },
-  })
-  return format_response(resp, function(body)
-    if body.results == nil then return "", nil end
-    local results = vim.iter(body.results):map(
-      function(result)
-        return {
-          title = result.title,
-          url = result.url,
-          snippet = result.content,
-        }
-      end
-    )
-    return vim.json.encode(results), nil
-  end)
+  return request(
+    "GET",
+    api_url .. "?" .. query,
+    { headers = { ["Content-Type"] = "application/json" } },
+    opts,
+    function(body)
+      if body.results == nil then return "", nil end
+      local results = vim.iter(body.results):map(
+        function(result)
+          return {
+            title = result.title,
+            url = result.url,
+            snippet = result.content,
+          }
+        end
+      )
+      return vim.json.encode(results), nil
+    end
+  )
 end
 
 ---@param provider WebSearchProviderName
