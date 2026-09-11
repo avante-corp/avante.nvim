@@ -108,13 +108,22 @@
         let
           pythonSet = ragPythonSets.${system};
           ragService = (pythonSet.mkVirtualEnv "rag-service-env" ragWorkspace.deps.default).overrideAttrs (
-            old: {
-              venvIgnoreCollisions = [
-                "bin/fastapi"
-                "bin/llama-parse"
+              old: {
+                venvIgnoreCollisions = [
+                  "bin/fastapi"
+                    "bin/llama-parse"
+
+                ];
+              venvSkip = [
+                "bin/huggingface-cli"
+                "bin/chroma"
               ];
+              postInstall = (old.postInstall or "") + ''
+                # This application does not need shell activation scripts.
+                rm -f "$out"/bin/activate "$out"/bin/activate.* "$out"/bin/Activate.ps1
+              '';
               meta = (old.meta or { }) // {
-                mainProgram = "rag-service";
+                mainProgram = "avante-rag-service";
               };
             }
           );
