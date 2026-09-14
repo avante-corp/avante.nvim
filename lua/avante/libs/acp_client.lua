@@ -645,6 +645,8 @@ function ACPClient:_handle_notification(message_id, method, params)
     self:_handle_read_text_file(message_id, params)
   elseif method == "fs/write_text_file" then
     self:_handle_write_text_file(message_id, params)
+  elseif method == "_auth/status_update" then
+    return
   else
     vim.notify("Unknown notification method: " .. method, vim.log.levels.WARN)
   end
