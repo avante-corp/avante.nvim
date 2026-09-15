@@ -159,4 +159,71 @@ describe("Parallel web search", function()
     assert.is_nil(output)
     assert.equals("MCPHub's Avante tool is unavailable", err)
   end)
+
+  it("keeps a session across sidebar submissions, resumed history, and clear/new chat boundaries", function()
+    -- This test exercises submission state without mounting NUI windows.
+    local saved_modules = {}
+    for name, value in pairs({ ["nui.split"] = {}, ["nui.utils.autocmd"] = { event = {} } }) do
+      saved_modules[name] = { loaded = package.loaded[name], preload = package.preload[name] }
+      package.loaded[name] = value
+    end
+    local original_sidebar = package.loaded["avante.sidebar"]
+    package.loaded["avante.sidebar"] = nil
+    local Sidebar = require("avante.sidebar")
+    package.loaded["avante.sidebar"] = original_sidebar
+    for name, value in pairs(saved_modules) do
+      package.loaded[name], package.preload[name] = value.loaded, value.preload
+    end
+
+    local Llm = require("avante.llm")
+    local Path = require("avante.path")
+    local streams, saved = {}, nil
+    local stream = stub(Llm, "stream", function(opts) streams[#streams + 1] = opts end)
+    local save = stub(Path.history, "save", function(_, history) saved = vim.deepcopy(history) end)
+    local sidebar = setmetatable({
+      code = { bufnr = vim.api.nvim_get_current_buf() },
+      containers = { result = { bufnr = vim.api.nvim_get_current_buf() } },
+      chat_history = { filename = "0.json", messages = {}, entries = {} },
+      file_selector = { get_selected_filepaths = function() return {} end },
+      update_content = function() end,
+      update_content_with_history = function() end,
+      add_history_messages = function() end,
+      clear_state = function() end,
+      render_state = function() end,
+      reload_chat_history = function(self) self.chat_history = vim.deepcopy(saved) end,
+      get_generate_prompts_options = function(_, _, cb) cb({}) end,
+    }, { __index = Sidebar })
+    local function submit(query)
+      sidebar:handle_submit(query)
+      local output, err = Tools.process_tool_use({ WebSearch.web_search_parallel }, {
+        id = "submission",
+        name = "web_search_parallel",
+        input = { query = query },
+      }, { session_ctx = streams[#streams].session_ctx })
+      assert.is_nil(err)
+      assert.equals(result, output)
+      return calls[#calls].input.tool_input.session_id
+    end
+    local ok, failure = xpcall(function()
+      sidebar:handle_submit("Before searching")
+      assert.is_nil(saved) -- Optional search creates no session until it is called.
+      assert.is_nil(package.loaded[module_name])
+      local first = submit("Neovim")
+      assert.equals(first, submit("Neovim Lua"))
+      assert.are_not.equals(streams[2].session_ctx, streams[3].session_ctx)
+      sidebar:reload_chat_history()
+      assert.equals(first, submit("Resume Neovim"))
+      sidebar:clear_history()
+      local cleared = submit("Search after clearing")
+      assert.are_not.equals(first, cleared)
+      sidebar.chat_history = { filename = "1.json", messages = {}, entries = {} }
+      assert.are_not.equals(cleared, submit("Independent chat"))
+    end, debug.traceback)
+    stream:revert()
+    save:revert()
+    for _, key in ipairs({ "j", "k", "G" }) do
+      vim.keymap.del("n", key, { buffer = sidebar.containers.result.bufnr })
+    end
+    assert.is_true(ok, failure)
+  end)
 end)

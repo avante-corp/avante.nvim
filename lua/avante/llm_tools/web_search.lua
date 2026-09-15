@@ -329,9 +329,14 @@ local function web_search_parallel_func(input, opts)
   log_search("parallel", input, opts)
   local arguments = { objective = input.query, search_queries = { input.query } }
   if opts.session_ctx then
-    -- Keep related calls in the same session without sharing state between chats.
-    opts.session_ctx.parallel_search_session_id = opts.session_ctx.parallel_search_session_id or Utils.uuid()
-    arguments.session_id = opts.session_ctx.parallel_search_session_id
+    -- Sidebar contexts are per submission; use the chat's persisted session when available.
+    local ctx = opts.session_ctx
+    if ctx.get_parallel_search_session_id then
+      arguments.session_id = ctx.get_parallel_search_session_id()
+    else
+      ctx.parallel_search_session_id = ctx.parallel_search_session_id or Utils.uuid()
+      arguments.session_id = ctx.parallel_search_session_id
+    end
   end
   -- Reuse MCPHub's Avante tool so its approval policy and MCP lifecycle stay intact.
   for _, tool in ipairs({ mcp.mcp_tool() }) do
