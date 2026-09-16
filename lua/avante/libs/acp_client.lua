@@ -37,6 +37,7 @@
 ---@see avante-config
 local Config = require("avante.config")
 local Utils = require("avante.utils")
+local Log = require("avante.utils.log")
 
 ---@class avante.acp.ClientCapabilities
 ---@field fs avante.acp.FileSystemCapability
@@ -646,7 +647,7 @@ function ACPClient:_handle_notification(message_id, method, params)
   elseif method == "fs/write_text_file" then
     self:_handle_write_text_file(message_id, params)
   elseif method == "_auth/status_update" then
-    return
+    Log.debug("ACP auth identity:", params.authStatus)
   else
     vim.notify("Unknown notification method: " .. method, vim.log.levels.WARN)
   end
