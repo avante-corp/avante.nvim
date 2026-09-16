@@ -17,11 +17,34 @@ from avante_acp import vendor
 
 
 class FakeRouter:
+    """Mirrors acp.router.MessageRouter: two tables, dispatch picks exactly one.
+
+    A single dict here hid a live bug -- Cursor sends cursor/task as a request,
+    it was only in the notification table, and every call 404'd.
+    """
+
     def __init__(self):
-        self.routes = {}
+        self.requests = {}
+        self.notifications = {}
 
     def add_route(self, route):
-        self.routes[route.method] = route
+        table = self.requests if route.kind == "request" else self.notifications
+        table[route.method] = route
+
+    @property
+    def methods(self):
+        return set(self.requests) | set(self.notifications)
+
+    async def dispatch(self, method, params, is_notification):
+        table = self.notifications if is_notification else self.requests
+        route = table.get(method)
+        if route is None:
+            raise MethodNotFound(method)
+        return await route.func(params)
+
+
+class MethodNotFound(Exception):
+    pass
 
 
 class FakeConn:
@@ -51,17 +74,17 @@ def test_registers_cursors_non_underscore_methods():
     assert "cursor/ask_question" in registered
     assert "cursor/create_plan" in registered
     assert "cursor/update_todos" in registered
-    assert set(registered) == set(router.routes)
+    assert set(registered) == router.methods
 
 
-def test_blocking_methods_are_requests_and_the_rest_notifications():
+def test_every_vendor_method_is_reachable_in_both_forms():
+    # Cursor chooses request vs notification per call, so a route in only one
+    # table means a -32601 whenever it picks the other.
     router = FakeRouter()
-    vendor.register_vendor_routes(FakeConn(router), RecordingClient())
 
-    assert router.routes["cursor/ask_question"].kind == "request"
-    assert router.routes["cursor/create_plan"].kind == "request"
-    assert router.routes["cursor/update_todos"].kind == "notification"
-    assert router.routes["cursor/task"].kind == "notification"
+    registered = vendor.register_vendor_routes(FakeConn(router), RecordingClient())
+
+    assert set(registered) == set(router.requests) == set(router.notifications)
 
 
 async def test_routed_request_reaches_ext_method():
@@ -69,7 +92,7 @@ async def test_routed_request_reaches_ext_method():
     client = RecordingClient()
     vendor.register_vendor_routes(FakeConn(router), client)
 
-    result = await router.routes["cursor/ask_question"].func({"toolCallId": "c1"})
+    result = await router.dispatch("cursor/ask_question", {"toolCallId": "c1"}, is_notification=False)
 
     assert result == {"ok": True}
     assert client.requests == [("cursor/ask_question", {"toolCallId": "c1"})]
@@ -80,8 +103,23 @@ async def test_routed_notification_reaches_ext_notification():
     client = RecordingClient()
     vendor.register_vendor_routes(FakeConn(router), client)
 
-    assert await router.routes["cursor/task"].func({"description": "explore"}) is None
+    await router.dispatch("cursor/task", {"description": "explore"}, is_notification=True)
+
     assert client.notifications == [("cursor/task", {"description": "explore"})]
+
+
+async def test_informational_method_sent_as_a_request_is_answered():
+    # Cursor sends cursor/task and cursor/update_todos with an id; answering
+    # -32601 makes it abandon subagents and todo updates.
+    router = FakeRouter()
+    client = RecordingClient()
+    vendor.register_vendor_routes(FakeConn(router), client)
+
+    result = await router.dispatch("cursor/task", {"description": "explore"}, is_notification=False)
+
+    assert result == {}
+    assert client.notifications == [("cursor/task", {"description": "explore"})]
+    assert client.requests == []
 
 
 def test_unreachable_router_is_not_fatal():

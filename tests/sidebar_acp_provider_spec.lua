@@ -82,8 +82,25 @@ describe("sidebar acp provider", function()
       assert.is_true(sidebar:acp_connect_pending())
     end)
 
-    it("is false once the client is up", function()
-      local sidebar = make_sidebar({ _acp_connecting = "cursor", acp_client = {} })
+    it("is true while the session is still being created", function()
+      -- The client is assigned as soon as the agent answers initialize, but the
+      -- session is created or resumed after that. A prompt submitted here has
+      -- no session id and used to fail with "No ACP session ID".
+      local sidebar = make_sidebar({
+        _acp_connecting = "cursor",
+        acp_client = {},
+        chat_history = { acp_session_id = nil },
+      })
+
+      assert.is_true(sidebar:acp_connect_pending())
+    end)
+
+    it("is false once the client and session are up", function()
+      local sidebar = make_sidebar({
+        _acp_connecting = "cursor",
+        acp_client = {},
+        chat_history = { acp_session_id = "sess-1" },
+      })
 
       assert.is_false(sidebar:acp_connect_pending())
     end)

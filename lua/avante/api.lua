@@ -278,6 +278,9 @@ function M.select_history()
       local Path = require("avante.path")
       Path.history.save_latest_filename(buf, filename)
       local sidebar = require("avante").get()
+      -- Name the thread: a reload alone re-reads whatever the sidebar already
+      -- holds, which is the point everywhere except here.
+      sidebar:reload_chat_history({ force = true, filename = filename })
       sidebar:update_content_with_history()
       sidebar:create_plan_container()
       sidebar:initialize_token_count()
@@ -315,7 +318,9 @@ local function make_thread_open_callback(buf)
 
       -- Handle external ACP sessions (sessions created outside Avante)
       if external_session_id then
-        sidebar:reload_chat_history()
+        -- force: the user picked this thread, so it wins over whatever project
+        -- the in-memory thread belongs to.
+        sidebar:reload_chat_history({ force = true })
         sidebar.chat_history.acp_session_id = external_session_id
         if wd then sidebar.chat_history.working_directory = wd end
         Path.history.save(sidebar.code.bufnr, sidebar.chat_history)
@@ -332,10 +337,10 @@ local function make_thread_open_callback(buf)
       elseif history then
         Utils.warn("Thread contents could not be loaded; opening from disk instead")
         Path.history.save_latest_filename(sidebar.code.bufnr, history.filename)
-        sidebar:reload_chat_history()
+        sidebar:reload_chat_history({ force = true })
       else
         Path.history.save_latest_filename(sidebar.code.bufnr, filename)
-        sidebar:reload_chat_history()
+        sidebar:reload_chat_history({ force = true })
       end
 
       -- Restore selected files from history

@@ -255,6 +255,172 @@ describe("acp.elicitation", function()
   end)
 end)
 
+--- Answering in the float, which is what a user actually sees.
+---
+--- `prompt()` only draws the float when there is a UI, so these specs fake one;
+--- otherwise the whole float path — including every keymap — goes untested and
+--- only the `vim.ui.select` fallback above is exercised.
+describe("acp.elicitation float answers", function()
+  local Utils = require("avante.utils")
+  local input_stub, list_uis_stub, warn_stub, info_stub
+
+  before_each(function()
+    input_stub, list_uis_stub = vim.ui.input, vim.api.nvim_list_uis
+    warn_stub, info_stub = Utils.warn, Utils.info
+    Utils.warn, Utils.info = function() end, function() end
+    vim.api.nvim_list_uis = function() return { { chan = 1 } } end
+  end)
+
+  after_each(function()
+    vim.ui.input, vim.api.nvim_list_uis = input_stub, list_uis_stub
+    Utils.warn, Utils.info = warn_stub, info_stub
+    for _, win in ipairs(vim.api.nvim_list_wins()) do
+      if vim.api.nvim_win_get_config(win).relative ~= "" then pcall(vim.api.nvim_win_close, win, true) end
+    end
+  end)
+
+  local function feed(keys)
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(keys, true, false, true), "x", false)
+  end
+
+  ---Open the float and press `key`.
+  ---@return table[] replies, fun():integer answer_buf
+  local function choose(key)
+    local replies = {}
+    Elicitation.prompt(single_select_params(), function(answer) table.insert(replies, answer) end)
+    vim.wait(1000, function() return #vim.api.nvim_list_wins() > 1 end, 10)
+    feed(key)
+    vim.wait(1000, function() return #replies > 0 or vim.bo.bufhidden == "wipe" end, 10)
+    return replies
+  end
+
+  ---Type `text` into the answer window and send it.
+  local function type_answer(text)
+    vim.cmd("stopinsert")
+    vim.api.nvim_buf_set_lines(0, 0, -1, false, vim.split(text, "\n", { plain = true }))
+    feed("<CR>")
+    vim.wait(500, function() return false end, 10)
+  end
+
+  -- Choices are: Rewrite, Patch, "Type my own answer…", Skip.
+  local CUSTOM_KEY = "3"
+
+  it("sends the typed answer, once", function()
+    -- Choosing to type an answer closes the question float, and that close used
+    -- to fire the cancel path: the agent was told the question had been
+    -- dismissed before a word was typed, and the answer then arrived as a
+    -- second reply to a request already answered.
+    local replies = choose(CUSTOM_KEY)
+    assert.equals(0, #replies)
+
+    type_answer("my own answer")
+
+    assert.equals(1, #replies)
+    assert.equals("accept", replies[1].action)
+    assert.equals("my own answer", replies[1].content.question_0_custom)
+  end)
+
+  it("keeps a multi-line answer intact", function()
+    -- The cmdline prompt this replaced could not hold one at all.
+    local replies = choose(CUSTOM_KEY)
+
+    type_answer("first line\nsecond line")
+
+    assert.equals("first line\nsecond line", replies[1].content.question_0_custom)
+  end)
+
+  it("keeps the question on screen while it is answered", function()
+    choose(CUSTOM_KEY)
+
+    local marks = vim.api.nvim_buf_get_extmarks(0, -1, 0, -1, { details = true })
+    local shown = {}
+    for _, mark in ipairs(marks) do
+      for _, virt_line in ipairs((mark[4] or {}).virt_lines or {}) do
+        table.insert(shown, virt_line[1][1])
+      end
+    end
+
+    assert.is_not_nil(vim.iter(shown):find(function(line) return line:find("Which approach?", 1, true) end))
+  end)
+
+  it("grows as the answer gets longer", function()
+    choose(CUSTOM_KEY)
+    local win = vim.api.nvim_get_current_win()
+    local before = vim.api.nvim_win_get_height(win)
+
+    vim.api.nvim_buf_set_lines(0, 0, -1, false, { string.rep("x", 400) })
+    -- The API does not fire this; typing does.
+    vim.api.nvim_exec_autocmds("TextChanged", { buffer = vim.api.nvim_get_current_buf() })
+
+    assert.is_true(vim.api.nvim_win_get_height(win) > before)
+  end)
+
+  it("treats an abandoned answer as a skip, not a dismissal", function()
+    local replies = choose(CUSTOM_KEY)
+
+    vim.cmd("stopinsert")
+    feed("q")
+    vim.wait(500, function() return #replies > 0 end, 10)
+
+    assert.equals(1, #replies)
+    assert.equals("decline", replies[1].action)
+  end)
+
+  it("sends a listed choice", function()
+    local replies = choose("1")
+
+    assert.equals(1, #replies)
+    assert.equals("Rewrite", replies[1].content.question_0)
+  end)
+
+  local function floats()
+    return #vim.tbl_filter(
+      function(win) return vim.api.nvim_win_get_config(win).relative ~= "" end,
+      vim.api.nvim_list_wins()
+    )
+  end
+
+  it("replaces a question the agent asks a second time", function()
+    -- An agent gives a tool call about a minute before it gives up and asks
+    -- again. Left alone, every retry stacked another float over the last, each
+    -- one waiting on a call nobody was reading any more.
+    local first = {}
+    Elicitation.prompt(single_select_params(), function(answer) table.insert(first, answer) end)
+    vim.wait(1000, function() return floats() > 0 end, 10)
+
+    local second = {}
+    Elicitation.prompt(single_select_params(), function(answer) table.insert(second, answer) end)
+    vim.wait(1000, function() return #first > 0 and floats() > 0 end, 10)
+
+    assert.equals(1, #first)
+    assert.equals("cancel", first[1].action)
+    assert.equals(1, floats())
+    assert.equals(0, #second)
+  end)
+
+  it("takes the answer window with it when the question is replaced", function()
+    choose(CUSTOM_KEY)
+    local answer_win = vim.api.nvim_get_current_win()
+
+    Elicitation.prompt(single_select_params(), function() end)
+    vim.wait(1000, function() return not vim.api.nvim_win_is_valid(answer_win) end, 10)
+
+    assert.is_false(vim.api.nvim_win_is_valid(answer_win))
+  end)
+
+  it("still cancels when the float is dismissed", function()
+    local replies = {}
+    Elicitation.prompt(single_select_params(), function(answer) table.insert(replies, answer) end)
+    vim.wait(1000, function() return #vim.api.nvim_list_wins() > 1 end, 10)
+
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "x", false)
+    vim.wait(1000, function() return #replies > 0 end, 10)
+
+    assert.equals(1, #replies)
+    assert.equals("cancel", replies[1].action)
+  end)
+end)
+
 describe("acp.elicitation rendering", function()
   local Elicitation = require("avante.acp.elicitation")
 
@@ -382,6 +548,20 @@ describe("acp.elicitation rendering", function()
 
       assert.equals(2, #with) -- custom + skip
       assert.equals(1, #without) -- skip only
+    end)
+  end)
+
+  describe("answer window height", function()
+    it("counts one row per short line", function()
+      assert.equals(2, Elicitation._wrapped_height({ "one", "two" }, 40))
+    end)
+
+    it("counts the rows a long line wraps onto, so the window can grow", function()
+      assert.equals(3, Elicitation._wrapped_height({ string.rep("x", 90) }, 30))
+    end)
+
+    it("keeps an empty answer one row tall", function()
+      assert.equals(1, Elicitation._wrapped_height({ "" }, 30))
     end)
   end)
 end)

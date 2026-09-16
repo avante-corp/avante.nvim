@@ -16,6 +16,13 @@ Transport is MCP Streamable HTTP because that is what agents advertise
 is: this package ships one dependency, and what is needed here is one POST
 route and four methods. Streamable HTTP permits answering a POST with a plain
 JSON body, so none of the SSE machinery is required.
+
+The awkward part is that agents put a deadline on a tool call and a person is
+slower than it. cursor-agent abandons the call after about a minute and asks
+again, so holding the call open until the user answers guarantees the answer
+arrives too late to be read. Instead the call is answered before that deadline
+with "not answered yet", the question stays on screen, and the answer is handed
+to whichever retry is waiting when it finally comes.
 """
 
 from __future__ import annotations
@@ -24,6 +31,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import secrets
 from typing import Any
 
@@ -45,8 +53,31 @@ TOOL_NAME = "ask_user_question"
 #: Answered only when the agent sends no version of its own.
 MCP_PROTOCOL_VERSION = "2025-06-18"
 
-#: A question blocks on a human reading it, so it gets no deadline.
+#: A question blocks on a human reading it, so the window gets no deadline.
 NO_DEADLINE = 0.0
+
+def _deadline_from_env() -> float:
+    """How long one tool call waits before it reports the question still open.
+
+    Under the ~60s cursor-agent allows a tool call, so the agent reads our
+    answer rather than its own timeout. Zero waits as long as the user does,
+    for an agent patient enough to allow it.
+    """
+    try:
+        return max(0.0, float(os.environ.get("AVANTE_ACP_ASK_DEADLINE", "45")))
+    except ValueError:
+        return 45.0
+
+
+ASK_DEADLINE = _deadline_from_env()
+
+WAITING_TEXT = (
+    "The question is on the user's screen and they have not answered it yet. "
+    "Call ask_user_question again with the same questions to keep waiting: the "
+    "question already open is reused, so asking again does not interrupt the "
+    "user or show them a second copy. Do not guess the answer, and do not give "
+    "up and ask the same thing as prose instead."
+)
 
 #: Enough for any plausible question; a bound stops a malformed
 #: Content-Length from making us buffer without limit.
@@ -128,6 +159,10 @@ class AskServer:
         self.token = secrets.token_urlsafe(24)
         self.url: str | None = None
         self._server: asyncio.AbstractServer | None = None
+        # Questions currently on screen, and answers that arrived after the
+        # call that asked them had already given up, both keyed by question.
+        self._asking: dict[str, asyncio.Future[Any]] = {}
+        self._answers: dict[str, Any] = {}
 
     async def start(self) -> str:
         self._server = await asyncio.start_server(self._serve, host="127.0.0.1", port=0)
@@ -137,6 +172,11 @@ class AskServer:
         return self.url
 
     async def stop(self) -> None:
+        for pending in list(self._asking.values()):
+            pending.cancel()
+        self._asking.clear()
+        self._answers.clear()
+
         if self._server is None:
             return
         self._server.close()
@@ -260,22 +300,75 @@ class AskServer:
                 is_error=True,
             )
 
-        request = forms.build_form(questions)
-        try:
-            answer = await self._peer.request(
-                "ui/elicitation",
-                {"agentId": self._agent_id, **request},
-                timeout=NO_DEADLINE,
-            )
-        except RpcError as exc:
-            log.warning("ask_user_question could not reach Neovim (%s)", exc)
-            return _text_result(
-                "The question could not be shown to the user. Continue without an answer, "
-                "stating the assumption you are making.",
-                is_error=True,
-            )
+        key = _fingerprint(questions)
+        answer = self._answers.pop(key, None)
+
+        if answer is None:
+            try:
+                answer = await self._ask(key, questions)
+            except RpcError as exc:
+                log.warning("ask_user_question could not reach Neovim (%s)", exc)
+                return _text_result(
+                    "The question could not be shown to the user. Continue without an answer, "
+                    "stating the assumption you are making.",
+                    is_error=True,
+                )
+            if answer is None:
+                return _text_result(WAITING_TEXT)
 
         return _result_from_answer(answer or {}, questions)
+
+    async def _ask(self, key: str, questions: list[forms.Question]) -> Any:
+        """The user's answer, or None if they are still looking at the question.
+
+        Returning None leaves the window open and the request outstanding, so
+        the agent's next attempt at the same question waits on the same window
+        instead of stacking another one over it.
+        """
+        pending = self._asking.get(key)
+        if pending is None:
+            request = forms.build_form(questions)
+            pending = asyncio.ensure_future(
+                self._peer.request(
+                    "ui/elicitation",
+                    {"agentId": self._agent_id, **request},
+                    timeout=NO_DEADLINE,
+                )
+            )
+            self._asking[key] = pending
+            pending.add_done_callback(lambda done: self._keep(key, done))
+
+        try:
+            # Shielded: the deadline is this call's, not the question's.
+            answer = await asyncio.wait_for(asyncio.shield(pending), ASK_DEADLINE or None)
+        except asyncio.TimeoutError:
+            return None
+
+        # Taken here, so a later call does not answer itself with it.
+        self._answers.pop(key, None)
+        return answer
+
+    def _keep(self, key: str, pending: asyncio.Future[Any]) -> None:
+        """Hold an answer that outlived the call that asked for it."""
+        self._asking.pop(key, None)
+        if pending.cancelled() or pending.exception() is not None:
+            return
+
+        answer = pending.result()
+        # Only a real answer is worth replaying. Replaying a skip or a dismissal
+        # would answer a question the user never got to see.
+        if isinstance(answer, dict) and answer.get("action") == "accept":
+            self._answers[key] = answer
+
+
+def _fingerprint(questions: list[forms.Question]) -> str:
+    """What makes two calls the same question.
+
+    The prompts alone, not the options: an agent retrying after its own timeout
+    tends to reword the options as it goes, and counting that as a new question
+    would open a second window over the one the user is already reading.
+    """
+    return "\n".join(question.prompt.strip() for question in questions)
 
 
 def _questions_from(arguments: dict[str, Any]) -> list[forms.Question]:

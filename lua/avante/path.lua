@@ -10,12 +10,9 @@ local Config = require("avante.config")
 ---@field data_path Path
 local P = {}
 
----@param bufnr integer | nil
+---@param project_root string
 ---@return string dirname
-local function generate_project_dirname_in_storage(bufnr)
-  local project_root = Utils.root.get({
-    buf = bufnr,
-  })
+local function project_dirname_in_storage(project_root)
   -- Replace path separators with double underscores
   local path_with_separators = string.gsub(project_root, "/", "__")
   -- Replace other non-alphanumeric characters with single underscores
@@ -23,23 +20,37 @@ local function generate_project_dirname_in_storage(bufnr)
   return tostring(Path:new("projects"):joinpath(dirname))
 end
 
+---@param bufnr integer | nil
+---@return string dirname
+local function generate_project_dirname_in_storage(bufnr)
+  return project_dirname_in_storage(Utils.root.get({
+    buf = bufnr,
+  }))
+end
+
 local function filepath_to_filename(filepath) return tostring(filepath):sub(tostring(filepath:parent()):len() + 2) end
 
 -- History path
 local History = {}
 
-function History.get_history_dir(bufnr)
-  local dirname = generate_project_dirname_in_storage(bufnr)
+--- Directory holding a project's threads.
+---
+--- `project_root` names the project explicitly. Without it the root is derived
+--- from the buffer, which follows the cwd, so a `:cd` mid-conversation would
+--- point at a different project's directory.
+---@param bufnr integer
+---@param project_root? string
+function History.get_history_dir(bufnr, project_root)
+  local root = project_root or Utils.root.get({
+    buf = bufnr,
+  })
+  local dirname = project_dirname_in_storage(root)
   local history_dir = Path:new(Config.history.storage_path):joinpath(dirname):joinpath("history")
   if not history_dir:exists() then
     history_dir:mkdir({ parents = true })
 
     local metadata_filepath = history_dir:joinpath("metadata.json")
-    local metadata = {
-      project_root = Utils.root.get({
-        buf = bufnr,
-      }),
-    }
+    local metadata = { project_root = root }
     metadata_filepath:write(vim.json.encode(metadata), "w")
   end
   return history_dir
@@ -50,12 +61,16 @@ function History.list(bufnr)
   local history_dir = History.get_history_dir(bufnr)
   local files = vim.fn.glob(tostring(history_dir:joinpath("*.json")), true, true)
   local latest_filename = History.get_latest_filename(bufnr, false)
+  local project_root = Utils.root.get({ buf = bufnr })
   local res = {}
   for _, filename in ipairs(files) do
     if not filename:match("metadata.json") then
       local filepath = Path:new(filename)
       local history = History.from_file(filepath)
-      if history then table.insert(res, history) end
+      if history then
+        if not history.project_root then history.project_root = project_root end
+        table.insert(res, history)
+      end
     end
   end
   --- sort by timestamp
@@ -124,14 +139,32 @@ function History.get_latest_filepath(bufnr, new)
   return history_dir:joinpath(filename)
 end
 
-function History.get_filepath(bufnr, filename)
-  local history_dir = History.get_history_dir(bufnr)
+---@param bufnr integer
+---@param filename string
+---@param project_root? string
+function History.get_filepath(bufnr, filename, project_root)
+  local history_dir = History.get_history_dir(bufnr, project_root)
   return history_dir:joinpath(filename)
 end
 
-function History.get_metadata_filepath(bufnr)
-  local history_dir = History.get_history_dir(bufnr)
+---@param bufnr integer
+---@param project_root? string
+function History.get_metadata_filepath(bufnr, project_root)
+  local history_dir = History.get_history_dir(bufnr, project_root)
   return history_dir:joinpath("metadata.json")
+end
+
+---Highest thread number already used in a project.
+---@param history_dir Path
+---@return integer
+local function highest_thread_number(history_dir)
+  local files = vim.fn.glob(tostring(history_dir:joinpath("*.json")), true, true)
+  local highest = 0
+  for _, file in ipairs(files) do
+    local number = tonumber(tostring(file):match("(%d+)%.json$"))
+    if number and number > highest then highest = number end
+  end
+  return highest
 end
 
 function History.get_latest_filename(bufnr, new)
@@ -144,24 +177,31 @@ function History.get_latest_filename(bufnr, new)
     filename = metadata.latest_filename
   end
   if not filename or filename == "" then
-    local pattern = tostring(history_dir:joinpath("*.json"))
-    local files = vim.fn.glob(pattern, true, true)
-    filename = #files .. ".json"
-    if #files > 0 and not new then filename = (#files - 1) .. ".json" end
+    -- Threads are numbered, and the next name used to come from counting the
+    -- files. Deleting a thread left a hole, so the count pointed back at a
+    -- thread that already existed and the next one overwrote it. Number past
+    -- the highest instead.
+    local highest = highest_thread_number(history_dir)
+    filename = (new and highest + 1 or math.max(highest, 1)) .. ".json"
   end
   return filename
 end
 
-function History.save_latest_filename(bufnr, filename)
-  local metadata_filepath = History.get_metadata_filepath(bufnr)
+---@param bufnr integer
+---@param filename string
+---@param project_root? string
+function History.save_latest_filename(bufnr, filename, project_root)
+  local metadata_filepath = History.get_metadata_filepath(bufnr, project_root)
   local metadata = {}
   if metadata_filepath:exists() then
     local metadata_content = metadata_filepath:read()
     metadata = vim.json.decode(metadata_content)
   end
-  if metadata.project_root == nil then metadata.project_root = Utils.root.get({
-    buf = bufnr,
-  }) end
+  if metadata.project_root == nil then
+    metadata.project_root = project_root or Utils.root.get({
+      buf = bufnr,
+    })
+  end
   metadata.latest_filename = filename
   metadata_filepath:write(vim.json.encode(metadata), "w")
 end
@@ -169,8 +209,9 @@ end
 ---Save last-session info to metadata (working directory, selected files)
 ---@param bufnr integer
 ---@param session_info { working_directory?: string, selected_files?: string[] }
-function History.save_last_session(bufnr, session_info)
-  local metadata_filepath = History.get_metadata_filepath(bufnr)
+---@param project_root? string
+function History.save_last_session(bufnr, session_info, project_root)
+  local metadata_filepath = History.get_metadata_filepath(bufnr, project_root)
   local metadata = {}
   if metadata_filepath:exists() then
     local ok, content = pcall(function() return metadata_filepath:read() end)
@@ -198,7 +239,7 @@ end
 
 ---@param bufnr integer
 function History.new(bufnr)
-  local filepath = History.get_latest_filepath(bufnr, true)
+  local history_dir = History.get_history_dir(bufnr)
   ---@type avante.ChatHistory
   local history = {
     title = "untitled",
@@ -207,10 +248,28 @@ function History.new(bufnr)
     messages = {},
     todos = {},
     tags = {},
-    filename = filepath_to_filename(filepath),
+    filename = "",
     working_directory = vim.fn.getcwd(),
+    project_root = Utils.root.get({ buf = bufnr }),
     avante_mode = nil,
   }
+
+  -- Claim the file now, exclusively. A new thread used to live only in memory
+  -- until its first message was saved, so a second Neovim in the same project
+  -- picked the same number and the two sessions ended up writing one thread.
+  local number = highest_thread_number(history_dir) + 1
+  for _ = 1, 100 do
+    local filename = number .. ".json"
+    history.filename = filename
+    local path = tostring(history_dir:joinpath(filename))
+    local fd = vim.uv.fs_open(path, "wx", 420)
+    if fd then
+      vim.uv.fs_write(fd, vim.json.encode(history))
+      vim.uv.fs_close(fd)
+      return history
+    end
+    number = number + 1
+  end
   return history
 end
 
@@ -249,16 +308,25 @@ end
 function History.load(bufnr, filename)
   local history_filepath = filename and History.get_filepath(bufnr, filename)
     or History.get_latest_filepath(bufnr, false)
-  return History.from_file(history_filepath) or History.new(bufnr)
+  local history = History.from_file(history_filepath)
+  if not history then return History.new(bufnr) end
+  -- Threads saved before this field existed belong to the project they were
+  -- just read from.
+  if not history.project_root then history.project_root = Utils.root.get({ buf = bufnr }) end
+  return history
 end
 
 -- Saves the chat history for the given buffer.
+---
+-- A thread stays in the project it was created in: the directory is otherwise
+-- derived from the buffer, which follows the cwd, so a `:cd` during a
+-- conversation would file the thread under a second project.
 ---@param bufnr integer
 ---@param history avante.ChatHistory
 function History.save(bufnr, history)
-  local history_filepath = History.get_filepath(bufnr, history.filename)
+  local history_filepath = History.get_filepath(bufnr, history.filename, history.project_root)
   history_filepath:write(vim.json.encode(history), "w")
-  History.save_latest_filename(bufnr, history.filename)
+  History.save_latest_filename(bufnr, history.filename, history.project_root)
 end
 
 --- Deletes a specific chat history file.

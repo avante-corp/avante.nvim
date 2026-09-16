@@ -32,7 +32,7 @@ log = logging.getLogger(__name__)
 
 # Blocking: the agent waits for a response.
 CURSOR_REQUESTS = ("cursor/ask_question", "cursor/create_plan")
-# Fire-and-forget.
+# Informational: nothing here needs an answer from the user.
 CURSOR_NOTIFICATIONS = ("cursor/update_todos", "cursor/task", "cursor/generate_image")
 
 
@@ -54,16 +54,22 @@ def register_vendor_routes(conn: Any, client: Any) -> list[str]:
 
     registered: list[str] = []
 
-    def add(method: str, kind: str) -> None:
+    def add(method: str, handler_kind: str) -> None:
         async def handle(params: Any, _method: str = method) -> Any:
             payload = params if isinstance(params, dict) else {}
-            if kind == "request":
+            if handler_kind == "request":
                 return await client.ext_method(_method, payload)
             await client.ext_notification(_method, payload)
-            return None
+            # Answers the request form; ignored when dispatched as a notification.
+            return {}
 
+        # The router dispatches requests and notifications from separate tables
+        # and 404s anything missing from the one matching the inbound message.
+        # Cursor picks the form per call -- it sends cursor/task with an id even
+        # though nothing consumes the reply -- so both tables get the route.
         try:
-            router.add_route(Route(method=method, func=handle, kind=kind))
+            for route_kind in ("request", "notification"):
+                router.add_route(Route(method=method, func=handle, kind=route_kind))
             registered.append(method)
         except Exception:
             log.exception("Failed to register vendor route %s", method)

@@ -2,13 +2,17 @@
 ---
 ---claude writes its plan to `~/.claude/plans/<name>.md` as a normal file edit,
 ---which is why `/open-plan` finds it by scanning history for that path. Cursor
----does not write a file at all: `cursor/create_plan` carries the whole plan in
----the request payload and expects an approve/reject answer. Nothing was
----persisted, so the plan vanished once the prompt was answered and
----`/open-plan` had nothing to find.
+---hands it over instead: `cursor/create_plan` carries the whole plan in the
+---request payload and expects an approve/reject answer. Nothing was persisted,
+---so the plan vanished once the prompt was answered and `/open-plan` had
+---nothing to find.
 ---
 ---This renders such a plan to markdown, saves it, and records the path on the
 ---thread so `/open-plan` works the same way for either agent.
+---
+---Cursor does also keep a file of its own, in `~/.cursor/plans`, which it
+---revises as the session goes on. `find_agent_file` locates it, because what is
+---saved here is only ever the plan as first proposed.
 
 local Utils = require("avante.utils")
 local Config = require("avante.config")
@@ -16,6 +20,9 @@ local Config = require("avante.config")
 local M = {}
 
 M.DEFAULT_PLAN_DIR = "~/.avante/plans"
+
+---Where cursor-agent keeps the plan it is working from.
+M.CURSOR_PLAN_DIR = "~/.cursor/plans"
 
 ---@param text string
 ---@return string
@@ -92,6 +99,40 @@ function M.write(params, opts)
   file:close()
 
   return path, nil
+end
+
+---The agent's own plan file for `session_id`, if it keeps one.
+---
+---`cursor/create_plan` carries no path, but cursor does write the plan out, to
+---`~/.cursor/plans/<title>-<first 8 of the session id>.plan.md`, with the whole
+---session id stamped into the first line. It then keeps editing that file for
+---the rest of the session, which makes it the plan: what was saved here when
+---the plan was first proposed is a snapshot that stops being true as soon as
+---the agent revises it.
+---@param session_id string|nil
+---@param dir? string
+---@return string|nil
+function M.find_agent_file(session_id, dir)
+  if type(session_id) ~= "string" or #session_id < 8 then return nil end
+
+  local root = vim.fn.expand(dir or M.CURSOR_PLAN_DIR)
+  local matches = vim.fn.glob(root .. "/*-" .. session_id:sub(1, 8) .. ".plan.md", false, true)
+  if #matches == 0 then return nil end
+
+  local newest, newest_time = nil, -1
+  for _, path in ipairs(matches) do
+    -- Eight characters of a name could belong to another session; the id in
+    -- the file could not, so a file carrying it wins outright.
+    local first_line = (vim.fn.readfile(path, "", 1) or {})[1] or ""
+    if first_line:find(session_id, 1, true) then return path end
+
+    local time = vim.fn.getftime(path)
+    if time > newest_time then
+      newest, newest_time = path, time
+    end
+  end
+
+  return newest
 end
 
 ---Convert plan todos into the sidebar's TODO shape.

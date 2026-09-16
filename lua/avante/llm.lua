@@ -1672,14 +1672,31 @@ function M._stream_acp(opts)
         end,
   }
   
-  -- ACP client and session must be established by Sidebar:connect_acp() before prompting
-  if not acp_client then
-    opts.on_stop({ reason = "error", error = "ACP client not connected. Call connect_acp() first." })
-    return
-  end
-
-  if not session_id then
-    opts.on_stop({ reason = "error", error = "No ACP session ID. Call connect_acp() first." })
+  -- A prompt can arrive without a live client or session: the agent process
+  -- died, a reconnect is still creating the session, or an earlier connect
+  -- failed after clearing the id. Reconnect and retry once instead of losing
+  -- the prompt — the thread's history is resent so the agent keeps context.
+  if not acp_client or not session_id then
+    local what = not acp_client and "agent" or "session"
+    if opts.sidebar and not rawget(opts, "_acp_reconnect_attempted") then
+      rawset(opts, "_acp_reconnect_attempted", true)
+      Utils.info("ACP " .. what .. " unavailable, reconnecting…")
+      if opts.on_state_change then opts.on_state_change("generating") end
+      opts.sidebar:connect_acp({
+        on_ready = function()
+          opts.acp_client = opts.sidebar.acp_client
+          opts.acp_session_id = opts.sidebar.chat_history and opts.sidebar.chat_history.acp_session_id
+          rawset(opts, "_is_session_recovery", true)
+          M._stream_acp(opts)
+        end,
+        on_error = function(err) opts.on_stop({ reason = "error", error = err }) end,
+      })
+      return
+    end
+    opts.on_stop({
+      reason = "error",
+      error = "ACP " .. what .. " is not available. Run :AvanteChatNew to start a fresh session.",
+    })
     return
   end
 
@@ -2225,6 +2242,7 @@ function M._continue_stream_acp(opts, acp_client, session_id)
                 rawset(opts, "_session_recovery_attempted", nil)
                 M._stream_acp(opts)
               end,
+              on_error = function(err) opts.on_stop({ reason = "error", error = err }) end,
             })
           else
             -- No sidebar — can't recover

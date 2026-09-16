@@ -576,12 +576,19 @@ end
 
 --- Whether an agent is still coming up, so no prompt can be sent yet.
 ---
+--- A connect is not finished when the agent answers `initialize`: the session
+--- is created or resumed after that, and a prompt submitted in between has no
+--- session id to address — it used to fail with "No ACP session ID".
+---
 --- `_acp_connecting` alone is not enough: it is cleared by callbacks that a
---- stale generation check can skip, so the client's presence is the ground
+--- stale generation check can skip, so the client and session are the ground
 --- truth and the flag only names who we are waiting for.
 ---@return boolean
 function Sidebar:acp_connect_pending()
-  return self._acp_connecting ~= nil and self.acp_client == nil
+  if self._acp_connecting == nil then return false end
+  if self.acp_client == nil then return true end
+  local session_id = self.chat_history and self.chat_history.acp_session_id
+  return session_id == nil or session_id == ""
 end
 
 --- Render a bridge error for a human.
@@ -601,7 +608,7 @@ end
 
 --- Connect to ACP agent and either load an existing session or create a new one.
 --- This is the single entry point for all ACP session lifecycle management.
----@param opts? { on_ready?: fun(), force_new?: boolean }
+---@param opts? { on_ready?: fun(), on_error?: fun(err: string), force_new?: boolean }
 function Sidebar:connect_acp(opts)
   opts = opts or {}
   -- A thread may pin its own agent (chosen at :AvanteChatNew, or by a
@@ -699,8 +706,10 @@ function Sidebar:connect_acp(opts)
 
     if conn_err then
       self._acp_connecting = nil
-      Utils.error("ACP connect failed (" .. provider_name .. "): " .. format_acp_error(conn_err))
+      local msg = "ACP connect failed (" .. provider_name .. "): " .. format_acp_error(conn_err)
+      Utils.error(msg)
       self:show_input_hint()
+      if opts.on_error then opts.on_error(msg) end
       return
     end
 
@@ -768,21 +777,18 @@ end
 --- Internal: create a new ACP session after client is connected
 ---@param acp_client avante.acp.ACPClient
 ---@param generation number
----@param opts { on_ready?: fun(), force_new?: boolean }
+---@param opts { on_ready?: fun(), on_error?: fun(err: string), force_new?: boolean }
 function Sidebar:_create_acp_session(acp_client, generation, opts)
   local project_root = Utils.root.get()
   acp_client:create_session(project_root, {}, function(session_id, err)
     if (self._acp_session_generation or 0) ~= generation then return end
-    if err then
+    if err or not session_id then
       self._acp_connecting = nil
-      Utils.error("Failed to create ACP session: " .. format_acp_error(err))
+      local msg = err and ("Failed to create ACP session: " .. format_acp_error(err))
+        or "Failed to create ACP session: no session ID returned"
+      Utils.error(msg)
       self:show_input_hint()
-      return
-    end
-    if not session_id then
-      self._acp_connecting = nil
-      Utils.error("Failed to create ACP session: no session ID returned")
-      self:show_input_hint()
+      if opts.on_error then opts.on_error(msg) end
       return
     end
 
@@ -2669,7 +2675,9 @@ function Sidebar:initialize()
 
   -- Skip loading old history when we're about to create a new thread — new_thread() handles it
   if not self._skip_history_load then
-    self:reload_chat_history()
+    -- Opening the sidebar is an explicit request for this project's thread,
+    -- even when a thread from elsewhere is still in memory.
+    self:reload_chat_history({ force = true })
 
     -- Restore avante mode from persisted chat history
     self.current_avante_mode = self.chat_history and self.chat_history.avante_mode or nil
@@ -3409,7 +3417,7 @@ function Sidebar:new_chat(args, cb, opts)
     end
   end
   Path.history.save(self.code.bufnr, history)
-  self:reload_chat_history()
+  self:reload_chat_history({ force = true })
   self.current_state = nil
   self.expanded_message_uuids = {}
   self.collapsed_message_uuids = {}
@@ -3437,11 +3445,14 @@ local debounced_save_history = Utils.debounce(
       self.chat_history.selected_files = self.file_selector:get_selected_filepaths()
     end
     Path.history.save(self.code.bufnr, self.chat_history)
-    -- Persist last-session info for auto-restore on next open
+    -- Persist last-session info for auto-restore on next open. Against the
+    -- thread's own project and directory: the cwd can have moved on (an agent
+    -- edit followed into ~/.avante/plans, a `:cd`), and Sidebar:open cds to
+    -- whatever this records, which would drag the next session along with it.
     Path.history.save_last_session(self.code.bufnr, {
-      working_directory = vim.fn.getcwd(),
+      working_directory = self.chat_history.working_directory or vim.fn.getcwd(),
       selected_files = self.chat_history.selected_files or {},
-    })
+    }, self.chat_history.project_root)
   end,
   1000
 )
@@ -3954,11 +3965,50 @@ function Sidebar:show_selected_files_hint()
   )
 end
 
-function Sidebar:reload_chat_history()
+--- Whether the live thread holds a conversation that must not be discarded.
+---@return boolean
+function Sidebar:has_live_thread()
+  if not self.chat_history then return false end
+  if self.chat_history.acp_session_id then return true end
+  return #(self.chat_history.messages or {}) > 0
+end
+
+--- Re-read the thread from disk.
+---
+--- Pass `force` when the user asked to switch projects or threads; incidental
+--- reloads (renders, buffer changes) must not move the conversation. `filename`
+--- names the thread to switch to, for when that is the point.
+---@param opts? { force?: boolean, filename?: string }
+function Sidebar:reload_chat_history(opts)
+  opts = opts or {}
   self.token_count = nil
   if self._skip_history_load then return end
   if not self.code.bufnr or not api.nvim_buf_is_valid(self.code.bufnr) then return end
-  self.chat_history = Path.history.load(self.code.bufnr)
+
+  -- Threads are stored per project, and the project is derived from the code
+  -- buffer (the cwd, when use_cwd_as_project_root is set). Anything that moves
+  -- either — following an agent edit into ~/.avante/plans, a `:cd`, opening a
+  -- file from another worktree — used to make this reload replace the live
+  -- conversation with that project's latest thread, or with a brand new empty
+  -- one. The sidebar kept rendering the old messages, so the swap was invisible
+  -- until the next prompt landed in a stray untitled thread with no ACP
+  -- session. Reloads only apply to the project the live thread belongs to.
+  local root = Utils.root.get({ buf = self.code.bufnr })
+  local thread_root = self.chat_history and self.chat_history.project_root
+  if not opts.force and thread_root and thread_root ~= root and self:has_live_thread() then
+    Utils.debug("Keeping live thread from " .. thread_root .. "; code buffer now resolves to " .. root)
+    return
+  end
+
+  -- Re-read *this* thread by name. Falling back to the project's latest means
+  -- reading `latest_filename` out of a metadata file shared by every Neovim in
+  -- the project, so opening a thread in one session dragged the others onto it.
+  local filename = opts.filename
+  if not filename and not opts.force and self:has_live_thread() and self.chat_history.filename ~= "" then
+    filename = self.chat_history.filename
+  end
+
+  self.chat_history = Path.history.load(self.code.bufnr, filename)
   self._history_cache_invalidated = true
 end
 
@@ -4462,10 +4512,7 @@ function Sidebar:handle_submit(request)
       acp_session_id = self.chat_history.acp_session_id,
       set_tool_use_store = set_tool_use_store,
       get_history_messages = function(opts) return self:get_history_messages_for_api(opts) end,
-      get_todos = function()
-        local history = Path.history.load(self.code.bufnr)
-        return history.todos
-      end,
+      get_todos = function() return self.chat_history and self.chat_history.todos or {} end,
       update_todos = function(todos) self:update_plan(todos) end,
       session_ctx = self._current_session_ctx or { file_snapshots = {}, edited_files = {} },
       ---@param usage avante.LLMTokenUsage
@@ -4798,8 +4845,9 @@ end
 
 function Sidebar:get_plan_container_height()
   if not self._plan_visible then return 0 end
-  local history = Path.history.load(self.code.bufnr)
-  local todo_count = #history.todos
+  -- The sidebar's own thread, not the project's latest: this runs on every
+  -- layout pass, and another Neovim in the same project moves "latest".
+  local todo_count = #((self.chat_history and self.chat_history.todos) or {})
   if todo_count == 0 then return 0 end
   -- header line + entries, capped at 12
   return math.min(todo_count + 1, 12)

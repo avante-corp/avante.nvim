@@ -528,6 +528,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field tokens_usage avante.LLMTokenUsage | nil
 ---@field acp_session_id string | nil
 ---@field working_directory string | nil
+---@field project_root string | nil Project whose history directory stores this thread
 ---@field selected_files string[] | nil
 ---@field tags string[] | nil
 ---@field parent_thread_id string | nil

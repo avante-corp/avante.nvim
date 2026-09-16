@@ -1781,9 +1781,19 @@ end
 function M.plan_find_file_path(history)
   if not history then return nil end
 
+  -- The agent's own file first, wherever one exists. cursor goes on revising
+  -- the plan it wrote in ~/.cursor/plans for the rest of the session, so
+  -- reading what avante saved when the plan was proposed shows a plan the
+  -- agent stopped following some time ago.
+  local ok_plan, Plan = pcall(require, "avante.acp.plan")
+  if ok_plan then
+    local live = Plan.find_agent_file(history.acp_session_id)
+    if live then return live end
+  end
+
   -- Recorded directly when the agent delivered the plan over the wire rather
-  -- than writing a file (cursor/create_plan). Scanning tool calls for a
-  -- `.claude/plans/` path only ever finds claude's.
+  -- than writing a file (cursor/create_plan), and the only copy when the agent
+  -- keeps none of its own.
   if type(history.plan_file_path) == "string" and history.plan_file_path ~= "" then
     return history.plan_file_path
   end
@@ -1791,6 +1801,12 @@ function M.plan_find_file_path(history)
   if not ok then return nil end
   local messages = History.get_history_messages(history)
   if not messages then return nil end
+
+  ---Whether a path an agent touched is the plan it keeps on disk.
+  local function is_plan_file(path)
+    if not path:match("%.md$") then return false end
+    return path:match("%.claude/plans/") ~= nil or path:match("%.cursor/plans/") ~= nil
+  end
 
   local plan_file_path = nil
   for i = #messages, 1, -1 do
@@ -1801,7 +1817,7 @@ function M.plan_find_file_path(history)
         if item.type == "tool_use" then
           local input = item.input or {}
           local path = input.file_path or input.path or ""
-          if path:match("%.claude/plans/") and path:match("%.md$") then
+          if is_plan_file(path) then
             plan_file_path = path
             break
           end
@@ -1814,9 +1830,7 @@ function M.plan_find_file_path(history)
       if title:match("Write") or title:match("write") then
         local raw = tc.rawInput or {}
         local path = raw.file_path or raw.path or ""
-        if path:match("%.claude/plans/") and path:match("%.md$") then
-          plan_file_path = path
-        end
+        if is_plan_file(path) then plan_file_path = path end
       end
     end
     if plan_file_path then break end

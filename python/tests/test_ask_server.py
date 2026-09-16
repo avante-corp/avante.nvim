@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 
 import pytest
 
-from avante_acp import forms
+from avante_acp import ask_server, forms
 from avante_acp.ask_server import TOOL_NAME, AskServer
 
 
@@ -289,6 +289,103 @@ async def test_calling_an_unknown_tool_is_method_not_found(server: AskServer) ->
         server.url, call({"name": "something_else", "arguments": {}}), token=server.token
     )
     assert body["error"]["code"] == -32601
+
+
+# -- waiting for a human -------------------------------------------------
+
+
+@pytest.fixture
+def impatient(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An agent deadline short enough to hit in a test."""
+    monkeypatch.setattr(ask_server, "ASK_DEADLINE", 0.05)
+
+
+def answer_when(peer_pair: Any, gate: asyncio.Event, answer: Any) -> list[dict[str, Any]]:
+    """A user who does not answer until `gate` is set."""
+    seen: list[dict[str, Any]] = []
+
+    async def handle(params: dict[str, Any]) -> Any:
+        seen.append(params)
+        await gate.wait()
+        return answer
+
+    peer_pair.right.on_request("ui/elicitation", handle)
+    return seen
+
+
+async def test_a_reader_slower_than_the_agent_is_not_a_failed_tool_call(
+    server: AskServer, peer_pair: Any, impatient: None
+) -> None:
+    # The agent abandons a tool call after about a minute; a person reading a
+    # question routinely takes longer. Answering first keeps it from reporting
+    # its own timeout and carrying on as if nothing had been asked.
+    answer_when(peer_pair, asyncio.Event(), {"action": "decline"})
+
+    _, body = await post(server.url, call(), token=server.token)
+
+    assert "isError" not in body["result"]
+    assert "not answered it yet" in body["result"]["content"][0]["text"]
+
+
+async def test_asking_again_reuses_the_question_already_on_screen(
+    server: AskServer, peer_pair: Any, impatient: None
+) -> None:
+    seen = answer_when(peer_pair, asyncio.Event(), {"action": "decline"})
+
+    await post(server.url, call(), token=server.token)
+    await post(server.url, call(request_id=2), token=server.token)
+
+    assert len(seen) == 1
+
+
+async def test_reworded_options_are_still_the_same_question(
+    server: AskServer, peer_pair: Any, impatient: None
+) -> None:
+    seen = answer_when(peer_pair, asyncio.Event(), {"action": "decline"})
+    reworded = json.loads(json.dumps(TWO_QUESTIONS))
+    for question in reworded["arguments"]["questions"]:
+        for option in question["options"]:
+            option["description"] = "Said differently this time"
+
+    await post(server.url, call(), token=server.token)
+    await post(server.url, call(reworded, request_id=2), token=server.token)
+
+    assert len(seen) == 1
+
+
+async def test_an_answer_that_arrives_late_goes_to_the_next_call(
+    server: AskServer, peer_pair: Any, impatient: None
+) -> None:
+    gate = asyncio.Event()
+    seen = answer_when(peer_pair, gate, {"action": "accept", "content": {"question_0": "Lua"}})
+
+    _, waiting = await post(server.url, call(), token=server.token)
+    assert "not answered it yet" in waiting["result"]["content"][0]["text"]
+
+    gate.set()
+    await asyncio.sleep(0.05)
+    _, body = await post(server.url, call(request_id=2), token=server.token)
+
+    # The answer the user typed into the first window, not a second window put
+    # in front of them because the first call had given up on it.
+    assert "Lua" in body["result"]["content"][0]["text"]
+    assert len(seen) == 1
+
+
+async def test_a_late_dismissal_is_not_replayed_at_the_next_question(
+    server: AskServer, peer_pair: Any, impatient: None
+) -> None:
+    # Answering the retry with a dismissal the user made of a window they had
+    # already stopped looking at would stop the agent for no reason.
+    gate = asyncio.Event()
+    seen = answer_when(peer_pair, gate, {"action": "cancel"})
+
+    await post(server.url, call(), token=server.token)
+    gate.set()
+    await asyncio.sleep(0.05)
+    await post(server.url, call(request_id=2), token=server.token)
+
+    assert len(seen) == 2
 
 
 async def test_a_dead_neovim_does_not_leave_the_agent_waiting(

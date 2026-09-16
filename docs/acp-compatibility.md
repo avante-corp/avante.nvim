@@ -150,6 +150,12 @@ Routes for all five are registered in `vendor.py`, because the SDK's router only
 asks its question as prose in the chat instead. Cursor's docs name no client capability that
 enables it, so there is nothing to advertise. The route stays registered in case that changes.
 
+**`cursor/create_plan` is a snapshot, not the plan.** Cursor also writes the plan to
+`~/.cursor/plans/<title>-<first 8 of the session id>.plan.md`, with the full session id on the
+first line, and revises that file for the rest of the session — often until it bears no
+resemblance to the payload that asked for approval. `/open-plan` therefore looks for that file
+first (`Plan.find_agent_file`), falling back to the copy avante wrote when the plan was proposed.
+
 ## Asking the user a question
 
 Three mechanisms, in the order they are preferred:
@@ -168,6 +174,14 @@ any provider whose `native_questions` is false, `"always"` and `"never"` overrid
 
 Both the vendor path and the MCP tool build their form through `python/avante_acp/forms.py`, since
 `elicitation.lua` depends on the exact `question_<n>` / `oneOf` / `items.anyOf` shape.
+
+**The agent gives the call less time than a person needs.** cursor-agent abandons a tool call after
+about a minute and asks again, so a question held open until the user answers is answered into a
+call nobody is reading. Instead the call returns after `AVANTE_ACP_ASK_DEADLINE` seconds (45 by
+default) saying the question is still on screen; the window stays up, a repeat of the same question
+waits on that same window rather than opening another, and an answer that arrives late is handed to
+whichever call asks next. `elicitation.lua` keeps one question on screen at a time for the same
+reason: a newer question takes the older one's place instead of stacking over it.
 
 ---
 

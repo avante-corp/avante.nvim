@@ -31,6 +31,9 @@ local SKIP_LABEL = "Skip this question"
 local MAX_WIDTH = 84
 local MIN_WIDTH = 40
 
+---The question currently on screen, if any. See `M.prompt`.
+local active = nil
+
 ---Wrap `text` to `width` columns on word boundaries.
 ---@param text string
 ---@param width integer
@@ -159,11 +162,132 @@ local function build_lines(question, header, choices, width)
   return lines, choice_lines
 end
 
+---Screen rows `lines` need at `width` columns, with wrapping.
+---@param lines string[]
+---@param width integer
+---@return integer
+local function wrapped_height(lines, width)
+  local rows = 0
+  for _, line in ipairs(lines) do
+    rows = rows + math.max(1, math.ceil(vim.fn.strdisplaywidth(line) / math.max(1, width)))
+  end
+  return math.max(1, rows)
+end
+
+---Ask for a free-text answer in a window that grows as it is typed.
+---
+---`vim.ui.input` draws in the cmdline: one line that neither wraps nor grows,
+---so anything longer than the window scrolls sideways and a multi-line answer
+---cannot be written at all. The question stays on screen here, as virtual
+---lines that cannot be typed over.
+---@param question string
+---@param header string|nil
+---@param callback fun(text: string|nil)
+---@return integer win
+local function input_float(question, header, callback)
+  local width = math.max(MIN_WIDTH, math.min(MAX_WIDTH, vim.o.columns - 8))
+  local inner = width - 2
+
+  local context = {}
+  if header then
+    table.insert(context, header)
+    table.insert(context, "")
+  end
+  for _, line in ipairs(wrap_text(question, inner)) do
+    table.insert(context, line)
+  end
+  table.insert(context, "")
+
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[buf].bufhidden = "wipe"
+
+  local ns = vim.api.nvim_create_namespace("avante_elicitation_answer")
+  vim.api.nvim_buf_set_extmark(buf, ns, 0, 0, {
+    virt_lines_above = true,
+    virt_lines = vim.tbl_map(function(line) return { { line, "Comment" } } end, context),
+  })
+
+  local max_answer_rows = math.max(3, vim.o.lines - #context - 8)
+  local height = #context + 1
+  local win = vim.api.nvim_open_win(buf, true, {
+    relative = "editor",
+    width = width,
+    height = height,
+    row = math.max(0, math.floor((vim.o.lines - height) / 2) - 1),
+    col = math.floor((vim.o.columns - width) / 2),
+    style = "minimal",
+    border = "rounded",
+    title = " Your answer ",
+    title_pos = "center",
+    footer = " <CR> send   i edit   q cancel ",
+    footer_pos = "center",
+  })
+  vim.wo[win].wrap = true
+  vim.wo[win].linebreak = true
+
+  local function resize()
+    if not vim.api.nvim_win_is_valid(win) then return end
+    local rows = wrapped_height(vim.api.nvim_buf_get_lines(buf, 0, -1, false), inner)
+    vim.api.nvim_win_set_height(win, #context + math.min(rows, max_answer_rows))
+  end
+
+  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+    buffer = buf,
+    callback = resize,
+  })
+
+  local done = false
+  ---Close before answering, so the close handler below sees this as handled.
+  local function finish(text)
+    if done then return end
+    done = true
+    if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
+    callback(text)
+  end
+
+  local function submit()
+    local text = vim.trim(table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n"))
+    finish(text ~= "" and text or nil)
+  end
+
+  local function map(mode, lhs, fn)
+    vim.keymap.set(mode, lhs, fn, { buffer = buf, nowait = true, silent = true })
+  end
+
+  map("n", "<CR>", submit)
+  map("i", "<C-s>", function()
+    vim.cmd("stopinsert")
+    submit()
+  end)
+  map("n", "q", function() finish(nil) end)
+  map("n", "<Esc>", function() finish(nil) end)
+
+  vim.api.nvim_create_autocmd({ "WinClosed", "BufWipeout" }, {
+    buffer = buf,
+    once = true,
+    callback = function()
+      if done then return end
+      done = true
+      callback(nil)
+    end,
+  })
+
+  -- Scheduled: this runs from the question float's keymap, and `startinsert`
+  -- issued from there is dropped, leaving the first keystroke to be read as a
+  -- normal-mode command.
+  vim.schedule(function()
+    if vim.api.nvim_win_is_valid(win) then vim.cmd("startinsert") end
+  end)
+
+  return win
+end
+
 ---Present one question in a float.
 ---@param schema table
 ---@param message string|nil
 ---@param has_custom boolean
 ---@param callback fun(value: any|nil, cancelled: boolean, is_custom: boolean|nil)
+---@return fun() close the window this question is waiting in, whichever it is
 local function ask_float(schema, message, has_custom, callback)
   local question, header = question_text(schema, message)
   local choices = build_choices(schema, has_custom)
@@ -193,6 +317,10 @@ local function ask_float(schema, message, has_custom, callback)
   vim.wo[win].wrap = false
   vim.wo[win].cursorline = true
 
+  -- Follows the question into the free-text window, so a caller that wants to
+  -- take the question away closes whichever one the user is looking at.
+  local open_win = win
+
   local answered = false
   local function finish(value, cancelled, is_custom)
     if answered then return end
@@ -209,10 +337,15 @@ local function ask_float(schema, message, has_custom, callback)
       return
     end
     if choice.custom then
-      -- Close first so the input prompt is not drawn under the float.
+      -- Claim the answer before closing. Closing fires the cancel autocmd
+      -- below, which told the agent the question had been dismissed before the
+      -- user had typed a word; the answer then arrived as a second reply to an
+      -- already-answered request, so it was ignored and the tool reported
+      -- "Tool use aborted".
+      answered = true
+      -- Closed first so the answer window is not drawn under this one.
       if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
-      vim.ui.input({ prompt = (header or "Answer") .. ": " }, function(text)
-        answered = true
+      open_win = input_float(question, header, function(text)
         if text == nil or text == "" then
           callback(nil, false)
           return
@@ -257,6 +390,10 @@ local function ask_float(schema, message, has_custom, callback)
   })
 
   if choice_lines[1] then vim.api.nvim_win_set_cursor(win, { choice_lines[1], 0 }) end
+
+  return function()
+    if open_win and vim.api.nvim_win_is_valid(open_win) then vim.api.nvim_win_close(open_win, true) end
+  end
 end
 
 ---Fallback for when there is no UI to draw into (headless, tests).
@@ -317,12 +454,22 @@ function M.prompt(params, reply)
   local content = {}
   local index = 1
 
+  local replied = false
+
   ---Answer the agent, leaving a trace when nothing was answered.
   ---
   ---A dismissal is otherwise invisible from the sidebar: the agent reports it
   ---as an opaque tool failure ("Tool use aborted"), so without this a question
   ---that was asked and dropped looks like a bug rather than a choice.
+  ---
+  ---Answers once and only once: a request already answered cannot be revised,
+  ---and a second reply to it is a protocol error.
+  local session = {}
+
   local function finish(answer)
+    if replied then return end
+    replied = true
+    if active == session then active = nil end
     if answer.action == "cancel" then
       Utils.warn("Agent question dismissed; the agent was told you did not answer")
     elseif answer.action == "decline" then
@@ -330,6 +477,26 @@ function M.prompt(params, reply)
     end
     reply(answer)
   end
+
+  ---Take this question off the screen because a newer one has arrived.
+  ---
+  ---Answered before the window closes, so closing does not read as the user
+  ---dismissing a question they were never shown the end of.
+  function session.dismiss()
+    if not replied then
+      replied = true
+      reply({ action = "cancel" })
+    end
+    if session.close then session.close() end
+  end
+
+  -- One agent question on screen at a time. An agent whose tool call has hit
+  -- its own deadline asks again, and each retry would otherwise stack another
+  -- window on top of the last, every one of them waiting on a call that has
+  -- already been abandoned.
+  local previous = active
+  active = session
+  if previous then previous.dismiss() end
 
   local function next_field()
     if index > #fields then
@@ -345,7 +512,7 @@ function M.prompt(params, reply)
     index = index + 1
     local has_custom = properties[field .. CUSTOM_SUFFIX] ~= nil
 
-    ask(properties[field], params.message, has_custom, function(value, cancelled, is_custom)
+    session.close = ask(properties[field], params.message, has_custom, function(value, cancelled, is_custom)
       if cancelled then
         finish({ action = "cancel" })
         return
@@ -366,6 +533,7 @@ function M.prompt(params, reply)
   vim.schedule(next_field)
 end
 
+M._wrapped_height = wrapped_height
 M._ordered_question_fields = ordered_question_fields
 M._field_options = field_options
 M._wrap_text = wrap_text

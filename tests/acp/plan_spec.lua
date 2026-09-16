@@ -152,5 +152,90 @@ describe("acp.plan", function()
     it("returns nil when there is no plan at all", function()
       assert.is_nil(Utils.plan_find_file_path({ messages = {} }))
     end)
+
+    it("recognises a cursor plan the agent edited as a file", function()
+      local history = {
+        messages = {
+          {
+            message = { content = {} },
+            acp_tool_call = {
+              title = "Write /Users/me/.cursor/plans/Thing-abcdef12.plan.md",
+              rawInput = { file_path = "/Users/me/.cursor/plans/Thing-abcdef12.plan.md" },
+            },
+          },
+        },
+      }
+
+      assert.equals("/Users/me/.cursor/plans/Thing-abcdef12.plan.md", Utils.plan_find_file_path(history))
+    end)
+  end)
+
+  describe("the agent's own plan file", function()
+    local SESSION = "2fd6f9f1-4da0-4fbe-988b-dce9d71b16eb"
+    local cursor_dir_stub
+
+    before_each(function()
+      cursor_dir_stub = Plan.CURSOR_PLAN_DIR
+      Plan.CURSOR_PLAN_DIR = tmp
+    end)
+
+    after_each(function() Plan.CURSOR_PLAN_DIR = cursor_dir_stub end)
+
+    ---A plan file named the way cursor names them.
+    local function cursor_plan(name, first_line)
+      local path = tmp .. "/" .. name
+      vim.fn.writefile({ first_line or "# A plan", "", "Do the thing." }, path)
+      return path
+    end
+
+    it("finds the file cursor named after the session", function()
+      local path = cursor_plan("App branches summary-2fd6f9f1.plan.md")
+
+      assert.equals(path, Plan.find_agent_file(SESSION))
+    end)
+
+    it("prefers the file stamped with the whole session id", function()
+      -- Eight characters of a filename can belong to another session; the id
+      -- cursor writes into the first line cannot.
+      cursor_plan("Alpha-2fd6f9f1.plan.md")
+      local mine = cursor_plan("Zulu-2fd6f9f1.plan.md", "<!-- " .. SESSION .. " -->")
+
+      assert.equals(mine, Plan.find_agent_file(SESSION))
+    end)
+
+    it("has nothing to find without a session", function()
+      cursor_plan("App branches summary-2fd6f9f1.plan.md")
+
+      assert.is_nil(Plan.find_agent_file(nil))
+      assert.is_nil(Plan.find_agent_file("short"))
+    end)
+
+    it("is nil for an agent that keeps no plan file", function()
+      assert.is_nil(Plan.find_agent_file("00000000-1111-2222-3333-444444444444"))
+    end)
+
+    it("wins over the copy saved when the plan was proposed", function()
+      -- cursor rewrites its own file as the session goes on, so what avante
+      -- saved at cursor/create_plan time is a plan the agent has moved past.
+      local live = cursor_plan("App branches summary-2fd6f9f1.plan.md")
+
+      local found = Utils.plan_find_file_path({
+        acp_session_id = SESSION,
+        plan_file_path = "/tmp/snapshot.md",
+        messages = {},
+      })
+
+      assert.equals(live, found)
+    end)
+
+    it("leaves the saved copy in place for an agent that wrote none", function()
+      local found = Utils.plan_find_file_path({
+        acp_session_id = "00000000-1111-2222-3333-444444444444",
+        plan_file_path = "/tmp/snapshot.md",
+        messages = {},
+      })
+
+      assert.equals("/tmp/snapshot.md", found)
+    end)
   end)
 end)
