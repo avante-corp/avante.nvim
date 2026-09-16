@@ -1,14 +1,19 @@
 import os
 from pathlib import Path
 
-# Configuration
-BASE_DATA_DIR = Path(os.environ.get("DATA_DIR", "/tmp/avante-rag-service"))  # noqa: S108
-CHROMA_PERSIST_DIR = BASE_DATA_DIR / "chroma_db"
-LOG_DIR = BASE_DATA_DIR / "logs"
-DB_FILE = BASE_DATA_DIR / "sqlite" / "indexing_history.db"
 
-# Configure directories
-BASE_DATA_DIR.mkdir(parents=True, exist_ok=True)
-LOG_DIR.mkdir(parents=True, exist_ok=True)
-DB_FILE.parent.mkdir(parents=True, exist_ok=True)  # Create sqlite directory
-CHROMA_PERSIST_DIR.mkdir(parents=True, exist_ok=True)
+def xdg_directory(variable: str, default: Path) -> Path:
+    """Resolve an XDG directory, ignoring empty or relative values."""
+    value = os.environ.get(variable, "")
+    path = Path(value)
+    return path if path.is_absolute() else default
+
+
+# Keep DATA_DIR as an override for launchers with a dedicated data volume.
+data_dir = os.environ.get("DATA_DIR")
+BASE_DATA_DIR = (
+    Path(data_dir)
+    if data_dir
+    else xdg_directory("XDG_DATA_HOME", Path.home() / ".local" / "share") / "avante-rag-service"
+)
+DB_FILE = BASE_DATA_DIR / "sqlite" / "indexing_history.db"

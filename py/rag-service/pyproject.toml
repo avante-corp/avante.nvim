@@ -41,7 +41,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
-py-modules = ["main"]
+py-modules = ["main", "service"]
 
 [tool.pyright]
 include = ["src"]

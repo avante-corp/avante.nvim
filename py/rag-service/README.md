@@ -2,6 +2,22 @@
 
 This document describes how to configure the RAG service, including setting up Language Model (LLM) and Embedding providers.
 
+## Storage directories
+
+The service stores databases and indexing metadata in `$XDG_DATA_HOME/avante-rag-service`
+(default: `~/.local/share/avante-rag-service`) and logs in
+`$XDG_STATE_HOME/avante-rag-service/logs` (default: `~/.local/state/avante-rag-service/logs`).
+Empty or relative XDG values use the defaults.
+
+The embedding configuration is stored in `$XDG_CONFIG_HOME/nvim/avante/rag_config.json`
+(default: `~/.config/nvim/avante/rag_config.json`), independently of `DATA_DIR` or `--data-dir`.
+
+Passing `--data-dir /path/to/data` or setting `DATA_DIR` overrides the data location
+and places logs in its `logs` subdirectory. The CLI option takes precedence over
+`DATA_DIR`, preserving the layout used by the Neovim and Docker launchers. Existing data in
+`/tmp/avante-rag-service` is not migrated automatically; move it to the new data
+directory or set `DATA_DIR` to keep using it.
+
 ## Provider Support Matrix
 
 The following table shows which model types are supported by each provider:
