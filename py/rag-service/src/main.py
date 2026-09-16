@@ -64,6 +64,12 @@ from watchdog.observers import Observer
 
 if TYPE_CHECKING:
     from pathspec.gitignore import GitIgnoreSpec
+    from collections.abc import AsyncGenerator
+
+    from llama_index.core.schema import NodeWithScore, QueryBundle
+    from models.indexing_history import IndexingHistory
+    from watchdog.observers.api import BaseObserver
+
 
 
 def parse_cli_settings() -> argparse.Namespace:
@@ -140,19 +146,6 @@ def parse_cli_settings() -> argparse.Namespace:
     settings, _ = parser.parse_known_args()
     return settings
 
-
-cli_settings = parse_cli_settings()
-
-
-logging.getLogger().setLevel(cli_settings.log_level)
-logger.setLevel(cli_settings.log_level)
-
-if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
-
-    from llama_index.core.schema import NodeWithScore, QueryBundle
-    from models.indexing_history import IndexingHistory
-    from watchdog.observers.api import BaseObserver
 
 # Lock file for leader election
 LOCK_FILE = BASE_DATA_DIR / "leader.lock"
@@ -1565,6 +1558,12 @@ async def health_check() -> dict[str, str]:
 def main() -> None:
     """Run the RAG service from the console script."""
     import uvicorn
+    cli_settings = parse_cli_settings()
+
+
+    logging.getLogger().setLevel(cli_settings.log_level)
+    logger.setLevel(cli_settings.log_level)
+
 
     uvicorn.run("main:app", host="0.0.0.0", port=cli_settings.port, workers=3)  # noqa: S104
 
