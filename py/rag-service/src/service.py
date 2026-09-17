@@ -1270,7 +1270,7 @@ class IndexingStatusResponse(BaseModel):
 
 
 @router.post(
-    "/api/v1/indexing-status",
+    "/api/v1/indexing_status",
     response_model=IndexingStatusResponse,
     summary="Get indexing status for a resource",
     description="""

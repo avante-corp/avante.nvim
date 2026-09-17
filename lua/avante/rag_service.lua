@@ -479,7 +479,8 @@ end
 ---@return AvanteRagServiceIndexingStatusResponse | nil
 function M.indexing_status(uri)
   uri = M.to_container_uri(uri)
-  local resp = curl.post(M.get_rag_service_url() .. "/api/v1/indexing_status", {
+  local url = M.get_rag_service_url() .. "/api/v1/indexing_status"
+  local resp = curl.post(url, {
     headers = {
       ["Content-Type"] = "application/json",
     },
@@ -487,6 +488,7 @@ function M.indexing_status(uri)
       uri = uri,
     }),
   })
+  Utils.debug("Asked indexing status at " .. url)
   if resp.status ~= 200 then
     Utils.error("Failed to get indexing status: " .. resp.body)
     return
