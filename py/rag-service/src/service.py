@@ -1490,7 +1490,7 @@ def initialize_app(cli_settings: argparse.Namespace) -> FastAPI:  # noqa: PLR091
     try:
         index = load_index_from_storage(storage_context)
     except (OSError, ValueError) as e:
-        logger.error("Failed to load index from storage: %s", e)
+        logger.error("Failed to load index from storage %s: %s", str(CHROMA_PERSIST_DIR), e)
         index = VectorStoreIndex([], storage_context=storage_context)
 
     app = FastAPI(
