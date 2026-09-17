@@ -29,6 +29,12 @@ def parse_cli_settings() -> argparse.Namespace:
         help="Port to listen on.",
     )
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=3,
+        help="Number of worker processes (default: %(default)s).",
+    )
+    parser.add_argument(
         "--log-level",
         type=str.upper,
         choices=["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"],
@@ -87,6 +93,8 @@ def parse_cli_settings() -> argparse.Namespace:
         help="JSON object with extra LLM settings.",
     )
     settings, _ = parser.parse_known_args()
+    if settings.workers < 1:
+        parser.error("--workers must be a positive integer")
     return settings
 
 
@@ -106,7 +114,13 @@ def main(*, serve: bool = True) -> FastAPI | None:
     if serve:
         import uvicorn
 
-        uvicorn.run("main:create_app", factory=True, host="0.0.0.0", port=cli_settings.port, workers=3)  # noqa: S104
+        uvicorn.run(
+            "main:create_app",
+            factory=True,
+            host="0.0.0.0",  # noqa: S104
+            port=cli_settings.port,
+            workers=cli_settings.workers,
+        )
         return None
 
     from service import initialize_app
