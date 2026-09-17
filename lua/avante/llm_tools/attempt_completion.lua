@@ -90,7 +90,7 @@ function M.func(input, opts)
     and not vim.startswith(input.command, "open ")
   then
     opts.session_ctx.always_yes = false
-    require("avante.llm_tools.bash").func({ command = input.command }, opts)
+    require("avante.llm_tools.bash").func({ path = ".", command = input.command }, opts)
   else
     opts.on_complete(true, nil)
   end
