@@ -841,7 +841,7 @@ function M:parse_curl_args(prompt_opts)
   end
 
   if M.is_openrouter(provider_conf.endpoint) then
-    headers["HTTP-Referer"] = "https://github.com/yetone/avante.nvim"
+    headers["HTTP-Referer"] = "https://github.com/avante-corp/avante.nvim"
     headers["X-Title"] = "Avante.nvim"
     request_body.include_reasoning = true
   end

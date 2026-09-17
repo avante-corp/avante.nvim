@@ -21,7 +21,7 @@
 ---@mod avante-installation Installation
 ---
 ---@brief [[
----See the official README at https://github.com/yetone/avante.nvim for installation instructions.
+---See the official README at https://github.com/avante-corp/avante.nvim for installation instructions.
 ---@brief ]]
 ---
 ---@mod avante-requirements Requirements

@@ -182,7 +182,7 @@ M = setmetatable(M, {
       elseif provider_config.parse_curl_args == nil then
         error(
           string.format(
-            'The configuration of your provider "%s" is incorrect, missing the `__inherited_from` attribute or a custom `parse_curl_args` function. Please fix your provider configuration. For more details, see: https://github.com/yetone/avante.nvim/wiki/Custom-providers',
+            'The configuration of your provider "%s" is incorrect, missing the `__inherited_from` attribute or a custom `parse_curl_args` function. Please fix your provider configuration. For more details, see: https://github.com/avante-corp/avante.nvim/wiki/Custom-providers',
             k
           )
         )

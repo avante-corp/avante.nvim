@@ -6,7 +6,7 @@
 --- Avante can integrate with nvim-tree through its extension module:
 --->
 ---   {
----     "yetone/avante.nvim",
+---     "avante-corp/avante.nvim",
 ---     keys = {
 ---       {
 ---         "<leader>a+",

@@ -269,7 +269,7 @@ function M.launch_rag_service(cb)
     end)
     if not ok then
       Utils.error(
-        "Could not launch 'avante-rag-service', you can install it via nix profile add github:yetone/avante.nvim#ragService"
+        "Could not launch 'avante-rag-service', you can install it via nix profile add github:avante-corp/avante.nvim#ragService"
       )
     end
   end

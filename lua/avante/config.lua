@@ -266,7 +266,7 @@ M.instructions_file = "avante.md"
 --- Of course, you can reduce the request frequency by increasing `suggestion.debounce`.
 ---@field auto_suggestions_provider? boolean
 ---To add support for custom provider, follow the format below
----See https://github.com/yetone/avante.nvim/wiki#custom-providers for more details
+---See https://github.com/avante-corp/avante.nvim/wiki#custom-providers for more details
 ---@field providers {string: AvanteProvider}
 ---Agent Client Protocol providers.  |avante-acp|
 ---@field acp_providers {string: AvanteACPProvider}
