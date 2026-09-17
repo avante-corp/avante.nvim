@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -95,6 +96,10 @@ def parse_cli_settings() -> argparse.Namespace:
     settings, _ = parser.parse_known_args()
     if settings.workers < 1:
         parser.error("--workers must be a positive integer")
+    data_home = Path(os.environ.get("XDG_DATA_HOME", ""))
+    if not data_home.is_absolute():
+        data_home = Path.home() / ".local" / "share"
+    settings.base_data_dir = Path(settings.data_dir) if settings.data_dir else data_home / "avante-rag-service"
     return settings
 
 

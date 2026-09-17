@@ -1,8 +1,9 @@
 import sqlite3
 from collections.abc import Generator
 from contextlib import contextmanager
+from pathlib import Path
 
-from libs.configs import DB_FILE
+DB_FILE: Path
 
 # SQLite table schemas
 CREATE_TABLES_SQL = """
@@ -53,8 +54,10 @@ def get_db_connection() -> Generator[sqlite3.Connection, None, None]:
         conn.close()
 
 
-def init_db() -> None:
+def init_db(db_file: Path) -> None:
     """Initialize the SQLite database."""
+    global DB_FILE  # noqa: PLW0603
+    DB_FILE = db_file
     with get_db_connection() as conn:
         conn.executescript(CREATE_TABLES_SQL)
         conn.commit()

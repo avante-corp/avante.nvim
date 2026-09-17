@@ -9,8 +9,8 @@ The service stores databases and indexing metadata in `$XDG_DATA_HOME/avante-rag
 `$XDG_STATE_HOME/avante-rag-service/logs` (default: `~/.local/state/avante-rag-service/logs`).
 Empty or relative XDG values use the defaults.
 
-The embedding configuration is stored in `$XDG_CONFIG_HOME/nvim/avante/rag_config.json`
-(default: `~/.config/nvim/avante/rag_config.json`), independently of `DATA_DIR` or `--data-dir`.
+The embedding configuration is stored in `$XDG_CONFIG_HOME/avante/rag_config.json`
+(default: `~/.config/avante/rag_config.json`), independently of `DATA_DIR` or `--data-dir`.
 
 Passing `--data-dir /path/to/data` or setting `DATA_DIR` overrides the data location
 and places logs in its `logs` subdirectory. The CLI option takes precedence over

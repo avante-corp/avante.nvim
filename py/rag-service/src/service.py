@@ -28,7 +28,6 @@ from chromadb.config import Settings
 from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException
 
 # Local application imports
-from libs.configs import BASE_DATA_DIR, DB_FILE, xdg_directory
 from libs.db import init_db
 from libs.logger import configure_logging, logger
 from libs.utils import (
@@ -71,15 +70,12 @@ if TYPE_CHECKING:
     from watchdog.observers.api import BaseObserver
 
 
-CHROMA_PERSIST_DIR = BASE_DATA_DIR / "chroma_db"
-LOG_DIR = (
-    BASE_DATA_DIR / "logs"
-    if os.environ.get("DATA_DIR")
-    else xdg_directory("XDG_STATE_HOME", Path.home() / ".local" / "state") / "avante-rag-service" / "logs"
-)
+BASE_DATA_DIR: Path
+CHROMA_PERSIST_DIR: Path
+LOG_DIR: Path
 
 # Lock file for leader election
-LOCK_FILE = BASE_DATA_DIR / "leader.lock"
+LOCK_FILE: Path
 
 
 def try_acquire_leadership() -> bool:
@@ -1369,8 +1365,17 @@ def initialize_app(cli_settings: argparse.Namespace) -> FastAPI:  # noqa: PLR091
     """Initialize service state and construct the worker application."""
     global max_workers, watched_resources, file_last_modified, index_lock  # noqa: PLW0603
     global index, embedding_splitter, max_embedding_tokens  # noqa: PLW0603
+    global BASE_DATA_DIR, CHROMA_PERSIST_DIR, LOG_DIR, LOCK_FILE  # noqa: PLW0603
 
-    for directory in (BASE_DATA_DIR, LOG_DIR, DB_FILE.parent, CHROMA_PERSIST_DIR):
+    BASE_DATA_DIR = cli_settings.base_data_dir
+    CHROMA_PERSIST_DIR = BASE_DATA_DIR / "chroma_db"
+    state_home = Path(os.environ.get("XDG_STATE_HOME", ""))
+    if not state_home.is_absolute():
+        state_home = Path.home() / ".local" / "state"
+    LOG_DIR = BASE_DATA_DIR / "logs" if cli_settings.data_dir else state_home / "avante-rag-service" / "logs"
+    LOCK_FILE = BASE_DATA_DIR / "leader.lock"
+    db_file = BASE_DATA_DIR / "sqlite" / "indexing_history.db"
+    for directory in (BASE_DATA_DIR, LOG_DIR, db_file.parent, CHROMA_PERSIST_DIR):
         directory.mkdir(parents=True, exist_ok=True)
     configure_logging(cli_settings.log_level, LOG_DIR)
     logger.info("data dir: %s", BASE_DATA_DIR.resolve())
@@ -1381,7 +1386,7 @@ def initialize_app(cli_settings: argparse.Namespace) -> FastAPI:  # noqa: PLR091
     index_lock = threading.Lock()
 
     # Initialize database
-    init_db()
+    init_db(db_file)
 
     # Initialize ChromaDB and LlamaIndex services
     settings = Settings(
@@ -1416,7 +1421,10 @@ def initialize_app(cli_settings: argparse.Namespace) -> FastAPI:  # noqa: PLR091
 
     # Try to read previous config
     # Ideally we would have nvim set it when calling executable using NVIM_APPNAME
-    config_file = xdg_directory("XDG_CONFIG_HOME", Path.home() / ".config") / "nvim" / "avante" / "rag_config.json"
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME", ""))
+    if not config_home.is_absolute():
+        config_home = Path.home() / ".config"
+    config_file = config_home / "avante" / "rag_config.json"
     config_file.parent.mkdir(parents=True, exist_ok=True)
     current_config = {
         "provider": rag_embed_provider,
