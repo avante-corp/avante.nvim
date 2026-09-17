@@ -49,7 +49,7 @@ Converts html to markdown ···························
 ==============================================================================
 Installation                                               *avante-installation*
 
-See the official README at https://github.com/yetone/avante.nvim for installation instructions.
+See the official README at https://github.com/avante-corp/avante.nvim for installation instructions.
 
 ==============================================================================
 Requirements                                               *avante-requirements*
@@ -419,7 +419,7 @@ avante.Config                                                    *avante.Config*
                                                                         currently designating it as `copilot` provider is dangerous because: https://github.com/yetone/avante.nvim/issues/1048
                                                                         Of course, you can reduce the request frequency by increasing `suggestion.debounce`.
         {providers}                   ({string:AvanteProvider})        To add support for custom provider, follow the format below
-                                                                       See https://github.com/yetone/avante.nvim/wiki#custom-providers for more details
+                                                                       See https://github.com/avante-corp/avante.nvim/wiki#custom-providers for more details
         {acp_providers}               ({string:AvanteACPProvider})     Agent Client Protocol providers.  |avante-acp|
         {provider?}                   (avante.ProviderName)
                                                                        Default provider on startup. If undefined, avante loads the last provider used.
@@ -1485,19 +1485,29 @@ avante RAG service                                          *avante-rag-service*
    })
 <
 
- The RAG service depends on Docker or Nix. The `host_mount` path is mounted
- read-only into the service container. After changing RAG configuration,
- remove the old container so the new configuration is used:
+ The RAG service lives in py/rag-service and be run via `uv run`.
+ `nix build .#ragService` will also give you the "avante-rag-service" executable.
+
+ OUTDATED DOCKER SPECIFIC COMMENTS:
+ there was a docker build that is now outdated. It could be fixed if someone needs it
+ The `host_mount` path is mounted read-only into the service container.
+ After changing RAG configuration, remove the old container so the new configuration is used:
 >
    docker rm -fv avante-rag-service
 <
 Communication port is hardcoded to localhost:20250
 
 M.run_rag_service()                         *avante-rag-service.run_rag_service*
-    @brief Starts the rag service if not already running
+    Starts the rag service if not already running
+     and loads the current project into it
+
+    See: ~
+        |launch_rag_service|
 
 
 M.get_rag_service_image()             *avante-rag-service.get_rag_service_image*
+    @brief Return the docker image full name
+    It is OUTDATED. If you need to use the docker image plea
 
 
 M.get_rag_service_port()               *avante-rag-service.get_rag_service_port*
@@ -1516,6 +1526,8 @@ M.get_rag_service_runner()           *avante-rag-service.get_rag_service_runner*
 
 
 M.launch_rag_service({cb})               *avante-rag-service.launch_rag_service*
+    Checks first if RAG service is live before starting it
+    Methode depends on "docker" vs "nix" runner
 
     Parameters: ~
         {cb}  (fun())
@@ -1531,6 +1543,7 @@ M.get_scheme()                                   *avante-rag-service.get_scheme*
 
 
 M.to_container_uri()                       *avante-rag-service.to_container_uri*
+    Transforms URI when used with docker
 
 
 M.to_local_uri()                               *avante-rag-service.to_local_uri*
@@ -1551,9 +1564,10 @@ AvanteRagServiceAddResourceResponse        *AvanteRagServiceAddResourceResponse*
 
 
 M.add_resource({uri})                          *avante-rag-service.add_resource*
+    Add resource to database
 
     Parameters: ~
-        {uri}  (string)
+        {uri}  (string)  CAREFUL: it is trailing slash sensitive (e.g. "file:///toto/")
 
 
 M.remove_resource()                         *avante-rag-service.remove_resource*
@@ -1601,7 +1615,7 @@ AvanteRagServiceIndexingStatusResponse  *AvanteRagServiceIndexingStatusResponse*
 M.indexing_status({uri})                    *avante-rag-service.indexing_status*
 
     Parameters: ~
-        {uri}  (string)
+        {uri}  (string)  e.g. "file:///home/USER/my-documentation"
 
     Returns: ~
         (AvanteRagServiceIndexingStatusResponse|nil)

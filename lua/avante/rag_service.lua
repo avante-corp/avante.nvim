@@ -51,7 +51,7 @@ local M = {}
 local container_name = "avante-rag-service"
 local service_path = "/tmp/" .. container_name
 
----@brief Starts the rag service if not already running
+---Starts the rag service if not already running
 --- and loads the current project into it
 ---@see launch_rag_service
 function M.run_rag_service()
@@ -112,7 +112,7 @@ end
 
 function M.get_rag_service_runner() return (Config.rag_service and Config.rag_service.runner) or "docker" end
 
----@brief Checks first if RAG service is live before starting it
+---Checks first if RAG service is live before starting it
 ---Methode depends on "docker" vs "nix" runner
 ---@param cb fun()
 function M.launch_rag_service(cb)
@@ -315,7 +315,7 @@ function M.get_scheme(uri)
   return scheme
 end
 
----@brief transforms URI when used with docker
+---Transforms URI when used with docker
 function M.to_container_uri(uri)
   local runner = M.get_rag_service_runner()
   if runner == "nix" then return uri end
@@ -357,7 +357,7 @@ end
 ---@field status string
 ---@field message string
 
----@brief add resource to database
+---Add resource to database
 ---@param uri string CAREFUL: it is trailing slash sensitive (e.g. "file:///toto/")
 function M.add_resource(uri)
   uri = M.to_container_uri(uri)
