@@ -71,22 +71,18 @@ if TYPE_CHECKING:
 
 
 BASE_DATA_DIR: Path
-CHROMA_PERSIST_DIR: Path
-LOG_DIR: Path
-
-# Lock file for leader election
-LOCK_FILE: Path
-
 
 def try_acquire_leadership() -> bool:
     """Try to acquire leadership using file lock."""
     try:
+        # Lock file for leader election
+        lock_file = BASE_DATA_DIR / "leader.lock"
         # Ensure the lock file exists
-        LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
-        LOCK_FILE.touch(exist_ok=True)
+        lock_file.parent.mkdir(parents=True, exist_ok=True)
+        lock_file.touch(exist_ok=True)
 
         # Try to acquire an exclusive lock
-        lock_fd = os.open(str(LOCK_FILE), os.O_RDWR)
+        lock_fd = os.open(str(lock_file), os.O_RDWR)
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
         # Write current process ID to lock file
@@ -1365,19 +1361,18 @@ def initialize_app(cli_settings: argparse.Namespace) -> FastAPI:
     """Initialize service state and construct the worker application."""
     global max_workers, watched_resources, file_last_modified, index_lock
     global index, embedding_splitter, max_embedding_tokens
-    global BASE_DATA_DIR, CHROMA_PERSIST_DIR, LOG_DIR, LOCK_FILE
+    global BASE_DATA_DIR, log_dir
 
     BASE_DATA_DIR = cli_settings.base_data_dir
-    CHROMA_PERSIST_DIR = BASE_DATA_DIR / "chroma_db"
+    chroma_persist_dir = BASE_DATA_DIR / "chroma_db"
     state_home = Path(os.environ.get("XDG_STATE_HOME", ""))
     if not state_home.is_absolute():
         state_home = Path.home() / ".local" / "state"
-    LOG_DIR = BASE_DATA_DIR / "logs" if cli_settings.data_dir else state_home / "avante-rag-service" / "logs"
-    LOCK_FILE = BASE_DATA_DIR / "leader.lock"
+    log_dir = BASE_DATA_DIR / "logs" if cli_settings.data_dir else state_home / "avante-rag-service" / "logs"
     db_file = BASE_DATA_DIR / "sqlite" / "indexing_history.db"
-    for directory in (BASE_DATA_DIR, LOG_DIR, db_file.parent, CHROMA_PERSIST_DIR):
+    for directory in (BASE_DATA_DIR, log_dir, db_file.parent, chroma_persist_dir):
         directory.mkdir(parents=True, exist_ok=True)
-    configure_logging(cli_settings.log_level, LOG_DIR)
+    configure_logging(cli_settings.log_level, log_dir)
     logger.info("data dir: %s", BASE_DATA_DIR.resolve())
 
     max_workers = multiprocessing.cpu_count()
@@ -1392,7 +1387,7 @@ def initialize_app(cli_settings: argparse.Namespace) -> FastAPI:
     settings = Settings(
         allow_reset=True,
     )
-    chroma_client = chromadb.PersistentClient(path=str(CHROMA_PERSIST_DIR), settings=settings)
+    chroma_client = chromadb.PersistentClient(path=str(chroma_persist_dir), settings=settings)
 
     # Check if provider or model has changed
     rag_embed_provider = cli_settings.embed_provider
@@ -1489,7 +1484,7 @@ def initialize_app(cli_settings: argparse.Namespace) -> FastAPI:
     try:
         index = load_index_from_storage(storage_context)
     except (OSError, ValueError) as e:
-        logger.error("Failed to load index from storage %s: %s", str(CHROMA_PERSIST_DIR), e)
+        logger.error("Failed to load index from storage %s: %s", str(chroma_persist_dir), e)
         index = VectorStoreIndex([], storage_context=storage_context)
 
     app = FastAPI(
