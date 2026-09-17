@@ -10,9 +10,9 @@ from llama_index.llms.ollama import Ollama
 
 def initialize_embed_model(
     embed_endpoint: str,
-    embed_api_key: str,  # noqa: ARG001
+    embed_api_key: str,
     embed_model: str,
-    **embed_extra: Any,  # noqa: ANN401
+    **embed_extra: Any,
 ) -> BaseEmbedding:
     """
     Create Ollama embedding model.
@@ -39,9 +39,9 @@ def initialize_embed_model(
 
 def initialize_llm_model(
     llm_endpoint: str,
-    llm_api_key: str,  # noqa: ARG001
+    llm_api_key: str,
     llm_model: str,
-    **llm_extra: Any,  # noqa: ANN401
+    **llm_extra: Any,
 ) -> LLM:
     """
     Create Ollama LLM model.

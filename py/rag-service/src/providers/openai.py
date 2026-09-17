@@ -12,7 +12,7 @@ def initialize_embed_model(
     embed_endpoint: str,
     embed_api_key: str,
     embed_model: str,
-    **embed_extra: Any,  # noqa: ANN401
+    **embed_extra: Any,
 ) -> BaseEmbedding:
     """
     Create OpenAI embedding model.
@@ -42,7 +42,7 @@ def initialize_llm_model(
     llm_endpoint: str,
     llm_api_key: str,
     llm_model: str,
-    **llm_extra: Any,  # noqa: ANN401
+    **llm_extra: Any,
 ) -> LLM:
     """
     Create OpenAI LLM model.

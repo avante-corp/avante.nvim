@@ -1,4 +1,4 @@
-"""Ensure CLI help and argument errors do not load service dependencies."""  # noqa: INP001
+"""Ensure CLI help and argument errors do not load service dependencies."""
 
 import subprocess
 import sys
@@ -20,10 +20,10 @@ class CliTests(unittest.TestCase):
             check=False,
             timeout=10,
         )
-        self.assertEqual(result.returncode, 0, result.stderr)  # noqa: PT009
-        self.assertEqual(result.stderr, "")  # noqa: PT009
-        self.assertTrue(result.stdout.startswith("usage:"))  # noqa: PT009
-        self.assertIn("--embed-provider", result.stdout)  # noqa: PT009
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr, "")
+        self.assertTrue(result.stdout.startswith("usage:"))
+        self.assertIn("--embed-provider", result.stdout)
 
     def test_invalid_argument_without_dependencies(self) -> None:
         """Argument validation must happen before service imports."""
@@ -34,9 +34,9 @@ class CliTests(unittest.TestCase):
             check=False,
             timeout=10,
         )
-        self.assertEqual(result.returncode, 2)  # noqa: PT009
-        self.assertIn("invalid int value", result.stderr)  # noqa: PT009
-        self.assertNotIn("Traceback", result.stderr)  # noqa: PT009
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("invalid int value", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
 
 
 if __name__ == "__main__":

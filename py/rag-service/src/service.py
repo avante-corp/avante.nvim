@@ -1,4 +1,4 @@
-"""RAG Service API for managing document indexing and retrieval."""  # noqa: INP001
+"""RAG Service API for managing document indexing and retrieval."""
 
 from __future__ import annotations
 
@@ -50,7 +50,6 @@ from llama_index.core.postprocessor import MetadataReplacementPostProcessor
 from llama_index.core.schema import Document
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from markdownify import markdownify as md
-from models.indexing_history import IndexingHistory
 from models.resource import Resource
 from providers.factory import initialize_embed_model, initialize_llm_model
 from pydantic import BaseModel, Field
@@ -66,6 +65,7 @@ if TYPE_CHECKING:
 
     from llama_index.core.indices.base import BaseIndex
     from llama_index.core.schema import NodeWithScore, QueryBundle
+    from models.indexing_history import IndexingHistory
     from pathspec.gitignore import GitIgnoreSpec
     from watchdog.observers.api import BaseObserver
 
@@ -99,7 +99,7 @@ def try_acquire_leadership() -> bool:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Initialize services on startup."""
     # Try to become leader if no worker_id is set
 
@@ -769,7 +769,7 @@ def update_index_for_file(directory: Path, abs_file_path: Path) -> None:
         logger.error("File indexing failed: %s", abs_file_path)
 
 
-def split_documents(documents: list[Document]) -> list[Document]:  # noqa: C901
+def split_documents(documents: list[Document]) -> list[Document]:
     """Split documents into code and non-code documents."""
     # Create file parser configuration
     # Initialize CodeSplitter
@@ -987,7 +987,7 @@ async def readiness_probe() -> dict[str, str]:
         400: {"description": "Resource already being watched"},
     },
 )
-async def add_resource(request: ResourceRequest, background_tasks: BackgroundTasks):  # noqa: D103, ANN201, C901
+async def add_resource(request: ResourceRequest, background_tasks: BackgroundTasks):
     logger.debug("add_resource %s", request.uri)
     # Check if resource already exists
     resource = resource_service.get_resource(request.uri)
@@ -1076,7 +1076,7 @@ async def add_resource(request: ResourceRequest, background_tasks: BackgroundTas
         404: {"description": "Resource not found in watch list"},
     },
 )
-async def remove_resource(request: ResourceURIRequest):  # noqa: D103, ANN201
+async def remove_resource(request: ResourceURIRequest):
     resource = resource_service.get_resource(request.uri)
     if not resource or resource.status != "active":
         raise HTTPException(status_code=404, detail="Resource not being watched")
@@ -1107,7 +1107,7 @@ async def remove_resource(request: ResourceURIRequest):  # noqa: D103, ANN201
         500: {"description": "Internal server error during retrieval"},
     },
 )
-async def retrieve(request: RetrieveRequest):  # noqa: D103, ANN201, C901, PLR0915
+async def retrieve(request: RetrieveRequest):
     if is_local_uri(request.base_uri):
         directory = uri_to_path(request.base_uri)
         # Validate directory exists
@@ -1167,8 +1167,8 @@ async def retrieve(request: RetrieveRequest):  # noqa: D103, ANN201, C901, PLR09
         def postprocess_nodes(
             self: ResourceFilterPostProcessor,
             nodes: list[NodeWithScore],
-            query_bundle: QueryBundle | None = None,  # noqa: ARG002, pyright: ignore
-            query_str: str | None = None,  # noqa: ARG002, pyright: ignore
+            query_bundle: QueryBundle | None = None,
+            query_str: str | None = None,
         ) -> list[NodeWithScore]:
             """
             Filter nodes based on directory path.
@@ -1283,7 +1283,7 @@ class IndexingStatusResponse(BaseModel):
         404: {"description": "Resource not found"},
     },
 )
-async def get_indexing_status_for_resource(request: IndexingStatusRequest):  # noqa: D103, ANN201
+async def get_indexing_status_for_resource(request: IndexingStatusRequest):
     resource_files = []
     status_counts = {}
     if is_local_uri(request.uri):
@@ -1361,11 +1361,11 @@ async def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
-def initialize_app(cli_settings: argparse.Namespace) -> FastAPI:  # noqa: PLR0915
+def initialize_app(cli_settings: argparse.Namespace) -> FastAPI:
     """Initialize service state and construct the worker application."""
-    global max_workers, watched_resources, file_last_modified, index_lock  # noqa: PLW0603
-    global index, embedding_splitter, max_embedding_tokens  # noqa: PLW0603
-    global BASE_DATA_DIR, CHROMA_PERSIST_DIR, LOG_DIR, LOCK_FILE  # noqa: PLW0603
+    global max_workers, watched_resources, file_last_modified, index_lock
+    global index, embedding_splitter, max_embedding_tokens
+    global BASE_DATA_DIR, CHROMA_PERSIST_DIR, LOG_DIR, LOCK_FILE
 
     BASE_DATA_DIR = cli_settings.base_data_dir
     CHROMA_PERSIST_DIR = BASE_DATA_DIR / "chroma_db"
@@ -1420,7 +1420,6 @@ def initialize_app(cli_settings: argparse.Namespace) -> FastAPI:  # noqa: PLR091
     logger.info("Embedding chunks limited to %d tokens", max_embedding_tokens)
 
     # Try to read previous config
-    # Ideally we would have nvim set it when calling executable using NVIM_APPNAME
     config_home = Path(os.environ.get("XDG_CONFIG_HOME", ""))
     if not config_home.is_absolute():
         config_home = Path.home() / ".config"

@@ -44,7 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_status ON indexing_history(status);
 
 
 @contextmanager
-def get_db_connection() -> Generator[sqlite3.Connection, None, None]:
+def get_db_connection() -> Generator[sqlite3.Connection]:
     """Get a database connection."""
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
@@ -56,7 +56,7 @@ def get_db_connection() -> Generator[sqlite3.Connection, None, None]:
 
 def init_db(db_file: Path) -> None:
     """Initialize the SQLite database."""
-    global DB_FILE  # noqa: PLW0603
+    global DB_FILE
     DB_FILE = db_file
     with get_db_connection() as conn:
         conn.executescript(CREATE_TABLES_SQL)

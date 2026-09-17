@@ -10,7 +10,7 @@ def initialize_llm_model(
     llm_endpoint: str,
     llm_api_key: str,
     llm_model: str,
-    **llm_extra: Any,  # noqa: ANN401
+    **llm_extra: Any,
 ) -> LLM:
     """
     Create OpenRouter LLM model.

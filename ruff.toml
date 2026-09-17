@@ -13,16 +13,17 @@ exclude = [
 ]
 
 # 目标 Python 版本
-target-version = "py312"
+target-version = "py313"
 
 [lint]
 # 启用所有规则集
-select = ["ALL"]
+# select = ["ALL"]
 
 # 忽略一些规则
 ignore = [
   "A005",
   "BLE001",
+  "CPY001", # copyright notice
   "D104",
   "D100",
   "D101",

@@ -48,7 +48,7 @@ def initialize_embed_model(
         attribute = getattr(provider_module, "initialize_embed_model", None)
         if attribute is None:
             error_msg = f"Provider module '{embed_provider}' does not have an 'initialize_embed_model' function."
-            raise ValueError(error_msg)  # noqa: TRY301
+            raise ValueError(error_msg)
 
         initializer = cast("Callable[..., BaseEmbedding]", attribute)
 
@@ -134,7 +134,7 @@ def initialize_llm_model(
         attribute = getattr(provider_module, "initialize_llm_model", None)
         if attribute is None:
             error_msg = f"Provider module '{llm_provider}' does not have an 'initialize_llm_model' function."
-            raise ValueError(error_msg)  # noqa: TRY301
+            raise ValueError(error_msg)
 
         initializer = cast("Callable[..., LLM]", attribute)
 

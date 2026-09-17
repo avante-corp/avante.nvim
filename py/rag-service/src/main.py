@@ -1,4 +1,4 @@
-"""Command-line entry point for the RAG service."""  # noqa: INP001
+"""Command-line entry point for the RAG service."""
 
 from __future__ import annotations
 
@@ -6,6 +6,9 @@ import argparse
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+import uvicorn
+from service import initialize_app
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -106,7 +109,7 @@ def parse_cli_settings() -> argparse.Namespace:
 def create_app() -> FastAPI:
     """Parse worker settings before importing and initializing the service."""
     app = main(serve=False)
-    assert app is not None  # noqa: S101
+    assert app is not None
     return app
 
 
@@ -117,18 +120,14 @@ def main(*, serve: bool = True) -> FastAPI | None:
         # Configure paths before service imports and propagate them to workers.
         os.environ["DATA_DIR"] = cli_settings.data_dir
     if serve:
-        import uvicorn
-
         uvicorn.run(
             "main:create_app",
             factory=True,
-            host="0.0.0.0",  # noqa: S104
+            host="0.0.0.0",
             port=cli_settings.port,
             workers=cli_settings.workers,
         )
         return None
-
-    from service import initialize_app
 
     return initialize_app(cli_settings)
 

@@ -35,7 +35,6 @@ repos:
     - id: ruff
       args:
         - --fix
-        - --ignore=CPY001 # copyright notice
     # 运行 Ruff formatter
     - id: ruff-format
 - repo: https://github.com/RobertCraigie/pyright-python

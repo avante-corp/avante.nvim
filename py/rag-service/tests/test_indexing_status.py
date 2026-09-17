@@ -1,4 +1,4 @@
-"""Regression tests for indexing status response serialization."""  # noqa: INP001
+"""Regression tests for indexing status response serialization."""
 
 import unittest
 from unittest.mock import patch
@@ -27,8 +27,8 @@ class IndexingStatusTests(unittest.IsolatedAsyncioTestCase):
                     patch.object(service.indexing_history_service, "get_indexing_status", return_value=records),
                 ):
                     response = await client.post("/api/v1/indexing_status", json={"uri": uri})
-                    self.assertEqual(response.status_code, 200, response.text)  # noqa: PT009
-                    self.assertEqual(  # noqa: PT009
+                    self.assertEqual(response.status_code, 200, response.text)
+                    self.assertEqual(
                         response.json(),
                         {
                             "uri": uri,
