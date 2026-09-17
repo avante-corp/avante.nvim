@@ -1,9 +1,7 @@
 local Utils = require("avante.utils")
-local Llm = require("avante.llm")
 local Highlights = require("avante.highlights")
 local Config = require("avante.config")
 local Providers = require("avante.providers")
-local HistoryMessage = require("avante.history.message")
 local api = vim.api
 local fn = vim.fn
 
@@ -233,6 +231,7 @@ L5:     pass
     },
   }
 
+  local HistoryMessage = require("avante.history.message")
   local history_messages = vim
     .iter(llm_messages)
     :map(function(msg) return HistoryMessage:new(msg.role, msg.content) end)
@@ -240,6 +239,7 @@ L5:     pass
 
   local diagnostics = Utils.lsp.get_diagnostics(bufnr)
 
+  local Llm = require("avante.llm")
   Llm.stream({
     provider = provider,
     ask = true,
