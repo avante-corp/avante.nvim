@@ -50,6 +50,7 @@ from llama_index.core.postprocessor import MetadataReplacementPostProcessor
 from llama_index.core.schema import Document
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from markdownify import markdownify as md
+from models.indexing_history import IndexingHistory
 from models.resource import Resource
 from providers.factory import initialize_embed_model, initialize_llm_model
 from pydantic import BaseModel, Field
@@ -63,20 +64,21 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import AsyncGenerator
 
+    from llama_index.core.data_structs import IndexDict
     from llama_index.core.indices.base import BaseIndex
     from llama_index.core.schema import NodeWithScore, QueryBundle
-    from models.indexing_history import IndexingHistory
     from pathspec.gitignore import GitIgnoreSpec
     from watchdog.observers.api import BaseObserver
 
 
-BASE_DATA_DIR: Path
+base_data_dir: Path
+
 
 def try_acquire_leadership() -> bool:
     """Try to acquire leadership using file lock."""
     try:
         # Lock file for leader election
-        lock_file = BASE_DATA_DIR / "leader.lock"
+        lock_file = base_data_dir / "leader.lock"
         # Ensure the lock file exists
         lock_file.parent.mkdir(parents=True, exist_ok=True)
         lock_file.touch(exist_ok=True)
@@ -171,7 +173,7 @@ DEFAULT_MAX_EMBEDDING_TOKENS = 512
 watched_resources: dict[str, BaseObserver]  # Directory path -> Observer instance mapping
 file_last_modified: dict[Path, float]  # File path -> Last modified time mapping
 index_lock: threading.Lock
-index: BaseIndex
+index: BaseIndex[IndexDict]
 embedding_splitter: SentenceSplitter
 max_embedding_tokens: int
 
@@ -1361,19 +1363,19 @@ def initialize_app(cli_settings: argparse.Namespace) -> FastAPI:
     """Initialize service state and construct the worker application."""
     global max_workers, watched_resources, file_last_modified, index_lock
     global index, embedding_splitter, max_embedding_tokens
-    global BASE_DATA_DIR, log_dir
+    global base_data_dir
 
-    BASE_DATA_DIR = cli_settings.base_data_dir
-    chroma_persist_dir = BASE_DATA_DIR / "chroma_db"
+    base_data_dir = cli_settings.base_data_dir
+    chroma_persist_dir = base_data_dir / "chroma_db"
     state_home = Path(os.environ.get("XDG_STATE_HOME", ""))
     if not state_home.is_absolute():
         state_home = Path.home() / ".local" / "state"
-    log_dir = BASE_DATA_DIR / "logs" if cli_settings.data_dir else state_home / "avante-rag-service" / "logs"
-    db_file = BASE_DATA_DIR / "sqlite" / "indexing_history.db"
-    for directory in (BASE_DATA_DIR, log_dir, db_file.parent, chroma_persist_dir):
+    log_dir = base_data_dir / "logs" if cli_settings.data_dir else state_home / "avante-rag-service" / "logs"
+    db_file = base_data_dir / "sqlite" / "indexing_history.db"
+    for directory in (base_data_dir, log_dir, db_file.parent, chroma_persist_dir):
         directory.mkdir(parents=True, exist_ok=True)
     configure_logging(cli_settings.log_level, log_dir)
-    logger.info("data dir: %s", BASE_DATA_DIR.resolve())
+    logger.info("data dir: %s", base_data_dir.resolve())
 
     max_workers = multiprocessing.cpu_count()
     watched_resources = {}

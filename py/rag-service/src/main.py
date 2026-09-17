@@ -7,9 +7,6 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import uvicorn
-from service import initialize_app
-
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
@@ -120,6 +117,8 @@ def main(*, serve: bool = True) -> FastAPI | None:
         # Configure paths before service imports and propagate them to workers.
         os.environ["DATA_DIR"] = cli_settings.data_dir
     if serve:
+        import uvicorn
+
         uvicorn.run(
             "main:create_app",
             factory=True,
@@ -128,6 +127,8 @@ def main(*, serve: bool = True) -> FastAPI | None:
             workers=cli_settings.workers,
         )
         return None
+
+    from service import initialize_app
 
     return initialize_app(cli_settings)
 
