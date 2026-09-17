@@ -164,7 +164,7 @@ class IndexingHistoryService:
                 # Parse timestamp string to datetime if needed
                 if isinstance(row_dict.get("timestamp"), str):
                     row_dict["timestamp"] = datetime.fromisoformat(
-                        row_dict["timestamp"].replace("Z", "+00:00"),
+                        row_dict["timestamp"],
                     )
                 result.append(IndexingHistory(**row_dict))
 

@@ -29,11 +29,13 @@ repos:
     args: ['--features', 'luajit']
     files: \.rs$
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.9.9
+  rev: v0.16.8
   hooks:
     # 运行 Ruff linter
     - id: ruff
-      args: [--fix]
+      args:
+        - --fix
+        - --ignore=CPY001 # copyright notice
     # 运行 Ruff formatter
     - id: ruff-format
 - repo: https://github.com/RobertCraigie/pyright-python

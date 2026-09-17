@@ -169,6 +169,7 @@
               stylua
               mylua
               vimcats  # to generate docs
+              perl # needed for cargo check
               pre-commit
             ];
 
