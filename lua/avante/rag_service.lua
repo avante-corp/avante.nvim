@@ -28,9 +28,13 @@
 ---   })
 ---<
 ---
---- The RAG service depends on Docker or Nix. The `host_mount` path is mounted
---- read-only into the service container. After changing RAG configuration,
---- remove the old container so the new configuration is used:
+--- The RAG service lives in py/rag-service and be run via `uv run`.
+--- `nix build .#ragService` will also give you the "avante-rag-service" executable.
+---
+--- OUTDATED DOCKER SPECIFIC COMMENTS:
+--- there was a docker build that is now outdated. It could be fixed if someone needs it
+--- The `host_mount` path is mounted read-only into the service container.
+--- After changing RAG configuration, remove the old container so the new configuration is used:
 --->
 ---   docker rm -fv avante-rag-service
 ---<
@@ -48,6 +52,8 @@ local container_name = "avante-rag-service"
 local service_path = "/tmp/" .. container_name
 
 ---@brief Starts the rag service if not already running
+--- and loads the current project into it
+---@see launch_rag_service
 function M.run_rag_service()
   local started_at = os.time()
   local add_resource_with_delay
@@ -77,6 +83,8 @@ function M.run_rag_service()
   end)
 end
 
+---@brief Return the docker image full name
+---It is OUTDATED. If you need to use the docker image plea
 function M.get_rag_service_image()
   if Config.rag_service and Config.rag_service.image then
     return Config.rag_service.image
@@ -104,6 +112,8 @@ end
 
 function M.get_rag_service_runner() return (Config.rag_service and Config.rag_service.runner) or "docker" end
 
+---@brief Checks first if RAG service is live before starting it
+---Methode depends on "docker" vs "nix" runner
 ---@param cb fun()
 function M.launch_rag_service(cb)
   --- If Config.rag_service.llm.api_key is nil or empty, llm_api_key will be an empty string.
@@ -220,9 +230,6 @@ function M.launch_rag_service(cb)
       return
     end
 
-    local dirname =
-      Utils.trim(string.sub(debug.getinfo(1).source, 2, #"/lua/avante/rag_service.lua" * -1), { suffix = "/" })
-
     Utils.debug(string.format("launching %s with nix...", container_name))
 
     -- can be launched beforehand via "uv run"
@@ -308,6 +315,7 @@ function M.get_scheme(uri)
   return scheme
 end
 
+---@brief transforms URI when used with docker
 function M.to_container_uri(uri)
   local runner = M.get_rag_service_runner()
   if runner == "nix" then return uri end
@@ -349,7 +357,8 @@ end
 ---@field status string
 ---@field message string
 
----@param uri string
+---@brief add resource to database
+---@param uri string CAREFUL: it is trailing slash sensitive (e.g. "file:///toto/")
 function M.add_resource(uri)
   uri = M.to_container_uri(uri)
   local resource_name = uri:match("([^/]+)/$")
@@ -385,15 +394,19 @@ function M.add_resource(uri)
       end
     end
   end
+  local payload = vim.json.encode({ name = resource_name, uri = uri })
+  local url = M.get_rag_service_url() .. "/api/v1/add_resource"
+
+  Utils.debug("Sending payload to " .. url .. ": %s", payload)
   local cmd = {
     "curl",
     "-X",
     "POST",
-    M.get_rag_service_url() .. "/api/v1/add_resource",
+    url,
     "-H",
     "Content-Type: application/json",
     "-d",
-    vim.json.encode({ name = resource_name, uri = uri }),
+    payload,
   }
   vim.system(cmd, { text = true }, function(output)
     if output.code == 0 then
@@ -475,7 +488,7 @@ end
 ---@field total_files integer
 ---@field status_summary AvanteRagServiceIndexingStatusSummary
 
----@param uri string
+---@param uri string e.g. "file:///home/USER/my-documentation"
 ---@return AvanteRagServiceIndexingStatusResponse | nil
 function M.indexing_status(uri)
   uri = M.to_container_uri(uri)
