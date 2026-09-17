@@ -117,7 +117,7 @@ rustlint:
 
 .PHONY: rusttest
 rusttest:
-	@cargo test --features luajit
+	cargo test --features luajit
 
 .PHONY: luatest
 luatest:
@@ -137,7 +137,7 @@ lint: luacheck luastylecheck ruststylecheck rustlint
 
 .PHONY: lua-typecheck
 lua-typecheck:
-	@./scripts/lua-typecheck.sh
+	./scripts/lua-typecheck.sh
 
 .PHONY: build-image
 build-image:
