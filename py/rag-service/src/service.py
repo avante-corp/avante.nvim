@@ -50,6 +50,7 @@ from llama_index.core.postprocessor import MetadataReplacementPostProcessor
 from llama_index.core.schema import Document
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from markdownify import markdownify as md
+from models.indexing_history import IndexingHistory
 from models.resource import Resource
 from providers.factory import initialize_embed_model, initialize_llm_model
 from pydantic import BaseModel, Field
@@ -65,7 +66,6 @@ if TYPE_CHECKING:
 
     from llama_index.core.indices.base import BaseIndex
     from llama_index.core.schema import NodeWithScore, QueryBundle
-    from models.indexing_history import IndexingHistory
     from pathspec.gitignore import GitIgnoreSpec
     from watchdog.observers.api import BaseObserver
 
