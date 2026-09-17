@@ -146,3 +146,16 @@ build-image:
 .PHONY: push-image
 push-image: build-image
 	docker push $(RAG_SERVICE_IMAGE)
+
+.PHONY: rag-venv
+rag-venv:
+	uv venv --python 3.13
+	source .venv/bin/activate
+	# uv build
+	uv pip install py/rag-service
+
+
+.PHONY: rag-start
+rag-start:
+	# append your flags to this command
+	cd py/rag-service && uv run avante-rag-service
