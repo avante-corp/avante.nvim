@@ -2,12 +2,6 @@
 
 {% block extra_prompt %}
 
-{% if 'gpt-4.1' in model_name %}
-{%- include "_gpt4-1-agentic.avanterules" %}
-
-====
-{%- endif %}
-
 {%- include "_task-guidelines.avanterules" %}
 
 {% if not enable_fastapply -%}
