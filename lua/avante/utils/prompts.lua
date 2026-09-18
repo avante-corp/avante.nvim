@@ -4,16 +4,16 @@
 --- Avante uses different prompts for planning, editing, suggesting, and
 --- agentic flows. You can set a global prompt:
 --->
----   require("avante").setup({
+---   vim.g.avante = {
 ---     system_prompt = "MY CUSTOM SYSTEM PROMPT",
----   })
+---   }
 ---<
 ---
 --- Or override the prompt directory:
 --->
----   require("avante").setup({
+---   vim.g.avante = {
 ---     override_prompt_dir = vim.fn.expand("~/.config/nvim/avante_prompts"),
----   })
+---   }
 ---<
 ---
 ---By default Avante reads `avante.md` from the project root as
@@ -29,7 +29,7 @@
 ---Avante can load `*.avanterules` files from a project. Configure rule
 --- directories:
 --->
----   require("avante").setup({
+---   vim.g.avante = {
 ---     rules = {
 ---       project_dir = ".avante/rules",
 ---       global_dir = "~/.config/avante/rules",

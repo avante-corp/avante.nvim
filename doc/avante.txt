@@ -1544,20 +1544,16 @@ M.get_rag_service_runner()           *avante-rag-service.get_rag_service_runner*
 
 
 M.launch_rag_service({cb})               *avante-rag-service.launch_rag_service*
-    Checks first if RAG service is live before starting it
-    Methode depends on "docker" vs "nix" runner
 
     Parameters: ~
-        {cb}  (fun())
+        {cb}  (fun())  called after the service started
 
 
 M.stop_rag_service()                       *avante-rag-service.stop_rag_service*
 
 
-M.get_rag_service_status()           *avante-rag-service.get_rag_service_status*
-
-
 M.get_scheme()                                   *avante-rag-service.get_scheme*
+     http or https
 
 
 M.to_container_uri()                       *avante-rag-service.to_container_uri*
@@ -1913,16 +1909,16 @@ Custom prompts                                                  *avante-prompts*
  Avante uses different prompts for planning, editing, suggesting, and
  agentic flows. You can set a global prompt:
 >
-   require("avante").setup({
+   vim.g.avante = {
      system_prompt = "MY CUSTOM SYSTEM PROMPT",
-   })
+   }
 <
 
  Or override the prompt directory:
 >
-   require("avante").setup({
+   vim.g.avante = {
      override_prompt_dir = vim.fn.expand("~/.config/nvim/avante_prompts"),
-   })
+   }
 <
 
 By default Avante reads `avante.md` from the project root as
@@ -1938,7 +1934,7 @@ Project prompt rules
 Avante can load `*.avanterules` files from a project. Configure rule
  directories:
 >
-   require("avante").setup({
+   vim.g.avante = {
      rules = {
        project_dir = ".avante/rules",
        global_dir = "~/.config/avante/rules",
@@ -1973,7 +1969,7 @@ M.get_ReAct_system_prompt({provider_conf}, {opts})
 
 
 M.get_agents_rules_prompt()             *avante-prompts.get_agents_rules_prompt*
-     Get the content of AGENTS.md and the likes (CLAUDE.md, .cursorrules, ...)
+     Get the content of the first file found in the list [ AGENTS.md, CLAUDE.md, ... ]
 
     Returns: ~
         (string|nil)

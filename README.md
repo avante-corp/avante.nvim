@@ -1391,6 +1391,9 @@ See [the wiki](https://github.com/yetone/avante.nvim/wiki/plugin%E2%80%90integra
 - [x] Edit the selected block
 - [x] Smart Tab (Cursor Flow)
 - [x] Chat with project (You can use `@codebase` to chat with the whole project)
+- [ ] improve security aspects, document sandboxing approach
+- [ ] make RAG service more accessible
+- [ ] move more of the internal code to rust
 - [ ] better debugging capabilities (for prompts notably)
 - [ ] provide an helper to report bugs more effectively
 - [ ] Better codebase indexing
