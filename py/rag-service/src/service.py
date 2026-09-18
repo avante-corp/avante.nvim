@@ -714,7 +714,7 @@ def scan_directory(directory: Path) -> list[str]:
     config_home = Path(os.environ.get("XDG_CONFIG_HOME", ""))
     if not config_home.is_absolute():
         config_home = Path.home() / ".config"
-    ignore_file = config_home / "avante" / "ignore"
+    ignore_file = config_home / "avante" / "rag-ignore"
     try:
         ignore_lines = ignore_file.read_text(encoding="utf-8").splitlines()
     except FileNotFoundError:

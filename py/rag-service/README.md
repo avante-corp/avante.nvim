@@ -20,8 +20,8 @@ directory or set `DATA_DIR` to keep using it.
 
 ## Ignored file extensions
 
-Directory scans load ignored extensions from `$XDG_CONFIG_HOME/avante/ignore`
-(default: `~/.config/avante/ignore`). List one extension per line, including the
+Directory scans load ignored extensions from `$XDG_CONFIG_HOME/avante/rag-ignore`
+(default: `~/.config/avante/rag-ignore`). List one extension per line, including the
 leading dot:
 
 ```text

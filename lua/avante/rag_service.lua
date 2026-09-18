@@ -1,10 +1,15 @@
 ---@mod avante-rag-service avante RAG service
 ---@brief [[
 ---
---- The RAG service provides additional project context for AI responses. It is
---- disabled by default.
+--- The Retrieval-Augmented Generation (RAG) vante service provides additional project context for AI responses.
+--- It is a python chromadb-based server supports several providers like openai, ollama and so on.
+--- When enabled, avante will automatically launch the service on your current project (It is disabled by default).
+--- The service will scan in the background your project such that you can query it later.
+---
+--- You can list the provider by running `avante-rag-service --help`.
+--- The service config
 --->
----   require("avante").setup({
+---   vim.g.avante = {
 ---     rag_service = {
 ---       enabled = false,
 ---       host_mount = os.getenv("HOME"),
@@ -31,6 +36,8 @@
 --- The RAG service lives in py/rag-service and be run via `uv run`.
 --- `nix build .#ragService` will also give you the "avante-rag-service" executable.
 ---
+--- You can change the list of ignored files in the "$XDG_CONFIG_HOME/avante/rag-ignore" file.
+---
 --- OUTDATED DOCKER SPECIFIC COMMENTS:
 --- there was a docker build that is now outdated. It could be fixed if someone needs it
 --- The `host_mount` path is mounted read-only into the service container.
@@ -38,7 +45,7 @@
 --->
 ---   docker rm -fv avante-rag-service
 ---<
----Communication port is hardcoded to localhost:20250
+---Communication port is (for now) hardcoded to localhost:20250
 ---@brief ]]
 
 local curl = require("plenary.curl")
