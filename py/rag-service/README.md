@@ -18,6 +18,24 @@ and places logs in its `logs` subdirectory. The CLI option takes precedence over
 `/tmp/avante-rag-service` is not migrated automatically; move it to the new data
 directory or set `DATA_DIR` to keep using it.
 
+## Ignored file extensions
+
+Directory scans load ignored extensions from `$XDG_CONFIG_HOME/avante/ignore`
+(default: `~/.config/avante/ignore`). List one extension per line, including the
+leading dot:
+
+```text
+# Skip images and archives
+.png
+.jpg
+.zip
+```
+
+Extensions are case-insensitive; blank lines and lines starting with `#` are ignored.
+When present, this file replaces the built-in binary extension list. An empty file
+disables extension-based exclusions. If the file is absent, the built-in list is
+used. Git ignore and git-crypt exclusions still apply.
+
 ## Provider Support Matrix
 
 The following table shows which model types are supported by each provider:

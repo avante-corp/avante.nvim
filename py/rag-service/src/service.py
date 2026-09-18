@@ -74,6 +74,92 @@ if TYPE_CHECKING:
 base_data_dir: Path
 
 
+DEFAULT_BINARY_EXTENSIONS = [
+    # Images
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".bmp",
+    ".ico",
+    ".webp",
+    ".tiff",
+    ".exr",
+    ".hdr",
+    ".svg",
+    ".psd",
+    ".ai",
+    ".eps",
+    # Audio/Video
+    ".mp3",
+    ".wav",
+    ".mp4",
+    ".avi",
+    ".mov",
+    ".webm",
+    ".flac",
+    ".ogg",
+    ".m4a",
+    ".aac",
+    ".wma",
+    ".flv",
+    ".mkv",
+    ".wmv",
+    # Documents
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".ppt",
+    ".pptx",
+    ".odt",
+    # Archives
+    ".zip",
+    ".tar",
+    ".gz",
+    ".7z",
+    ".rar",
+    ".iso",
+    ".dmg",
+    ".pkg",
+    ".deb",
+    ".rpm",
+    ".msi",
+    ".apk",
+    ".xz",
+    ".bz2",
+    # Compiled
+    ".exe",
+    ".dll",
+    ".so",
+    ".dylib",
+    ".class",
+    ".pyc",
+    ".o",
+    ".obj",
+    ".lib",
+    ".a",
+    ".out",
+    ".app",
+    ".apk",
+    ".jar",
+    # Fonts
+    ".ttf",
+    ".otf",
+    ".woff",
+    ".woff2",
+    ".eot",
+    # Other binary
+    ".bin",
+    ".dat",
+    ".db",
+    ".sqlite",
+    ".db",
+    ".DS_Store",
+]
+
+
 def try_acquire_leadership() -> bool:
     """Try to acquire leadership using file lock."""
     try:
@@ -623,91 +709,18 @@ def get_pathspec(directory: Path) -> GitIgnoreSpec:
 def scan_directory(directory: Path) -> list[str]:
     """Scan directory and return a list of matched files."""
     spec = get_pathspec(directory)
+    binary_extensions = DEFAULT_BINARY_EXTENSIONS
 
-    binary_extensions = [
-        # Images
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".gif",
-        ".bmp",
-        ".ico",
-        ".webp",
-        ".tiff",
-        ".exr",
-        ".hdr",
-        ".svg",
-        ".psd",
-        ".ai",
-        ".eps",
-        # Audio/Video
-        ".mp3",
-        ".wav",
-        ".mp4",
-        ".avi",
-        ".mov",
-        ".webm",
-        ".flac",
-        ".ogg",
-        ".m4a",
-        ".aac",
-        ".wma",
-        ".flv",
-        ".mkv",
-        ".wmv",
-        # Documents
-        ".pdf",
-        ".doc",
-        ".docx",
-        ".xls",
-        ".xlsx",
-        ".ppt",
-        ".pptx",
-        ".odt",
-        # Archives
-        ".zip",
-        ".tar",
-        ".gz",
-        ".7z",
-        ".rar",
-        ".iso",
-        ".dmg",
-        ".pkg",
-        ".deb",
-        ".rpm",
-        ".msi",
-        ".apk",
-        ".xz",
-        ".bz2",
-        # Compiled
-        ".exe",
-        ".dll",
-        ".so",
-        ".dylib",
-        ".class",
-        ".pyc",
-        ".o",
-        ".obj",
-        ".lib",
-        ".a",
-        ".out",
-        ".app",
-        ".apk",
-        ".jar",
-        # Fonts
-        ".ttf",
-        ".otf",
-        ".woff",
-        ".woff2",
-        ".eot",
-        # Other binary
-        ".bin",
-        ".dat",
-        ".db",
-        ".sqlite",
-        ".db",
-        ".DS_Store",
-    ]
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME", ""))
+    if not config_home.is_absolute():
+        config_home = Path.home() / ".config"
+    ignore_file = config_home / "avante" / "ignore"
+    try:
+        ignore_lines = ignore_file.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        pass
+    else:
+        binary_extensions = [line.strip().lower() for line in ignore_lines if line.strip() and not line.lstrip().startswith("#")]
 
     matched_files = []
 
