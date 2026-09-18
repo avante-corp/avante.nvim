@@ -199,7 +199,7 @@ Parameters:
   return system_prompt
 end
 
---- Get the content of AGENTS.md and the likes (CLAUDE.md, .cursorrules, ...)
+--- Get the content of the first file found in the list [ AGENTS.md, CLAUDE.md, ... ]
 ---@return string | nil
 function M.get_agents_rules_prompt()
   local Utils = require("avante.utils")
@@ -215,6 +215,7 @@ function M.get_agents_rules_prompt()
   for _, file_name in ipairs(file_names) do
     local file_path = vim.fs.joinpath(project_root, file_name)
     if vim.fn.filereadable(file_path) == 1 then
+      Utils.debug("Reading prompt from " .. file_path)
       local content = vim.fn.readfile(file_path)
       return table.concat(content, "\n")
     end

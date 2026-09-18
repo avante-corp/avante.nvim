@@ -350,9 +350,13 @@ function M.generate_prompts(opts)
 
   if Config.system_prompt ~= nil then
     local custom_system_prompt
-    if type(Config.system_prompt) == "function" then custom_system_prompt = Config.system_prompt() end
+    if type(Config.system_prompt) == "function" then
+      Utils.debug("Loading system_prompt from function...")
+      custom_system_prompt = Config.system_prompt()
+    end
     if type(Config.system_prompt) == "string" then custom_system_prompt = Config.system_prompt end
     if custom_system_prompt ~= nil and custom_system_prompt ~= "" and custom_system_prompt ~= "null" then
+      Utils.debug("Appending custom prompt to system prompt")
       system_prompt = system_prompt .. "\n\n" .. custom_system_prompt
     end
   end
@@ -460,7 +464,10 @@ function M.generate_prompts(opts)
   local agents_rules = Prompts.get_agents_rules_prompt()
   if agents_rules then system_prompt = system_prompt .. "\n\n" .. agents_rules end
   local cursor_rules = Prompts.get_cursor_rules_prompt(selected_files)
-  if cursor_rules then system_prompt = system_prompt .. "\n\n" .. cursor_rules end
+  if cursor_rules then
+    Utils.debug("Found cursor rules prompt")
+    system_prompt = system_prompt .. "\n\n" .. cursor_rules
+  end
 
   ---@type AvantePromptOptions
   return {

@@ -407,9 +407,12 @@ function Prompt.render_file(path, opts) return _templates_lib.render(path, opts)
 
 ---@param mode AvanteLlmMode
 ---@param opts AvanteTemplateOptions
+---@return string
 function Prompt.render_mode(mode, opts)
   local filepath = Prompt.get_filepath(mode)
-  return _templates_lib.render(filepath, opts)
+  local res = _templates_lib.render(filepath, opts)
+  if res ~= "" then Utils.debug("Rendered prompt from " .. filepath) end
+  return res
 end
 
 function Prompt.initialize(cache_directory, project_directory)
