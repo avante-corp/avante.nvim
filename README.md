@@ -1215,10 +1215,13 @@ Avante's tools include some web search engines, currently support:
 - [Kagi](https://help.kagi.com/kagi/api/search.html)
 - [Brave Search](https://api-dashboard.search.brave.com/app/documentation/web-search/get-started)
 - [SearXNG](https://searxng.github.io/searxng/)
+- [Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp) (optional, through [MCPHub](#mcp); no Parallel account or API key required)
 
 Each engine is exposed as its own tool (`web_search_tavily`, `web_search_serpapi`,
 `web_search_searchapi`, `web_search_google`, `web_search_kagi`, `web_search_brave`,
-and `web_search_searxng`). Shared settings remain under `web_search_engine`:
+`web_search_searxng`, and `web_search_parallel`). Tavily is enabled by default;
+add other engines through `custom_tools`. The HTTP engines use shared settings
+under `web_search_engine`:
 
 ```lua
 web_search_engine = {
@@ -1237,6 +1240,47 @@ Environment variables required for providers:
 - Kagi: `KAGI_API_KEY` as the [API Token](https://kagi.com/settings?p=api)
 - Brave Search: `BRAVE_API_KEY` as the [API key](https://api-dashboard.search.brave.com/app/keys)
 - SearXNG: `SEARXNG_API_URL` as the [API URL](https://docs.searxng.org/dev/search_api.html)
+
+### Parallel Search MCP
+
+Install and set up [mcphub.nvim](https://ravitemer.github.io/mcphub.nvim/), then
+merge this connection into its `servers.json` (normally
+`~/.config/mcphub/servers.json`):
+
+```json
+{
+  "mcpServers": {
+    "avante-parallel": {
+      "url": "https://search.parallel.ai/mcp",
+      "headers": { "User-Agent": "avante.nvim mcphub.nvim" }
+    }
+  }
+}
+```
+
+MCPHub connects with Streamable HTTP and handles tool discovery. Keep the
+project-wide `User-Agent` when changing the transport: it identifies this Avante
+connection so Parallel can measure aggregate free MCP usage. It contains no
+user or installation identifier.
+
+Add the search tool to your Avante configuration:
+
+```lua
+custom_tools = {
+  require("avante.llm_tools.web_search").web_search_parallel,
+},
+```
+
+This adds the query-only `web_search_parallel` tool. Existing tools stay enabled;
+to use Parallel as your only search tool, also add `"web_search_tavily"` to
+`disabled_tools`. MCPHub's existing approval settings still apply. The shared
+`web_search_engine.proxy` setting is not supported for this MCP connection.
+
+No Parallel account or search API key is required, and free access is rate
+limited. Your LLM provider's authentication is separate. Once enabled, the agent
+may request searches; queries, their objective, and supplied session metadata
+go to Parallel under its [Customer Terms](https://parallel.ai/customer-terms)
+and [Privacy Policy](https://parallel.ai/privacy-policy).
 
 ## Disable Tools
 

@@ -1887,6 +1887,7 @@ Web search tools                                       *avante-tools-web-search*
  - Kagi: `KAGI_API_KEY`
  - Brave Search: `BRAVE_API_KEY`
  - SearXNG: `SEARXNG_API_URL`
+ - Parallel Search MCP: no API key; requires |avante-tools-web-search-parallel|
 
 WebSearchProviderName                                    *WebSearchProviderName*
 
@@ -1898,6 +1899,7 @@ WebSearchProviderName                                    *WebSearchProviderName*
         ("kagi")
         ("brave")
         ("searxng")
+        ("parallel")
 
 
 WebSearchResponseFormatter                          *WebSearchResponseFormatter*
@@ -1905,6 +1907,39 @@ WebSearchResponseFormatter                          *WebSearchResponseFormatter*
     Type: ~
         fun(body:table):
 
+
+                                              *avante-tools-web-search-parallel*
+Parallel Search MCP is an optional search tool. Install and set up
+mcphub.nvim, then merge this connection into its servers.json:
+>json
+  {
+    "mcpServers": {
+      "avante-parallel": {
+        "url": "https://search.parallel.ai/mcp",
+        "headers": { "User-Agent": "avante.nvim mcphub.nvim" }
+      }
+    }
+  }
+<
+The project-wide User-Agent identifies this Avante connection so Parallel can
+measure aggregate free MCP usage. Keep it when changing the transport; do not
+add user or installation identifiers.
+
+Add the tool through |avante-custom-tools|:
+>lua
+  custom_tools = {
+    require("avante.llm_tools.web_search").web_search_parallel,
+  }
+<
+Tavily remains enabled by default. To use Parallel as your only search tool,
+also add "web_search_tavily" to disabled_tools. MCPHub's approval settings
+still apply. The shared web_search_engine.proxy setting is not supported.
+
+No Parallel account or API key is required. Free access is rate limited.
+Once enabled, the agent may request searches. Queries, their objective, and
+supplied session metadata go to Parallel, subject to its Customer Terms and
+Privacy Policy: https://parallel.ai/customer-terms and
+https://parallel.ai/privacy-policy. LLM provider authentication is separate.
 
 ==============================================================================
 Custom prompts                                                  *avante-prompts*
