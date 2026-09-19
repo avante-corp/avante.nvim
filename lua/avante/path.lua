@@ -1,7 +1,6 @@
 local fn = vim.fn
 local Utils = require("avante.utils")
 local Path = require("plenary.path")
-local Scan = require("plenary.scandir")
 local Config = require("avante.config")
 
 ---@class avante.Path
@@ -9,6 +8,28 @@ local Config = require("avante.config")
 ---@field cache_path string
 ---@field data_path string
 local P = {}
+
+---@param dir string
+---@param opts? { add_dirs?: boolean, only_dirs?: boolean }
+---@return string[]
+local function scan_dir(dir, opts)
+  opts = opts or {}
+
+  local entries = {}
+  for name, type in vim.fs.dir(dir) do
+    local entry = vim.fs.joinpath(dir, name)
+    if opts.only_dirs then
+      if type == "directory" then table.insert(entries, entry) end
+    elseif type == "directory" then
+      if opts.add_dirs then table.insert(entries, entry) end
+    else
+      table.insert(entries, entry)
+    end
+  end
+
+  table.sort(entries)
+  return entries
+end
 
 ---@param bufnr integer | nil
 ---@return string dirname
@@ -219,7 +240,7 @@ function P.list_projects()
   if not projects_dir:exists() then return {} end
 
   local projects = {}
-  local dirs = Scan.scan_dir(tostring(projects_dir), { depth = 1, add_dirs = true, only_dirs = true })
+  local dirs = scan_dir(tostring(projects_dir), { add_dirs = true, only_dirs = true })
 
   for _, dir_path in ipairs(dirs) do
     local project_dir = Path:new(dir_path)
@@ -306,7 +327,7 @@ function Prompt.get_templates_dir(project_root)
     if not dir then return end
     if vim.fn.isdirectory(dir) ~= 1 then return end
 
-    local scanner = Scan.scan_dir(dir, { depth = 1, add_dirs = true })
+    local scanner = scan_dir(dir, { add_dirs = true })
     for _, entry in ipairs(scanner) do
       local file = Path:new(entry)
       if file:is_file() then
@@ -352,8 +373,7 @@ function Prompt.get_templates_dir(project_root)
     if override_prompt_dir then
       local user_template_path = Path:new(override_prompt_dir)
       if user_template_path:exists() then
-        local user_scanner =
-          Scan.scan_dir(vim.fs.abspath(tostring(user_template_path)), { depth = 1, add_dirs = false })
+        local user_scanner = scan_dir(vim.fs.abspath(tostring(user_template_path)), { add_dirs = false })
         for _, entry in ipairs(user_scanner) do
           local file = Path:new(entry)
           if file:is_file() then
