@@ -119,9 +119,11 @@ end
 
 function M.get_rag_service_runner() return (Config.rag_service and Config.rag_service.runner) or "docker" end
 
----Checks first if RAG service is live before starting it
----Methode depends on "docker" vs "nix" runner
----@param cb fun()
+---Attempts to start the service regardless of its current status.
+---Wrap it with `M.is_ready` to check beforehand it's already started or call
+---Call `M.run_rag_service` that does it for you
+---@see M.run_rag_service
+---@param cb fun() called after the service started
 function M.launch_rag_service(cb)
   --- If Config.rag_service.llm.api_key is nil or empty, llm_api_key will be an empty string.
   local llm_api_key = ""
@@ -228,15 +230,6 @@ function M.launch_rag_service(cb)
   elseif M.get_rag_service_runner() == "nix" then
     -- Check if service is already running
     -- check if there is a process having "service_path" in its invokation
-    -- TODO use get_rag_service_status instead
-    local check_cmd = { "pgrep", "-f", service_path }
-    local check_result = vim.system(check_cmd, { text = true }):wait().stdout
-    if check_result ~= "" then
-      Utils.info(string.format("RAG service already running at %s", service_path))
-      cb()
-      return
-    end
-
     Utils.debug(string.format("launching %s with nix...", container_name))
 
     -- can be launched beforehand via "uv run"
@@ -270,13 +263,14 @@ function M.launch_rag_service(cb)
       if res.code ~= 0 then
         Utils.error(string.format("service %s failed to start, exit code: %d", container_name, res.code))
       else
-        Utils.debug(string.format("service %s started", container_name))
+        Utils.info(string.format("RAG service %s started successfully", container_name))
         cb()
       end
     end)
     if not ok then
       Utils.error(
-        "Could not launch 'avante-rag-service', you can install it via nix profile add github:avante-corp/avante.nvim#ragService"
+        "Could not launch 'avante-rag-service', you can install it via nix profile add github:avante-corp/avante.nvim#ragService. Error:\n"
+          .. job_or_err
       )
     end
   end
@@ -296,26 +290,7 @@ function M.stop_rag_service()
   end
 end
 
-function M.get_rag_service_status()
-  if M.get_rag_service_runner() == "docker" then
-    local cmd = { "docker", "inspect", "--format", "{{.State.Status}}", container_name }
-    local result = vim.system(cmd, { text = true }):wait().stdout
-    if result ~= "running" then
-      return "stopped"
-    else
-      return "running"
-    end
-  elseif M.get_rag_service_runner() == "nix" then
-    local cmd = { "pgrep", "-f", service_path }
-    local result = vim.system(cmd, { text = true }):wait().stdout
-    if result == "" then
-      return "stopped"
-    else
-      return "running"
-    end
-  end
-end
-
+--- http or https
 function M.get_scheme(uri)
   local scheme = uri:match("^(%w+)://")
   if scheme == nil then return "unknown" end
