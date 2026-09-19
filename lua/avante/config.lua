@@ -465,7 +465,6 @@ M._defaults = {
       timeout = 30000, -- Timeout in milliseconds
       context_window = 200000,
       extra_request_body = {
-        temperature = 0.75,
         max_tokens = 64000,
       },
     },
@@ -587,10 +586,9 @@ M._defaults = {
     ["claude-opus"] = {
       __inherited_from = "claude",
       endpoint = "https://api.anthropic.com",
-      model = "claude-3-opus-20240229",
+      model = "claude-opus-4-8",
       timeout = 30000, -- Timeout in milliseconds
       extra_request_body = {
-        temperature = 0.75,
         max_tokens = 20480,
       },
     },
