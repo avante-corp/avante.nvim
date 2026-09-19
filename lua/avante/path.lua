@@ -135,6 +135,7 @@ function History.new(bufnr)
     entries = {},
     messages = {},
     todos = {},
+    last_state = nil,
     filename = filepath_to_filename(filepath),
   }
   return history
@@ -155,6 +156,7 @@ function History.from_file(filepath)
         if not vim.islist(history.entries) then history.entries = {} end
         if not vim.islist(history.messages) then history.messages = {} end
         if not vim.islist(history.todos) then history.todos = {} end
+        if history.last_state == vim.NIL then history.last_state = nil end
         ---@cast history avante.ChatHistory
         history.filename = filepath_to_filename(filepath)
         return history

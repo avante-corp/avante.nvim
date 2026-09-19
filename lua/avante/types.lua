@@ -534,6 +534,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field system_prompt string | nil
 ---@field tokens_usage avante.LLMTokenUsage | nil
 ---@field acp_session_id string | nil
+---@field last_state avante.GenerateState | nil
 ---
 ---@class avante.ChatMemory
 ---@field content string
