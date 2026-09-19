@@ -2,11 +2,9 @@
 name: Build avante libraries
 description: shared action used in test and release avante workflows
 inputs:
-  os_name:
-    description: One of "windows", "linux" or "darwin"
-    required: true
   os:
     description: github input type as used in "runs-on"
+    required: true
   arch:
     description: one of aarch64, x86_64
   rust_target:
@@ -16,10 +14,25 @@ inputs:
     description: for example "linux/amd64"
   container:
     description: for instance quay.io/pypa/manylinux2014_x86_64 # for glibc 2.17
+outputs:
+  os_name:
+    description: Platform name used in release asset filenames
+    value: ${{ steps.platform.outputs.os_name }}
 
 runs:
   using: "composite"
   steps:
+    - name: Identify platform
+      id: platform
+      shell: bash
+      run: |
+        case "${{ inputs.os }}" in
+          ubuntu-*) echo "os_name=linux" >> "$GITHUB_OUTPUT" ;;
+          macos-*) echo "os_name=darwin" >> "$GITHUB_OUTPUT" ;;
+          windows-*) echo "os_name=windows" >> "$GITHUB_OUTPUT" ;;
+          *) echo "Unsupported runner: ${{ inputs.os }}" >&2; exit 1 ;;
+        esac
+
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
 
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # ratchet:Swatinem/rust-cache@v2
@@ -31,12 +44,12 @@ runs:
         targets: ${{ inputs.rust_target }}
 
     - name: Install Nix
-      if: ${{ inputs.os_name != 'windows' }}
+      if: ${{ steps.platform.outputs.os_name != 'windows' }}
       uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # ratchet:DeterminateSystems/nix-installer-action@v22
 
     - name: Build all crates (Linux/MacOS)
       shell: bash
-      if: ${{ inputs.container == null && inputs.os_name != 'windows' }}
+      if: ${{ inputs.container == null && steps.platform.outputs.os_name != 'windows' }}
       run: |
         # TODO reproduce packpath folder
         # ./scripts/setup-deps.sh clone "deps/start"
@@ -59,21 +72,21 @@ runs:
             "${{ inputs.container }}" "${{ matrix.feature }}"
 
     - name: Handle binaries (Linux/MacOS)
-      if: ${{ inputs.os_name != 'windows' }}
+      if: ${{ steps.platform.outputs.os_name != 'windows' }}
       shell: bash
       run: |
         # AvanteBuild put the libraries in `lua/`
-        (cd lua && tar cvf - *.so | gzip ) > avante_lib-${{ inputs.os_name }}-${{ inputs.arch }}-${{ matrix.feature }}.tar.gz
+        (cd lua && tar cvf - *.so | gzip ) > avante_lib-${{ steps.platform.outputs.os_name }}-${{ inputs.arch }}-${{ matrix.feature }}.tar.gz
 
     - name: Build all crates (Windows)
-      if: ${{ inputs.os_name == 'windows' }}
+      if: ${{ steps.platform.outputs.os_name == 'windows' }}
       shell: bash
       run: |
         # TODO run AvanteBuild instead
         cargo build --release --features ${{ matrix.feature }} --target ${{ inputs.rust_target }}
 
     - name: Handle binaries (Windows)
-      if: ${{ inputs.os_name == 'windows' }}
+      if: ${{ steps.platform.outputs.os_name == 'windows' }}
       shell: pwsh
       run: |
         New-Item -ItemType Directory -Force -Path results
@@ -86,4 +99,4 @@ runs:
         Copy-Item -Path "$TargetDir\avante_html2md.dll" -Destination "avante_html2md.dll"
 
         $dllFiles = Get-ChildItem -Filter "*.dll" | Select-Object -ExpandProperty Name
-        Compress-Archive -Path $dllFiles -DestinationPath "avante_lib-${{ inputs.os_name }}-${{ inputs.arch }}-${{ matrix.feature }}.zip"
+        Compress-Archive -Path $dllFiles -DestinationPath "avante_lib-${{ steps.platform.outputs.os_name }}-${{ inputs.arch }}-${{ matrix.feature }}.zip"

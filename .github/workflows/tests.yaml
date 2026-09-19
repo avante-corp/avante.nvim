@@ -44,9 +44,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-          os:
-            - ubuntu-24.04
-            - macos-latest # fails because of missing docker
+        os:
+          - ubuntu-24.04
+          - macos-latest
+          - windows-latest
+        feature: [luajit]
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -54,9 +56,6 @@ jobs:
 
       - uses: ./.github/actions/build
         with:
-          os: ubuntu-latest
-          os_name: linux
+          os: ${{ matrix.os }}
           arch: x86_64
-          # rust_target: x86_64-unknown-linux-gnu
-          # docker_platform: linux/amd64
-          # container: quay.io/pypa/manylinux2014_x86_64 # for glibc 2.17
+          rust_target: ${{ startsWith(matrix.os, 'windows') && 'x86_64-pc-windows-msvc' || '' }}

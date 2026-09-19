@@ -56,31 +56,25 @@ jobs:
         feature: [lua51, luajit]
         config:
           - os: ubuntu-24.04-arm
-            os_name: linux
             arch: aarch64
             rust_target: aarch64-unknown-linux-gnu
             docker_platform: linux/aarch64
             container: quay.io/pypa/manylinux2014_aarch64
           - os: ubuntu-latest
-            os_name: linux
             arch: x86_64
             rust_target: x86_64-unknown-linux-gnu
             docker_platform: linux/amd64
             container: quay.io/pypa/manylinux2014_x86_64 # for glibc 2.17
           - os: macos-latest
-            os_name: darwin
             arch: x86_64
             rust_target: x86_64-apple-darwin
           - os: macos-latest
-            os_name: darwin
             arch: aarch64
             rust_target: aarch64-apple-darwin
           - os: windows-latest
-            os_name: windows
             arch: x86_64
             rust_target: x86_64-pc-windows-msvc
           - os: windows-latest
-            os_name: windows
             arch: aarch64
             rust_target: aarch64-pc-windows-msvc
 
@@ -90,24 +84,25 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: ./.github/actions/build
+        id: build
         with: ${{ matrix.config }}
 
       - name: Upload Release Asset
-        if: ${{ matrix.config.os_name != 'windows' }}
+        if: ${{ steps.build.outputs.os_name != 'windows' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ls -l
           gh release upload "${{ needs.create-release.outputs.release_tag }}" \
-            "./avante_lib-${{ matrix.config.os_name }}-${{ matrix.config.arch }}-${{ matrix.feature }}.tar.gz" --clobber
+            "./avante_lib-${{ steps.build.outputs.os_name }}-${{ matrix.config.arch }}-${{ matrix.feature }}.tar.gz" --clobber
 
       - name: Upload Release Asset (Windows)
-        if: ${{ matrix.config.os_name == 'windows' }}
+        if: ${{ steps.build.outputs.os_name == 'windows' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run:
           gh release upload "${{ needs.create-release.outputs.release_tag }}"
-            "./avante_lib-${{ matrix.config.os_name }}-${{ matrix.config.arch }}-${{ matrix.feature }}.zip"
+            "./avante_lib-${{ steps.build.outputs.os_name }}-${{ matrix.config.arch }}-${{ matrix.feature }}.zip"
             --clobber
 
   publish-release:
