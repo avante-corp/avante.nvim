@@ -1,7 +1,7 @@
 use minijinja::{Environment, context};
 use mlua::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Component, Path};
 use std::sync::{Arc, Mutex};
 
 struct State<'a> {
@@ -57,10 +57,9 @@ fn render(state: &State, template: &str, context: TemplateContext) -> LuaResult<
         Some(environment) => {
             let jinja_template = environment
                 .get_template(template)
-                .map_err(LuaError::external)
-                .unwrap();
+                .map_err(LuaError::external)?;
 
-            Ok(jinja_template
+            jinja_template
                 .render(context! {
                   ask => context.ask,
                   code_lang => context.code_lang,
@@ -78,7 +77,6 @@ fn render(state: &State, template: &str, context: TemplateContext) -> LuaResult<
                   use_react_prompt => context.use_react_prompt,
                 })
                 .map_err(LuaError::external)
-                .unwrap())
         }
         None => Err(LuaError::RuntimeError(
             "Environment not initialized".to_string(),
@@ -86,40 +84,63 @@ fn render(state: &State, template: &str, context: TemplateContext) -> LuaResult<
     }
 }
 
-fn initialize(state: &State, cache_directory: String, project_directory: String) {
+// Resolve symlinks before checking containment: lexical checks alone cannot keep
+// a repository-controlled symlink from loading files outside its template root.
+fn contained_loader(
+    directory: &Path,
+) -> std::io::Result<
+    impl Fn(&str) -> Result<Option<String>, minijinja::Error> + Send + Sync + 'static,
+> {
+    let root = directory.canonicalize()?;
+    Ok(move |name: &str| {
+        // Template names use forward slashes on every platform. Match MiniJinja's
+        // path_loader restrictions, and explicitly reject absolute/drive paths.
+        if name.is_empty()
+            || name.starts_with('/')
+            || name.contains(['\\', ':'])
+            || name.split('/').any(|part| part.starts_with('.'))
+            || Path::new(name)
+                .components()
+                .any(|part| !matches!(part, Component::Normal(_)))
+        {
+            return Ok(None);
+        }
+
+        let read = || -> std::io::Result<Option<String>> {
+            let path = root.join(name).canonicalize()?;
+            if !path.starts_with(&root) {
+                return Ok(None);
+            }
+            std::fs::read_to_string(path).map(Some)
+        };
+        match read() {
+            Ok(content) => Ok(content),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(err) => Err(minijinja::Error::new(
+                minijinja::ErrorKind::InvalidOperation,
+                "could not read template",
+            )
+            .with_source(err)),
+        }
+    })
+}
+
+fn initialize(state: &State, cache_directory: String, project_directory: String) -> LuaResult<()> {
     let mut environment_mutex = state.environment.lock().unwrap();
+    // A failed reinitialization must not leave a previous project's loader active.
+    *environment_mutex = None;
     let mut env = Environment::new();
 
-    // Create a custom loader that searches both cache and project directories
-    let cache_dir = cache_directory.clone();
-    let project_dir = project_directory.clone();
-
-    env.set_loader(
-        move |name: &str| -> Result<Option<String>, minijinja::Error> {
-            // First try the cache directory (for built-in templates)
-            let cache_path = Path::new(&cache_dir).join(name);
-            if cache_path.exists() {
-                match std::fs::read_to_string(&cache_path) {
-                    Ok(content) => return Ok(Some(content)),
-                    Err(_) => {} // Continue to try project directory
-                }
-            }
-
-            // Then try the project directory (for custom includes)
-            let project_path = Path::new(&project_dir).join(name);
-            if project_path.exists() {
-                match std::fs::read_to_string(&project_path) {
-                    Ok(content) => return Ok(Some(content)),
-                    Err(_) => {} // File not found or read error
-                }
-            }
-
-            // Template not found in either directory
-            Ok(None)
-        },
-    );
+    let cache_loader = contained_loader(Path::new(&cache_directory)).map_err(LuaError::external)?;
+    let project_loader =
+        contained_loader(Path::new(&project_directory)).map_err(LuaError::external)?;
+    env.set_loader(move |name: &str| match cache_loader(name)? {
+        Some(content) => Ok(Some(content)),
+        None => project_loader(name),
+    });
 
     *environment_mutex = Some(env);
+    Ok(())
 }
 
 #[mlua::lua_module]
@@ -133,8 +154,7 @@ fn avante_templates(lua: &Lua) -> LuaResult<LuaTable> {
         "initialize",
         lua.create_function(
             move |_, (cache_directory, project_directory): (String, String)| {
-                initialize(&state, cache_directory, project_directory);
-                Ok(())
+                initialize(&state, cache_directory, project_directory)
             },
         )?,
     )?;
