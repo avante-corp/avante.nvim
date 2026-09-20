@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
+# Install required and optional plugin dependencies into ./target/tests/deps,
+set -e
 
-DEPS=(
-  "folke/neodev.nvim"
-  "nvim-lua/plenary.nvim"
-  "MunifTanjim/nui.nvim"
-  "stevearc/dressing.nvim"
-  "folke/snacks.nvim"
-  "echasnovski/mini.nvim"
-  "nvim-telescope/telescope.nvim"
-  "hrsh7th/nvim-cmp"
-  "ibhagwan/fzf-lua"
-  "nvim-tree/nvim-web-devicons"
-  "zbirenbaum/copilot.lua"
-  "folke/lazy.nvim"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+AVANTE_ROCKSPEC="$SCRIPT_DIR/../avante.nvim-scm-1.rockspec"
+
+# Optional integrations needed to resolve their types during Lua typechecking.
+OPTIONAL_DEPS=(
+    neodev.nvim
+    snacks.nvim
+    telescope.nvim
+    nvim-cmp
+    fzf-lua
+    copilot.lua
+    lazy.nvim
 )
 
 LUALS_VERSION="3.18.2"
@@ -34,61 +35,19 @@ die() {
     exit 1
 }
 
-# Process a single dependency (used for parallel execution)
-process_single_dep() {
-    local dep="$1"
-    local deps_dir="$2"
-    local repo_name="$(echo "$dep" | cut -d'/' -f2)"
-    local repo_path="$deps_dir/$repo_name"
+install_deps() {
+    local deps_dir="$1"
 
-    if [ -d "$repo_path/.git" ]; then
-        log_verbose "Updating existing repository: $repo_path"
-        (
-            cd "$repo_path"
-            git fetch -q
-            if ! git reset -q --hard $(git symbolic-ref HEAD); then
-                log "Could not hardreset $repo_name to default ref"
-                return 1
-            fi
-        )
-    else
-        if [ -d "$repo_path" ]; then
-            log_verbose "Directory '$repo_path' exists but is not a git repository. Removing and re-cloning."
-            rm -rf "$repo_path"
-        fi
-        log_verbose "Cloning new repository: $dep to $repo_path"
-        git clone -q --depth 1 "https://github.com/${dep}.git" "$repo_path"
-    fi
-}
+    command -v luarocks &>/dev/null || die "luarocks is not installed."
+    log_verbose "Installing rockspec dependencies into: $deps_dir"
+    local luarocks_args=(--lua-version=5.1 --tree="$deps_dir")
+    luarocks "${luarocks_args[@]}" make --only-deps --deps-mode=one "$AVANTE_ROCKSPEC" || return 1
 
-clone_deps() {
-    local deps_dir=${1:-"$PWD/deps"}
-    log_verbose "Cloning dependencies into: $deps_dir (parallel mode)"
-    mkdir -p "$deps_dir"
-
-    # Array to store background process PIDs
-    local pids=()
-
-    # Start all dependency processes in parallel
-    for dep in "${DEPS[@]}"; do
-        process_single_dep "$dep" "$deps_dir" &
-        pids+=($!)
+    local dep
+    for dep in "${OPTIONAL_DEPS[@]}"; do
+        log_verbose "Installing optional dependency: $dep"
+        luarocks "${luarocks_args[@]}" install --deps-mode=one "$dep" || return 1
     done
-
-    # Wait for all background processes to complete and check their exit status
-    local failed_count=0
-    for pid in "${pids[@]}"; do
-        if ! wait "$pid"; then
-            ((failed_count++))
-        fi
-    done
-
-    if [ "$failed_count" -gt 0 ]; then
-        log "Warning: $failed_count dependencies failed to process"
-        return 1
-    fi
-
-    log_verbose "All dependencies processed successfully"
 }
 
 install_luals() {
@@ -215,18 +174,15 @@ install_nvim_runtime() {
 }
 
 generate_luarc() {
-    local luarc_path=${1:-"target/tests/luarc.json"}
-    local luarc_template="luarc.json.template"
+    local luarc_path="${1}"
+    local luarc_template="$SCRIPT_DIR/../luarc.json.template"
 
     log_verbose "Generating luarc file at: $luarc_path"
     mkdir -p "$(dirname "$luarc_path")"
 
-    local lua_deps=""
-    for dep in "${DEPS[@]}"; do
-        repo_name="$(echo "$dep" | cut -d'/' -f2)"
-        lua_deps="${lua_deps},\n      \"\$DEPS_PATH/${repo_name}/lua\""
-    done
-    sed "s#{{DEPS}}#${lua_deps}#" "$luarc_template" > "$luarc_path"
+    # LuaRocks installs all dependency modules into a shared Lua library directory.
+    # TODO does path depends on lua interpreter version?
+    sed 's#{{DEPS}}#, "$DEPS_PATH/share/lua/5.1"#' "$luarc_template" > "$luarc_path"
 }
 
 main() {
@@ -251,8 +207,17 @@ main() {
         esac
     done
 
+    # TODO pass args explicitly in CI directly
+    if [ "$GITHUB_ACTIONS" = "true" ]; then
+        # Always be verbose in CI
+        verbose=true
+    fi
+
+    echo "$AVANTE_RUNTIME_TEST_DIR"
+    mkdir -p "$AVANTE_RUNTIME_TEST_DIR"
+
     if [ "$command" == "clone" ]; then
-        clone_deps "${args[@]}"
+        install_deps "${args[@]}"
     elif [ "$command" == "generate-luarc" ]; then
         generate_luarc "${args[@]}"
     elif [ "$command" == "install-luals" ]; then

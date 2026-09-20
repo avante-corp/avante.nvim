@@ -38,6 +38,10 @@ jobs:
           nix develop .#ci --command nvim --version
           nix develop .#ci --command make luatest
 
+      - name: Setup test environment
+        run:
+          nix develop .#ci --command make setup-deps
+
       - name: Typecheck
         run:
           nix develop .#ci --command make lua-typecheck

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-DEST_DIR="$PWD/target/tests"
+DEST_DIR="${AVANTE_RUNTIME_TEST_DIR:-$PWD/target/tests}"
 NVIM_TEST_HOME="$DEST_DIR/nvim"
 
 log() {

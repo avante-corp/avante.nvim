@@ -22,6 +22,8 @@ LUA_VERSIONS := luajit lua51
 BUILD_DIR := lua
 TARGET_LIBRARY ?= all
 
+export AVANTE_RUNTIME_TEST_DIR ?= $(CURDIR)/target/tests
+
 RAG_SERVICE_VERSION ?= 0.0.11
 RAG_SERVICE_IMAGE := quay.io/yetoneful/avante-rag-service:$(RAG_SERVICE_VERSION)
 
@@ -127,6 +129,11 @@ luatest:
 .PHONY: upgrade-actions
 upgrade-actions:
 	ratchet upgrade ./.github/workflows/rust.yaml .github/actions/build/action.yaml
+
+.PHONY: setup-deps
+setup-deps:
+	./scripts/setup-deps.sh clone "$(AVANTE_RUNTIME_TEST_DIR)/deps"
+	./scripts/setup-deps.sh generate-luarc "$(AVANTE_RUNTIME_TEST_DIR)/luarc.json"
 
 .PHONY: lint
 lint: luacheck luastylecheck ruststylecheck rustlint
