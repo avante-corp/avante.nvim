@@ -23,7 +23,7 @@ function Build-FromSource($feature) {
         New-Item -ItemType Directory -Path $BuildDir | Out-Null
     }
 
-    cargo build --release --features=$feature
+    cargo build --release --no-default-features --features=$feature -p avante-tokenizers -p avante-templates -p avante-repo-map -p avante-html2md
 
     $SCRIPT_DIR = $PSScriptRoot
     $targetTokenizerFile = "avante_tokenizers.dll"
