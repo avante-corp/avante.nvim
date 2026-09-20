@@ -23,15 +23,6 @@ jobs:
         env:
           LUAROCKS_API_KEY: ${{ secrets.LUAROCKS_API_KEY }}
         with:
+          template: avante.nvim-scm-1.rockspec
           version: ${{ env.LUAROCKS_VERSION }}
-          dependencies: |
-            lua == 5.1
-            luarocks >= 3.11.1, < 4.0.0
-            plenary.nvim
-            nui.nvim
-          labels: |
-            neovim
-            ai
-            llm
-          detailed_description: |
-            **avante.nvim** is a Neovim plugin designed to emulate the behaviour of the [Cursor](https://www.cursor.com) AI IDE. It provides users with AI-driven code suggestions and the ability to apply these recommendations directly to their source files with minimal effort.
+          summary: USED_AS_TEMPLATE
