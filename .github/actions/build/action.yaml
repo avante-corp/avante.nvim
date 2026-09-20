@@ -62,7 +62,6 @@ runs:
         cat nvim.log
         ls -la lua
 
-
     - name: Build all crates (Linux) with glibc 2.17 # for glibc 2.17
       shell: bash
       if: ${{ inputs.container != null }}
@@ -83,7 +82,7 @@ runs:
       shell: bash
       run: |
         # TODO run AvanteBuild instead
-        cargo build --release --features ${{ matrix.feature }} --target ${{ inputs.rust_target }}
+        cargo build --release --no-default-features --features ${{ matrix.feature }} --target ${{ inputs.rust_target }} -p avante-tokenizers -p avante-templates -p avante-repo-map -p avante-html2md
 
     - name: Handle binaries (Windows)
       if: ${{ steps.platform.outputs.os_name == 'windows' }}
