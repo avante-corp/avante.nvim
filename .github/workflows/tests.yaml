@@ -7,12 +7,14 @@ on:
     paths:
       - "**/*.lua"
       - ".github/**"
+      - "scripts/**"
   pull_request:
     branches:
       - main
     paths:
       - "**/*.lua"
       - ".github/**"
+      - "scripts/**"
 
 jobs:
   # reference from: https://github.com/nvim-lua/plenary.nvim/blob/2d9b06177a975543726ce5c73fca176cedbffe9d/.github/workflows/default.yml#L6C3-L43C20
