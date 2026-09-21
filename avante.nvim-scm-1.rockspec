@@ -1,5 +1,4 @@
 local git_ref = '$git_ref'
-local modrev = '$mod_rev'
 local specrev = '1'
 
 -- in the luarocks-tag-release action, we set $summary to "USED_AS_TEMPLATE"
@@ -11,7 +10,6 @@ local repo_url = 'https://github.com/avante-corp/avante.nvim'
 
 rockspec_format = '3.0'
 package = 'avante.nvim'
-version = modrev ..'-'.. specrev
 
 dependencies = {
   'lua == 5.1',
@@ -24,11 +22,16 @@ test_dependencies = { 'busted' }
 
 
 if release_mode then
+  -- $modrev is "git_ref" stripped of "v" prefix (disallowed in rockspec filename)
+  local modrev = '$modrev'
+  version = '$modrev-'.. specrev
   source = {
     url = repo_url .. '/archive/' .. git_ref .. '.zip',
-    dir = 'avante.nvim-' .. git_ref,
+    dir = 'avante.nvim-' .. modrev,
   }
 else
+
+  version = "scm-" .. specrev
   source = {
     url = repo_url:gsub('https', 'git')
   }
