@@ -25,6 +25,7 @@ tags-*
 # Dependency manager generated directories
 /lua_modules/
 /.luarocks/
+/deps
 py/rag-service/dist
 py/rag-service/dist
 py/rag-service/src/rag_service.egg-info/
