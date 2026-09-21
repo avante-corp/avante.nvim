@@ -1,4 +1,5 @@
 local git_ref = '$git_ref'
+-- modrev can be git_ref stripped of prefixed v
 local modrev = '$mod_rev'
 local specrev = '1'
 
@@ -11,7 +12,6 @@ local repo_url = 'https://github.com/avante-corp/avante.nvim'
 
 rockspec_format = '3.0'
 package = 'avante.nvim'
-version = modrev ..'-'.. specrev
 
 dependencies = {
   'lua == 5.1',
@@ -24,11 +24,14 @@ test_dependencies = { 'busted' }
 
 
 if release_mode then
+  version = modrev ..'-'.. specrev
   source = {
     url = repo_url .. '/archive/' .. git_ref .. '.zip',
     dir = 'avante.nvim-' .. git_ref,
   }
 else
+
+  version = "scm-" .. specrev
   source = {
     url = repo_url:gsub('https', 'git')
   }
