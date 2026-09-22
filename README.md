@@ -1397,6 +1397,7 @@ See [the wiki](https://github.com/yetone/avante.nvim/wiki/plugin%E2%80%90integra
 - [ ] better debugging capabilities (for prompts notably)
 - [ ] provide an helper to report bugs more effectively
 - [ ] Better codebase indexing
+- [ ] Get rid of archived plenary.nvim
 
 ## Roadmap
 
