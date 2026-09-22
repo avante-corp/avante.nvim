@@ -91,10 +91,7 @@ install_luals() {
     esac
 
     local platform="${os_name}-${arch}"
-    local luals_url_template="https://github.com/LuaLS/lua-language-server/releases/download/__VERSION__/lua-language-server-__VERSION__-__PLATFORM__.__EXT__"
-    local luals_download_url="${luals_url_template//__VERSION__/$LUALS_VERSION}"
-    luals_download_url="${luals_download_url//__PLATFORM__/$platform}"
-    luals_download_url="${luals_download_url//__EXT__/$file_ext}"
+    local luals_download_url="https://github.com/LuaLS/lua-language-server/releases/download/${LUALS_VERSION}/lua-language-server-${LUALS_VERSION}-${platform}.${file_ext}"
 
     local luals_dir="$dest_dir/lua-language-server-${LUALS_VERSION}-${platform}"
 
