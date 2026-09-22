@@ -37,8 +37,9 @@
 - [Fast Apply](#fast-apply)
 - [ACP Support](#acp-support)
 - [RAG Service](#rag-service)
-- [Web Search Engines](#web-search-engines)
-- [Custom Tools](#custom-tools)
+- [Tools](#tools)
+  - [Disable Tools](#disable-tools)
+  - [Web Search Engines](#web-search-engines)
 - [MCP](#mcp)
 - [Integrations](#integrations)
 - [FAQ](#faq)
@@ -1204,41 +1205,15 @@ The mount will be read only.
 
 After changing the rag_service configuration, you need to manually delete the rag_service container to ensure the new configuration is used: `docker rm -fv avante-rag-service`
 
-## Web Search Engines
+## Tools
 
-Avante's tools include some web search engines, currently support:
+See `:h avante-tools` for an exhaustive documentation.
 
-- [Tavily](https://tavily.com/)
-- [SerpApi - Search API](https://serpapi.com/)
-- [SearchAPI](https://www.searchapi.io/)
-- Google's [Programmable Search Engine](https://developers.google.com/custom-search/v1/overview)
-- [Kagi](https://help.kagi.com/kagi/api/search.html)
-- [Brave Search](https://api-dashboard.search.brave.com/app/documentation/web-search/get-started)
-- [SearXNG](https://searxng.github.io/searxng/)
+### Add your own tools
 
-Each engine is exposed as its own tool (`web_search_tavily`, `web_search_serpapi`,
-`web_search_searchapi`, `web_search_google`, `web_search_kagi`, `web_search_brave`,
-and `web_search_searxng`). Shared settings remain under `web_search_engine`:
+See `:h avante-custom-tools`.
 
-```lua
-web_search_engine = {
-  proxy = nil, -- proxy support, e.g., http://127.0.0.1:7890
-}
-```
-
-Environment variables required for providers:
-
-- Tavily: `TAVILY_API_KEY`
-- SerpApi: `SERPAPI_API_KEY`
-- SearchAPI: `SEARCHAPI_API_KEY`
-- Google:
-  - `GOOGLE_SEARCH_API_KEY` as the [API key](https://developers.google.com/custom-search/v1/overview)
-  - `GOOGLE_SEARCH_ENGINE_ID` as the [search engine](https://programmablesearchengine.google.com) ID
-- Kagi: `KAGI_API_KEY` as the [API Token](https://kagi.com/settings?p=api)
-- Brave Search: `BRAVE_API_KEY` as the [API key](https://api-dashboard.search.brave.com/app/keys)
-- SearXNG: `SEARXNG_API_URL` as the [API URL](https://docs.searxng.org/dev/search_api.html)
-
-## Disable Tools
+### Disable Tools
 
 Avante enables tools by default, but some LLM models do not support tools. You can disable tools by setting `disable_tools = true` for the provider. For example:
 
@@ -1271,10 +1246,39 @@ Tool list
 > read_file, create_file, move_path, copy_path, delete_path, create_dir, bash,
 > web_search_tavily
 
+### Web Search Engines
 
-## Custom Tools
+Avante's tools include some web search engines, currently support:
 
-See `:h avante-custom-tools`.
+- [Tavily](https://tavily.com/)
+- [SerpApi - Search API](https://serpapi.com/)
+- [SearchAPI](https://www.searchapi.io/)
+- Google's [Programmable Search Engine](https://developers.google.com/custom-search/v1/overview)
+- [Kagi](https://help.kagi.com/kagi/api/search.html)
+- [Brave Search](https://api-dashboard.search.brave.com/app/documentation/web-search/get-started)
+- [SearXNG](https://searxng.github.io/searxng/)
+
+Each engine is exposed as its own tool (`web_search_tavily`, `web_search_serpapi`,
+`web_search_searchapi`, `web_search_google`, `web_search_kagi`, `web_search_brave`,
+and `web_search_searxng`). Shared settings remain under `web_search_engine`:
+
+```lua
+web_search_engine = {
+  proxy = nil, -- proxy support, e.g., http://127.0.0.1:7890
+}
+```
+
+Environment variables required for providers:
+
+- Tavily: `TAVILY_API_KEY`
+- SerpApi: `SERPAPI_API_KEY`
+- SearchAPI: `SEARCHAPI_API_KEY`
+- Google:
+  - `GOOGLE_SEARCH_API_KEY` as the [API key](https://developers.google.com/custom-search/v1/overview)
+  - `GOOGLE_SEARCH_ENGINE_ID` as the [search engine](https://programmablesearchengine.google.com) ID
+- Kagi: `KAGI_API_KEY` as the [API Token](https://kagi.com/settings?p=api)
+- Brave Search: `BRAVE_API_KEY` as the [API key](https://api-dashboard.search.brave.com/app/keys)
+- SearXNG: `SEARXNG_API_URL` as the [API URL](https://docs.searxng.org/dev/search_api.html)
 
 ## MCP
 
