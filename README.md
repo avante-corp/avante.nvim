@@ -40,7 +40,6 @@
 - [Tools](#tools)
   - [Disable Tools](#disable-tools)
   - [Web Search Engines](#web-search-engines)
-- [MCP](#mcp)
 - [Integrations](#integrations)
 - [FAQ](#faq)
 - [Contributing](#contributing)
@@ -1280,10 +1279,6 @@ Environment variables required for providers:
 - Brave Search: `BRAVE_API_KEY` as the [API key](https://api-dashboard.search.brave.com/app/keys)
 - SearXNG: `SEARXNG_API_URL` as the [API URL](https://docs.searxng.org/dev/search_api.html)
 
-## MCP
-
-Now you can integrate MCP functionality for Avante through `mcphub.nvim`. For detailed documentation, please refer to [mcphub.nvim](https://ravitemer.github.io/mcphub.nvim/extensions/avante.html)
-
 ## Custom prompts
 
 By default, `avante.nvim` provides three different modes to interact with: `planning`, `editing`, and `suggesting`, followed with three different prompts per mode.
@@ -1382,6 +1377,13 @@ If you have the following structure:
 > `*.avanterules` is a jinja template file, in which will be rendered using [minijinja](https://github.com/mitsuhiko/minijinja). See [templates](https://github.com/yetone/avante.nvim/blob/main/lua/avante/templates) for example on how to extend current templates.
 
 ## Integrations
+
+### MCP
+
+You can integrate MCP functionality for Avante through `mcphub.nvim`. For detailed documentation, please refer to [mcphub.nvim](https://ravitemer.github.io/mcphub.nvim/extensions/avante.html).
+
+
+### 3rd party plugins
 
 Avante.nvim can be extended to work with other plugins by using its extension modules:
 - [`nvim-tree`](https://github.com/nvim-tree/nvim-tree.lua)
