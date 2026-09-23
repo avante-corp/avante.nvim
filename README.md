@@ -1076,6 +1076,10 @@ See [highlights.lua](./lua/avante/highlights.lua) for more information
 
 Fast Apply is a feature that enables instant code edits with high accuracy by leveraging specialized models. It replicates Cursor's instant apply functionality, allowing for seamless code modifications without the typical delays associated with traditional code generation.
 
+<details>
+<summary>Fast Apply configuration and usage</summary>
+
+
 ### Purpose and Benefits
 
 Fast Apply addresses the common pain point of slow code application in AI-assisted development. Instead of waiting for a full language model to process and apply changes, Fast Apply uses a specialized "apply model" that can quickly and accurately merge code edits with 96-98% accuracy at speeds of 2500-4500+ tokens per second.
@@ -1144,6 +1148,8 @@ The process uses a specialized prompt format that includes:
 - `<update>`: The specific changes using truncation markers (`// ... existing code ...`)
 
 This approach ensures that the apply model can quickly and accurately merge your changes without the overhead of full code generation.
+
+</details>
 
 ## ACP Support
 
