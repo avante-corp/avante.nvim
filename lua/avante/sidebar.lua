@@ -2112,14 +2112,15 @@ function Sidebar:get_message_lines(ctx, message, messages, ignore_record_prefix)
     .. tostring(text_len)
     .. ":"
     .. tostring(expanded == true)
-  local cached_lines = _message_to_lines_lru_cache:get(cache_key)
+  local cacheable = message.message.role ~= "assistant" or not History.Helpers.is_tool_use_message(message)
+  local cached_lines = cacheable and _message_to_lines_lru_cache:get(cache_key)
   if cached_lines then return cached_lines end
   local lines = self:_get_message_lines(ctx, message, messages, ignore_record_prefix)
   --- trim suffix empty lines
   while #lines > 0 and tostring(lines[#lines]) == "" do
     table.remove(lines)
   end
-  _message_to_lines_lru_cache:set(cache_key, lines)
+  if cacheable then _message_to_lines_lru_cache:set(cache_key, lines) end
   return lines
 end
 
