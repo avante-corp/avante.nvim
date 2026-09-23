@@ -2275,6 +2275,7 @@ function Sidebar:clear_history(args, cb)
     self.chat_history.messages = {}
     self.chat_history.entries = {}
     self.chat_history.acp_session_id = nil
+    self.chat_history.parallel_search_session_id = nil
     Path.history.save(self.code.bufnr, self.chat_history)
     self._history_cache_invalidated = true
     self:reload_chat_history()
@@ -3000,6 +3001,7 @@ function Sidebar:handle_submit(request)
   end
 
   self:get_generate_prompts_options(request, function(generate_prompts_options)
+    local chat_history = assert(self.chat_history)
     ---@type AvanteLLMStreamOptions
     ---@diagnostic disable-next-line: assign-type-mismatch
     local stream_options = vim.tbl_deep_extend("force", generate_prompts_options, {
@@ -3023,7 +3025,15 @@ function Sidebar:handle_submit(request)
         return history.todos
       end,
       update_todos = function(todos) self:update_todos(todos) end,
-      session_ctx = {},
+      session_ctx = {
+        get_parallel_search_session_id = function()
+          if not chat_history.parallel_search_session_id then
+            chat_history.parallel_search_session_id = Utils.uuid()
+            Path.history.save(self.code.bufnr, chat_history)
+          end
+          return chat_history.parallel_search_session_id
+        end,
+      },
       ---@param usage avante.LLMTokenUsage
       update_tokens_usage = function(usage)
         if not usage then return end

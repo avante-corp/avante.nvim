@@ -17,6 +17,7 @@
 --- - Kagi: `KAGI_API_KEY`
 --- - Brave Search: `BRAVE_API_KEY`
 --- - SearXNG: `SEARXNG_API_URL`
+--- - Parallel Search MCP: no API key; requires |avante-tools-web-search-parallel|
 ---@brief ]]
 
 local Config = require("avante.config")
@@ -30,6 +31,7 @@ local Utils = require("avante.utils")
 ---| '"kagi"'
 ---| '"brave"'
 ---| '"searxng"'
+---| '"parallel"'
 
 ---@alias WebSearchResponseFormatter fun(body: table): (string, string?)
 
@@ -336,6 +338,36 @@ local function web_search_searxng_func(input, opts)
   )
 end
 
+---@type AvanteLLMToolFunc<{ query: string }>
+local function web_search_parallel_func(input, opts)
+  if type(input.query) ~= "string" or input.query:match("^%s*$") then return nil, "A search query is required" end
+  if Config.web_search_engine.proxy then
+    return nil, "web_search_engine.proxy is not supported by the Parallel MCP tool"
+  end
+  local ok, mcp = pcall(require, "mcphub.extensions.avante")
+  if not ok then return nil, "Parallel Search MCP requires mcphub.nvim; see the Web Search Engines setup" end
+
+  log_search("parallel", input, opts)
+  local arguments = { objective = input.query, search_queries = { input.query } }
+  if opts.session_ctx then
+    -- Sidebar contexts are per submission; use the chat's persisted session when available.
+    local ctx = opts.session_ctx
+    if ctx.get_parallel_search_session_id then
+      arguments.session_id = ctx.get_parallel_search_session_id()
+    else
+      ctx.parallel_search_session_id = ctx.parallel_search_session_id or Utils.uuid()
+      arguments.session_id = ctx.parallel_search_session_id
+    end
+  end
+  -- Reuse MCPHub's Avante tool so its approval policy and MCP lifecycle stay intact.
+  for _, tool in ipairs({ mcp.mcp_tool() }) do
+    if tool.name == "use_mcp_tool" then
+      return tool.func({ server_name = "avante-parallel", tool_name = "web_search", tool_input = arguments }, opts)
+    end
+  end
+  return nil, "MCPHub's Avante tool is unavailable"
+end
+
 ---@param provider WebSearchProviderName
 ---@param func AvanteLLMToolFunc<{ query: string }>
 ---@return AvanteLLMTool
@@ -373,5 +405,41 @@ M.web_search_google = web_search_tool("google", web_search_google_func)
 M.web_search_kagi = web_search_tool("kagi", web_search_kagi_func)
 M.web_search_brave = web_search_tool("brave", web_search_brave_func)
 M.web_search_searxng = web_search_tool("searxng", web_search_searxng_func)
+
+---@tag avante-tools-web-search-parallel
+---@brief [[
+---Parallel Search MCP is an optional search tool. Install and set up
+---mcphub.nvim, then merge this connection into its servers.json:
+--->json
+---  {
+---    "mcpServers": {
+---      "avante-parallel": {
+---        "url": "https://search.parallel.ai/mcp",
+---        "headers": { "User-Agent": "avante.nvim mcphub.nvim" }
+---      }
+---    }
+---  }
+---<
+---The project-wide User-Agent identifies this Avante connection so Parallel can
+---measure aggregate free MCP usage. Keep it when changing the transport; do not
+---add user or installation identifiers.
+---
+---Add the tool through |avante-custom-tools|:
+--->lua
+---  custom_tools = {
+---    require("avante.llm_tools.web_search").web_search_parallel,
+---  }
+---<
+---Tavily remains enabled by default. To use Parallel as your only search tool,
+---also add "web_search_tavily" to disabled_tools. MCPHub's approval settings
+---still apply. The shared web_search_engine.proxy setting is not supported.
+---
+---No Parallel account or API key is required. Free access is rate limited.
+---Once enabled, the agent may request searches. Queries, their objective, and
+---supplied session metadata go to Parallel, subject to its Customer Terms and
+---Privacy Policy: https://parallel.ai/customer-terms and
+---https://parallel.ai/privacy-policy. LLM provider authentication is separate.
+---@brief ]]
+M.web_search_parallel = web_search_tool("parallel", web_search_parallel_func)
 
 return M
