@@ -26,7 +26,7 @@
 
 ## Table of contents
 
-- [Features](#features)
+- [Features](#features-preview)
 - [Avante Zen Mode](#avante-zen-mode)
 - [Project instructions](#project-instructions-with-avantemd)
 - [Installation](#installation)
@@ -51,7 +51,7 @@ If you like this project, please consider supporting me on Patreon, as it helps 
 
 [Sponsor me](https://patreon.com/yetone)
 
-## Features
+## Features preview
 
 - **AI-Powered Code Assistance**: Interact with AI to ask questions about your current code file and receive intelligent suggestions for improvement or modification.
 - **One-Click Application**: Quickly apply the AI's suggested changes to your source code with a single command, streamlining the editing process and saving time.
@@ -63,9 +63,7 @@ If you like this project, please consider supporting me on Patreon, as it helps 
 
 ## Avante Zen Mode
 
-It is possible to launch avante such that it looks like a typical Vibe Coding Agent CLI while being Neovim underneath. At the same time, by leveraging [ACP](https://github.com/yetone/avante.nvim#acp-support) it has all capabilities of claude code / gemini-cli / codex! Why not enjoy both?
-
-Now all you need to do is install [./contrib/avante](./contrib/avante) in your PATH (or create the equivalent alias); then every time you simply type `avante` just like using claude code and enter Avante’s Zen Mode!
+It is possible to launch avante such that it looks like a typical Vibe Coding Agent CLI while being Neovim underneath. All you need to do is install [./contrib/avante](./contrib/avante) in your PATH (or create the equivalent alias); then every time you simply type `avante` just like using claude code and enter Avante’s Zen Mode!
 
 The effect is as follows:
 
