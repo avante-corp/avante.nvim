@@ -1582,11 +1582,12 @@ end
 function M.get_timestamp() return tostring(os.date("%Y-%m-%d %H:%M:%S")) end
 
 function M.uuid()
-  local template = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"
-  return string.gsub(template, "[xy]", function(c)
-    local v = (c == "x") and math.random(0, 0xf) or math.random(8, 0xb)
-    return string.format("%x", v)
-  end)
+  local UUID_V4_VERSION_BITS = 0x40
+  local UUID_VARIANT_BITS = 0x80
+  local bytes = { string.byte(assert(vim.uv.random(16)), 1, 16) }
+  bytes[7] = UUID_V4_VERSION_BITS + bytes[7] % 0x10
+  bytes[9] = UUID_VARIANT_BITS + bytes[9] % 0x40
+  return string.format("%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", unpack(bytes))
 end
 
 function M.generate_call_tool_id()
