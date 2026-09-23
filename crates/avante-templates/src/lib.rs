@@ -2,17 +2,26 @@ use minijinja::{Environment, context};
 use mlua::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 struct State<'a> {
     environment: Mutex<Option<Environment<'a>>>,
 }
 
-impl State<'_> {
+impl<'a> State<'a> {
     fn new() -> Self {
         State {
             environment: Mutex::new(None),
         }
+    }
+
+    fn lock_environment(&self) -> LuaResult<MutexGuard<'_, Option<Environment<'a>>>> {
+        self.environment.lock().map_err(|_| {
+            LuaError::RuntimeError(
+                "Avante template state is poisoned after an earlier panic; restart Neovim"
+                    .to_string(),
+            )
+        })
     }
 }
 
@@ -52,15 +61,16 @@ struct TemplateContext {
 // Lua string
 #[allow(clippy::needless_pass_by_value)]
 fn render(state: &State, template: &str, context: TemplateContext) -> LuaResult<String> {
-    let environment = state.environment.lock().unwrap();
+    let environment = state.lock_environment()?;
     match environment.as_ref() {
         Some(environment) => {
-            let jinja_template = environment
-                .get_template(template)
-                .map_err(LuaError::external)
-                .unwrap();
+            let jinja_template = environment.get_template(template).map_err(|err| {
+                LuaError::RuntimeError(format!(
+                    "Failed to load Avante template {template:?}: {err:#}"
+                ))
+            })?;
 
-            Ok(jinja_template
+            jinja_template
                 .render(context! {
                   ask => context.ask,
                   code_lang => context.code_lang,
@@ -77,8 +87,11 @@ fn render(state: &State, template: &str, context: TemplateContext) -> LuaResult<
                   enable_fastapply => context.enable_fastapply,
                   use_react_prompt => context.use_react_prompt,
                 })
-                .map_err(LuaError::external)
-                .unwrap())
+                .map_err(|err| {
+                    LuaError::RuntimeError(format!(
+                        "Failed to render Avante template {template:?}: {err:#}"
+                    ))
+                })
         }
         None => Err(LuaError::RuntimeError(
             "Environment not initialized".to_string(),
@@ -86,8 +99,8 @@ fn render(state: &State, template: &str, context: TemplateContext) -> LuaResult<
     }
 }
 
-fn initialize(state: &State, cache_directory: String, project_directory: String) {
-    let mut environment_mutex = state.environment.lock().unwrap();
+fn initialize(state: &State, cache_directory: String, project_directory: String) -> LuaResult<()> {
+    let mut environment_mutex = state.lock_environment()?;
     let mut env = Environment::new();
 
     // Create a custom loader that searches both cache and project directories
@@ -120,6 +133,7 @@ fn initialize(state: &State, cache_directory: String, project_directory: String)
     );
 
     *environment_mutex = Some(env);
+    Ok(())
 }
 
 #[mlua::lua_module]
@@ -133,8 +147,7 @@ fn avante_templates(lua: &Lua) -> LuaResult<LuaTable> {
         "initialize",
         lua.create_function(
             move |_, (cache_directory, project_directory): (String, String)| {
-                initialize(&state, cache_directory, project_directory);
-                Ok(())
+                initialize(&state, cache_directory, project_directory)
             },
         )?,
     )?;
