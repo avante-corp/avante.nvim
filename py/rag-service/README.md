@@ -174,7 +174,7 @@ embed = { -- Configuration for the Embedding Model used by the RAG service
 With the python installer `uv`:
 
 ```
-uv sync --python 3.13
+uv sync --python 3.14
 
 uv run avante-rag-service --help
 ```

@@ -72,26 +72,13 @@
             setuptools = [ ];
           };
         });
-
-        chroma-hnswlib = prev.chroma-hnswlib.overrideAttrs (old: {
-          nativeBuildInputs =
-            (old.nativeBuildInputs or [ ])
-            ++ [ final.numpy ]
-            ++ final.resolveBuildSystem {
-              setuptools = [ ];
-            };
-          preBuild = ''
-            export PYTHONPATH="${pkgs.python313Packages.pybind11}/${pkgs.python313.sitePackages}:$PYTHONPATH"
-          '' + (old.preBuild or "");
-        });
       };
 
       ragPythonSets = forAllSystems (
         system:
         let
           pkgs = import nixpkgs { inherit system; };
-          # TODO update
-          python = pkgs.python313;
+          python = pkgs.python314;
         in
         (pkgs.callPackage pyproject-nix.build.packages { inherit python; }).overrideScope (
           lib.composeManyExtensions [
@@ -163,7 +150,7 @@
               lua5_1.pkgs.luacheck
               lua-language-server
               ripgrep
-              python313
+              python314
               silver-searcher # for tests
               docker
               stylua

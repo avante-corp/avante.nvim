@@ -3,11 +3,12 @@ name = "rag-service"
 version = "0.1.0"
 description = "RAG service for avante.nvim"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
-  "chromadb",
+  "chromadb>=1.5.9",
   "docx2txt", # Loaded by LlamaIndex's DOCX reader.
   "fastapi",
+  "httpcore>=1.0.9", # Older versions fail to import on Python 3.14.
   "httpx",
   "llama-index-core",
   "llama-index-embeddings-dashscope",
