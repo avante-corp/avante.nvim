@@ -1406,7 +1406,12 @@ function M._load_acp_session_and_continue(opts, acp_client, session_id)
       return
     end
 
-    if opts.just_connect_acp_client then return end
+    if opts.just_connect_acp_client then
+      vim.schedule(function()
+        if opts.on_state_change then opts.on_state_change("initialized") end
+      end)
+      return
+    end
     M._continue_stream_acp(opts, acp_client, session_id)
   end)
 end
