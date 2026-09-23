@@ -31,8 +31,8 @@
 - [Project instructions](#project-instructions-with-avantemd)
 - [Installation](#installation)
 - [Usage](#usage)
-- [Key Bindings](#key-bindings)
-- [Commands](#commands)
+  - [Key Bindings](#key-bindings)
+  - [Commands](#commands)
 - [Highlight Groups](#highlight-groups)
 - [Fast Apply](#fast-apply)
 - [ACP Support](#acp-support)
@@ -973,7 +973,7 @@ Given its early stage, `avante.nvim` currently supports the following basic func
 
 **Note**: The plugin is still under active development, and both its functionality and interface are subject to significant changes. Expect some rough edges and instability as the project evolves.
 
-## Key Bindings
+### Key Bindings
 
 The following key bindings are available for use with `avante.nvim`:
 
@@ -1031,7 +1031,7 @@ The following key bindings are available for use with `avante.nvim`:
 > In this case, user will be responsible for setting up their own. See [notes on keymaps](https://github.com/yetone/avante.nvim/wiki#keymaps-and-api-i-guess) for more details.
 
 
-## Commands
+### Commands
 
 | Command                            | Description                                                                                                 | Examples                                            |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
