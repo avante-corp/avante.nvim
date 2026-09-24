@@ -280,7 +280,13 @@ function Sidebar:open(opts)
   end
 
   local acp_provider = Config.acp_providers[Config.provider]
-  if acp_provider then self:handle_submit("") end
+  if acp_provider then
+    -- When opening a new chat, drop the previous chat's session id before
+    -- preconnecting, otherwise session/load replays the old conversation into
+    -- the new chat (new_chat() only runs after open() returns).
+    if opts.new_chat and self.chat_history then self.chat_history.acp_session_id = nil end
+    self:handle_submit("")
+  end
 
   return self
 end
