@@ -276,9 +276,12 @@ function M.select_history()
   local buf = vim.api.nvim_get_current_buf()
   require("avante.history_selector").open(buf, function(filename)
     vim.api.nvim_buf_call(buf, function()
-      if not require("avante").is_sidebar_open() then require("avante").open_sidebar({}) end
+      -- Switch the latest history before opening the sidebar, otherwise
+      -- Sidebar:open() preconnects the ACP agent with the previous chat's
+      -- session id instead of the selected one.
       local Path = require("avante.path")
       Path.history.save_latest_filename(buf, filename)
+      if not require("avante").is_sidebar_open() then require("avante").open_sidebar({}) end
       local sidebar = require("avante").get()
       sidebar:update_content_with_history()
       sidebar:create_todos_container()
