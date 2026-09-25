@@ -249,6 +249,7 @@ local Log = require("avante.utils.log")
 ---@field config ACPConfig
 ---@field callbacks table<number, fun(result: table|nil, err: avante.acp.ACPError|nil)>
 ---@field debug_log_file file*|nil
+---@field is_loading_session boolean Whether a session/load request is in flight
 local ACPClient = {}
 
 -- ACP Error codes
@@ -309,6 +310,7 @@ function ACPClient:new(config)
     state = "disconnected",
     reconnect_count = 0,
     heartbeat_timer = nil,
+    is_loading_session = false,
   }, { __index = self })
 
   client:_setup_transport()
@@ -685,6 +687,12 @@ function ACPClient:_handle_session_update(params)
     end
   end
 
+  -- Agents replay the loaded conversation as session/update notifications
+  -- while a session/load request is in flight. Stamp those updates here, at
+  -- read time — the session/load response only arrives (and clears the flag)
+  -- after all replay notifications have been read.
+  if self.is_loading_session then update._replayed = true end
+
   if self.config.handlers and self.config.handlers.on_session_update then
     vim.schedule(function() self.config.handlers.on_session_update(update) end)
   end
@@ -895,11 +903,13 @@ function ACPClient:load_session(session_id, cwd, mcp_servers, callback)
     return
   end
 
+  self.is_loading_session = true
   self:_send_request("session/load", {
     sessionId = session_id,
     cwd = cwd,
     mcpServers = mcp_servers or {},
   }, function(result, err)
+    self.is_loading_session = false
     if result then self:_convert_legacy_session_fields(result) end
     callback(result, err)
   end)

@@ -1007,6 +1007,11 @@ function M._stream_acp(opts)
       ---@type ACPHandlers
       handlers = {
         on_session_update = function(update)
+          -- Replayed updates from session/load duplicate content already in
+          -- the chat history; rendering them would re-append old messages and
+          -- navigate the editor to files edited in the loaded session.
+          if update._replayed then return end
+
           if update.sessionUpdate == "plan" then
             local todos = {}
             for idx, entry in ipairs(update.entries) do
