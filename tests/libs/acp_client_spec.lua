@@ -370,4 +370,73 @@ describe("ACPClient", function()
       assert.same({}, sent_params.mcpServers)
     end)
   end)
+
+  describe("session/load replay", function()
+    it("stamps session updates replayed during session/load as _replayed", function()
+      local session_updates = {}
+      local client
+
+      local mock_transport = {
+        send = function(self, data)
+          local decoded = vim.json.decode(data)
+          if decoded.method == "session/load" then
+            -- Agents replay the loaded conversation before answering the request
+            vim.schedule(
+              function()
+                client:_handle_message({
+                  jsonrpc = "2.0",
+                  method = "session/update",
+                  params = {
+                    sessionId = "test-session-load",
+                    update = {
+                      sessionUpdate = "agent_message_chunk",
+                      content = { type = "text", text = "replayed message" },
+                    },
+                  },
+                })
+              end
+            )
+            vim.schedule(function() client:_handle_message({ jsonrpc = "2.0", id = decoded.id, result = {} }) end)
+          end
+        end,
+        start = function(_self, _on_message) end,
+        stop = function(_self) end,
+      }
+
+      client = ACPClient:new({
+        transport_type = "stdio",
+        handlers = {
+          on_session_update = function(update) table.insert(session_updates, update) end,
+        },
+      })
+      client.transport = mock_transport
+      client.state = "ready"
+      client.agent_capabilities = { loadSession = true }
+
+      local loaded = false
+      client:load_session("test-session-load", "/tmp/test", nil, function(_result, err)
+        assert.is_nil(err)
+        loaded = true
+      end)
+
+      assert.is_true(loaded)
+      assert.equals(1, #session_updates)
+      assert.is_true(session_updates[1]._replayed)
+
+      client:_handle_message({
+        jsonrpc = "2.0",
+        method = "session/update",
+        params = {
+          sessionId = "test-session-load",
+          update = {
+            sessionUpdate = "agent_message_chunk",
+            content = { type = "text", text = "live message" },
+          },
+        },
+      })
+
+      assert.equals(2, #session_updates)
+      assert.is_nil(session_updates[2]._replayed)
+    end)
+  end)
 end)
