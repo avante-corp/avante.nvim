@@ -673,6 +673,18 @@ _See [config.lua#L9](./lua/avante/config.lua) for the up to date full default co
 
 </details>
 
+The result window header shows the current model by default. To add your own title, override
+`Sidebar:get_result_header_text()` before opening Avante:
+
+```lua
+require("avante.sidebar").get_result_header_text = function(self)
+  return "Your title"
+end
+```
+
+The returned text uses the result header highlight and the configured alignment and rounding.
+The model remains visible when `windows.sidebar_header.include_model` is enabled.
+
 ### Blink.cmp users
 
 For blink cmp users (nvim-cmp alternative) view below instruction for configuration
