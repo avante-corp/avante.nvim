@@ -1030,6 +1030,13 @@ Sidebar:render_header()                           *avante-sidebar:render_header*
     else it will be set as
 
 
+Sidebar:get_result_header_text()         *avante-sidebar:get_result_header_text*
+    Override this method to customize the result window header text.
+
+    Returns: ~
+        (string)
+
+
 Sidebar:render_result()                           *avante-sidebar:render_result*
      @see render_header
 
