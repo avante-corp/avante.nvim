@@ -1,8 +1,5 @@
-local History = require("avante.history")
 local Utils = require("avante.utils")
-local Path = require("avante.path")
 local Config = require("avante.config")
-local Selector = require("avante.ui.selector")
 
 ---@class avante.HistorySelector
 local M = {}
@@ -10,9 +7,10 @@ local M = {}
 ---@param history avante.ChatHistory
 ---@return table?
 local function to_selector_item(history)
+  local History = require("avante.history")
   local messages = History.get_history_messages(history)
   local timestamp = #messages > 0 and messages[#messages].timestamp or history.timestamp
-  local name = history.title .. " - " .. timestamp .. " (" .. #messages .. ")"
+  local name = history.title .. " - " .. timestamp .. " (" .. #messages .. " messages)"
   name = name:gsub("\n", "\\n")
   return {
     name = name,
@@ -23,6 +21,8 @@ end
 ---@param bufnr integer
 ---@param cb fun(filename: string)
 function M.open(bufnr, cb)
+  local Path = require("avante.path")
+  local Selector = require("avante.ui.selector")
   local selector_items = {}
 
   local histories = Path.history.list(bufnr)
