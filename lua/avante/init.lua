@@ -543,6 +543,9 @@ function M.setup(opts)
   H.keymaps()
   H.signs()
 
+  -- Clean up residual DLL files in Windows in the background
+  Utils.file.clean_windows_dll_trash()
+
   M.did_setup = true
 
   if Config.rag_service.enabled then require("avante.rag_service").run_rag_service() end
