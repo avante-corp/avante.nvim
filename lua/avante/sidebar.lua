@@ -19,6 +19,7 @@ local FileSelector = require("avante.file_selector")
 local LLMTools = require("avante.llm_tools")
 local History = require("avante.history")
 local Render = require("avante.history.render")
+local ThreadTitle = require("avante.thread_title")
 local Line = require("avante.ui.line")
 local LRUCache = require("avante.utils.lru_cache")
 local logo = require("avante.utils.logo")
@@ -248,12 +249,17 @@ function Sidebar:open(opts)
     vim.g.avante_login = true
   end
 
-  -- Auto-restore last thread's session info (working dir, selected files)
+  -- Restore selected files from the last thread in *this* project. Do not
+  -- `:cd` to last_session.working_directory: that path is written into a
+  -- metadata file every Neovim in the project used to share, so a worktree
+  -- chat would yank a second Vim (sitting in the original checkout) into the
+  -- worktree mid-conversation. Explicit thread picks still cd in api.lua.
   if not opts.skip_session_restore then
     local last_session = Path.history.load_last_session(self.code.bufnr)
     if last_session then
-      if last_session.working_directory and vim.fn.isdirectory(last_session.working_directory) == 1 then
-        vim.cmd("cd " .. vim.fn.fnameescape(last_session.working_directory))
+      local wd = last_session.working_directory
+      if wd and Utils.root.should_follow_working_directory(wd, vim.uv.cwd()) then
+        vim.cmd("cd " .. vim.fn.fnameescape(wd))
       end
       if last_session.selected_files and self.file_selector then
         for _, filepath in ipairs(last_session.selected_files) do
@@ -1023,12 +1029,18 @@ function Sidebar:rename_thread(new_title)
     Utils.warn("No active thread to rename")
     return
   end
+  new_title = vim.trim(new_title or "")
+  if new_title == "" then
+    Utils.warn("Thread title cannot be empty")
+    return
+  end
   self.chat_history.title = new_title
   if self.acp_thread then
     self.acp_thread.title = new_title
   end
   local Path = require("avante.path")
   Path.history.save(self.code.bufnr, self.chat_history)
+  self:render_result()
   self:show_input_hint()
   Utils.info("Thread renamed to: " .. new_title)
 end
@@ -1822,12 +1834,7 @@ end
 function Sidebar:render_result()
   if not Utils.is_valid_container(self.containers.result) then return end
 
-  -- Use thread title if available, otherwise default to "Avante"
-  local title = "Avante"
-  if self.chat_history and self.chat_history.title and self.chat_history.title ~= "" and self.chat_history.title ~= "untitled" then
-    title = self.chat_history.title
-  end
-
+  local title = ThreadTitle.display(self.chat_history)
   local header_text = Utils.icon("󰭻 ") .. title
 
   -- Add mode indicator (prefer configOptions over legacy modes)
@@ -1856,12 +1863,14 @@ function Sidebar:render_result()
     header_text = header_text .. " " .. Utils.icon("") .. "[" .. mode_display .. "]"
   end
 
+  local title_hl, reversed_title_hl =
+    Highlights.session_title(self.chat_history and self.chat_history.title_color_index or nil)
   self:render_header(
     self.containers.result.winid,
     self.containers.result.bufnr,
     header_text,
-    Highlights.TITLE,
-    Highlights.REVERSED_TITLE
+    title_hl,
+    reversed_title_hl
   )
 end
 

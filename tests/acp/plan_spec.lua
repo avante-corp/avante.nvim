@@ -203,6 +203,17 @@ describe("acp.plan", function()
       assert.equals(mine, Plan.find_agent_file(SESSION))
     end)
 
+    it("takes the newest when the agent re-planned under a new title", function()
+      -- A second plan means a second file, both stamped with the session; the
+      -- earlier one is the plan the agent has moved past.
+      local first = cursor_plan("Alpha-2fd6f9f1.plan.md", "<!-- " .. SESSION .. " -->")
+      local second = cursor_plan("Beta-2fd6f9f1.plan.md", "<!-- " .. SESSION .. " -->")
+      -- glob returns these alphabetically, so mtime has to be what decides.
+      vim.loop.fs_utime(first, os.time() - 120, os.time() - 120)
+
+      assert.equals(second, Plan.find_agent_file(SESSION))
+    end)
+
     it("has nothing to find without a session", function()
       cursor_plan("App branches summary-2fd6f9f1.plan.md")
 
@@ -226,6 +237,23 @@ describe("acp.plan", function()
       })
 
       assert.equals(live, found)
+    end)
+
+    it("gives way to a plan proposed after the agent last touched its file", function()
+      -- The agent proposes, edits its own file, then proposes again. Only the
+      -- copy written for that second proposal is the current plan.
+      local live = cursor_plan("App branches summary-2fd6f9f1.plan.md")
+      vim.loop.fs_utime(live, os.time() - 120, os.time() - 120)
+      local snapshot = tmp .. "/replan.md"
+      vim.fn.writefile({ "# The plan as re-proposed" }, snapshot)
+
+      local found = Utils.plan_find_file_path({
+        acp_session_id = SESSION,
+        plan_file_path = snapshot,
+        messages = {},
+      })
+
+      assert.equals(snapshot, found)
     end)
 
     it("leaves the saved copy in place for an agent that wrote none", function()

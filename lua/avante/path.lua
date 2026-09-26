@@ -3,6 +3,7 @@ local Utils = require("avante.utils")
 local Path = require("plenary.path")
 local Scan = require("plenary.scandir")
 local Config = require("avante.config")
+local ThreadTitle = require("avante.thread_title")
 
 ---@class avante.Path
 ---@field history_path Path
@@ -32,6 +33,14 @@ local function filepath_to_filename(filepath) return tostring(filepath):sub(tost
 
 -- History path
 local History = {}
+
+local function title_color_count()
+  local colors = Config.windows
+    and Config.windows.sidebar_header
+    and Config.windows.sidebar_header.title_colors
+    or {}
+  return vim.islist(colors) and #colors or 0
+end
 
 --- Directory holding a project's threads.
 ---
@@ -261,6 +270,7 @@ function History.new(bufnr)
   for _ = 1, 100 do
     local filename = number .. ".json"
     history.filename = filename
+    history.title_color_index = ThreadTitle.color_index(filename, title_color_count())
     local path = tostring(history_dir:joinpath(filename))
     local fd = vim.uv.fs_open(path, "wx", 420)
     if fd then
@@ -283,6 +293,15 @@ function History.from_file(filepath)
       local decode_ok, history = pcall(vim.json.decode, content)
       if decode_ok and type(history) == "table" then
         if not history.title or type(history.title) ~= "string" then history.title = "untitled" end
+        local color_count = title_color_count()
+        if
+          type(history.title_color_index) ~= "number"
+          or history.title_color_index % 1 ~= 0
+          or history.title_color_index < 1
+          or history.title_color_index > math.max(color_count, 1)
+        then
+          history.title_color_index = ThreadTitle.color_index(filepath_to_filename(filepath), color_count)
+        end
         if not history.timestamp or type(history.timestamp) ~= "string" then history.timestamp = Utils.get_timestamp() end
         -- TODO: sanitize individual entries of the lists below as well.
         if not vim.islist(history.entries) then history.entries = {} end

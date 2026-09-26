@@ -88,6 +88,31 @@ local function has_set_colors(hl_group) return next(Utils.get_hl(hl_group)) ~= n
 local first_setup = true
 local already_set_highlights = {}
 
+local function title_colors()
+  local colors = Config.windows
+    and Config.windows.sidebar_header
+    and Config.windows.sidebar_header.title_colors
+    or {}
+  return vim.islist(colors) and colors or {}
+end
+
+local function setup_session_title_highlights()
+  local normal_float_bg = Utils.get_hl("NormalFloat").bg
+  for index, color in ipairs(title_colors()) do
+    local title_name = "AvanteSessionTitle" .. index
+    local reversed_name = "AvanteReversedSessionTitle" .. index
+    for _, name in ipairs({ title_name, reversed_name }) do
+      if first_setup and has_set_colors(name) then already_set_highlights[name] = true end
+    end
+    if not already_set_highlights[title_name] then
+      api.nvim_set_hl(0, title_name, { fg = "#1e222a", bg = color })
+    end
+    if not already_set_highlights[reversed_name] then
+      api.nvim_set_hl(0, reversed_name, { fg = color, bg = normal_float_bg })
+    end
+  end
+end
+
 function M.setup()
   if Config.behaviour.auto_set_highlight_group then
     vim
@@ -112,6 +137,7 @@ function M.setup()
           )
         end
       end)
+    setup_session_title_highlights()
   end
 
   if first_setup then
@@ -122,6 +148,16 @@ function M.setup()
   first_setup = false
 
   M.setup_conflict_highlights()
+end
+
+---@param index integer|nil
+---@return string title_hl
+---@return string reversed_title_hl
+function M.session_title(index)
+  local count = #title_colors()
+  if count == 0 then return Highlights.TITLE.name, Highlights.REVERSED_TITLE.name end
+  local normalized = (math.floor(tonumber(index) or 1) - 1) % count + 1
+  return "AvanteSessionTitle" .. normalized, "AvanteReversedSessionTitle" .. normalized
 end
 
 function M.setup_conflict_highlights()

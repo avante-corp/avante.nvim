@@ -153,8 +153,14 @@ enables it, so there is nothing to advertise. The route stays registered in case
 **`cursor/create_plan` is a snapshot, not the plan.** Cursor also writes the plan to
 `~/.cursor/plans/<title>-<first 8 of the session id>.plan.md`, with the full session id on the
 first line, and revises that file for the rest of the session — often until it bears no
-resemblance to the payload that asked for approval. `/open-plan` therefore looks for that file
-first (`Plan.find_agent_file`), falling back to the copy avante wrote when the plan was proposed.
+resemblance to the payload that asked for approval. Re-planning under a new title leaves another
+such file behind, so `Plan.find_agent_file` takes the most recently written of the ones stamped
+with the session id.
+
+Neither copy is reliably the current plan: cursor edits its own file after proposing a plan, and
+proposes a new plan after editing its file. Every `cursor/create_plan` — first or fifth — writes a
+fresh copy and records it on the thread, and `/plan`, `/view-plan` and `/open-plan` read whichever
+of the two was written last (`Utils.plan_find_file_path`).
 
 ## Asking the user a question
 

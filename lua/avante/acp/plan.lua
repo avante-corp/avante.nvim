@@ -119,20 +119,21 @@ function M.find_agent_file(session_id, dir)
   local matches = vim.fn.glob(root .. "/*-" .. session_id:sub(1, 8) .. ".plan.md", false, true)
   if #matches == 0 then return nil end
 
-  local newest, newest_time = nil, -1
+  -- Eight characters of a name could belong to another session; the id in the
+  -- file could not, so files carrying it win outright. Re-planning under a new
+  -- title leaves several of those behind, and only the last one written is the
+  -- plan the agent is working from.
+  local best, best_time, best_stamped = nil, -1, false
   for _, path in ipairs(matches) do
-    -- Eight characters of a name could belong to another session; the id in
-    -- the file could not, so a file carrying it wins outright.
     local first_line = (vim.fn.readfile(path, "", 1) or {})[1] or ""
-    if first_line:find(session_id, 1, true) then return path end
-
+    local stamped = first_line:find(session_id, 1, true) ~= nil
     local time = vim.fn.getftime(path)
-    if time > newest_time then
-      newest, newest_time = path, time
+    if (stamped and not best_stamped) or (stamped == best_stamped and time > best_time) then
+      best, best_time, best_stamped = path, time, stamped
     end
   end
 
-  return newest
+  return best
 end
 
 ---Convert plan todos into the sidebar's TODO shape.
@@ -154,12 +155,22 @@ end
 
 ---Persist a plan against the current thread and refresh the UI.
 ---
+---Called for every `cursor/create_plan`, including the re-plans that follow the
+---first one, so the recorded path always points at the plan most recently
+---proposed rather than the one the session opened with.
+---
 ---Returns the path so the caller can tell the user where it went.
 ---@param params table
 ---@return string|nil path
 function M.store(params)
   local ok, Avante = pcall(require, "avante")
   local sidebar = ok and Avante.get and Avante.get() or nil
+
+  -- Without a thread there is nowhere to record the path, and a plan saved to
+  -- disk that nothing points at is a plan `/open-plan` will never find.
+  if sidebar and not sidebar.chat_history and sidebar.reload_chat_history then
+    pcall(function() sidebar:reload_chat_history() end)
+  end
 
   local session_id = sidebar and sidebar.chat_history and sidebar.chat_history.acp_session_id
   local path, err = M.write(params, { session_id = session_id })

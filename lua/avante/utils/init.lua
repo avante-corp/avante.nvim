@@ -1781,22 +1781,26 @@ end
 function M.plan_find_file_path(history)
   if not history then return nil end
 
-  -- The agent's own file first, wherever one exists. cursor goes on revising
-  -- the plan it wrote in ~/.cursor/plans for the rest of the session, so
-  -- reading what avante saved when the plan was proposed shows a plan the
-  -- agent stopped following some time ago.
-  local ok_plan, Plan = pcall(require, "avante.acp.plan")
-  if ok_plan then
-    local live = Plan.find_agent_file(history.acp_session_id)
-    if live then return live end
+  -- Two copies can exist: the one the agent keeps for itself in ~/.cursor/plans
+  -- and revises as the session goes on, and the one avante writes each time a
+  -- plan arrives over the wire (cursor/create_plan) and records here. Either
+  -- can be the stale one -- the agent edits its file after proposing a plan,
+  -- and proposes a new plan after editing its file -- so the copy written last
+  -- is the plan in force.
+  local recorded = nil
+  if type(history.plan_file_path) == "string" and history.plan_file_path ~= "" then
+    recorded = history.plan_file_path
   end
 
-  -- Recorded directly when the agent delivered the plan over the wire rather
-  -- than writing a file (cursor/create_plan), and the only copy when the agent
-  -- keeps none of its own.
-  if type(history.plan_file_path) == "string" and history.plan_file_path ~= "" then
-    return history.plan_file_path
+  local ok_plan, Plan = pcall(require, "avante.acp.plan")
+  local live = ok_plan and Plan.find_agent_file(history.acp_session_id) or nil
+
+  if live and recorded then
+    if M.plan_file_mtime(recorded) > M.plan_file_mtime(live) then return recorded end
+    return live
   end
+  if live then return live end
+  if recorded then return recorded end
   local ok, History = pcall(require, "avante.history")
   if not ok then return nil end
   local messages = History.get_history_messages(history)
@@ -1836,6 +1840,15 @@ function M.plan_find_file_path(history)
     if plan_file_path then break end
   end
   return plan_file_path
+end
+
+--- When a plan file was last written, or -1 if it is not there at all.
+---@param plan_file_path string|nil
+---@return integer
+function M.plan_file_mtime(plan_file_path)
+  if type(plan_file_path) ~= "string" or plan_file_path == "" then return -1 end
+  local expanded = (plan_file_path:gsub("^~", vim.fn.expand("~")))
+  return vim.fn.getftime(vim.fn.fnamemodify(expanded, ":p"))
 end
 
 --- Read a plan file from disk, expanding ~ paths
@@ -1903,6 +1916,11 @@ function M.get_commands()
     },
     { description = "Fork the current thread", name = "fork" },
     { description = "Show files changed in this session", name = "files" },
+    {
+      shorthelp = "Set the current thread title",
+      description = "/title [name] - Set the title shown in the thread header",
+      name = "title",
+    },
     { description = "Pin the current thread", name = "pin" },
     { description = "Unpin the current thread", name = "unpin" },
   }
@@ -2083,6 +2101,10 @@ Use `/compact` to update the memory with recent messages.]],
             vim.api.nvim_set_current_win(sidebar.code.winid)
           end
           vim.cmd("edit " .. vim.fn.fnameescape(expanded))
+          -- The agent rewrites the plan while the session runs, and `:edit`
+          -- reuses an already-loaded buffer without rereading it, so a second
+          -- /open-plan would otherwise show the plan as it was the first time.
+          if not vim.bo.modified then pcall(vim.cmd, "checktime") end
         else
           M.warn("Plan file not found on disk: " .. expanded)
         end
@@ -2234,6 +2256,19 @@ Use `/compact` to update the memory with recent messages.]],
       require("avante.changed_files").open()
       if cb then cb(args) end
     end,
+    title = function(sidebar, args, cb)
+      local title = vim.trim(args or "")
+      if title ~= "" then
+        sidebar:rename_thread(title)
+      else
+        local current = sidebar.chat_history and sidebar.chat_history.title or ""
+        if current == "untitled" then current = "" end
+        vim.ui.input({ prompt = "Thread title: ", default = current }, function(input)
+          if input and vim.trim(input) ~= "" then sidebar:rename_thread(input) end
+        end)
+      end
+      if cb then cb(args) end
+    end,
     pin = function(sidebar, args, cb)
       if not sidebar.chat_history then
         M.warn("No active thread to pin")
@@ -2298,6 +2333,7 @@ end
 function M.register_acp_commands(commands)
   local Config = require("avante.config")
   for _, command in ipairs(commands) do
+    if vim.tbl_contains(Config.local_only_commands, command.name) then goto continue end
     local exists = false
     for _, command_ in ipairs(Config.slash_commands) do
       if command_.name == command.name then
@@ -2316,6 +2352,7 @@ function M.register_acp_commands(commands)
         source = "acp",
       })
     end
+    ::continue::
   end
 
   local has_cmp, cmp = pcall(require, "cmp")

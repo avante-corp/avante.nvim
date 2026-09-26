@@ -518,6 +518,7 @@ vim.g.avante_login = vim.g.avante_login
 
 ---@class avante.ChatHistory
 ---@field title string
+---@field title_color_index integer | nil
 ---@field timestamp string
 ---@field messages avante.HistoryMessage[]
 ---@field entries avante.ChatHistoryEntry[]
@@ -535,6 +536,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field pinned boolean | nil
 ---@field last_seen_message_count integer | nil
 ---@field avante_mode string | nil
+---@field plan_file_path string | nil Copy avante wrote of the plan most recently proposed over the wire
 ---
 ---@class avante.ChatMemory
 ---@field content string
@@ -551,7 +553,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field content string
 ---@field uri string
 ---
----@alias AvanteSlashCommandBuiltInName "clear" | "help" | "lines" | "commit" | "new" | "cost" | "context" | "memory" | "dir"
+---@alias AvanteSlashCommandBuiltInName "clear" | "help" | "lines" | "commit" | "new" | "cost" | "context" | "memory" | "dir" | "title"
 ---@alias AvanteSlashCommandCallback fun(self: avante.Sidebar, args: string, cb?: fun(args: string): nil): nil
 ---@class AvanteSlashCommand
 ---@field name AvanteSlashCommandBuiltInName | string

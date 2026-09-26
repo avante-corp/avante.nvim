@@ -409,6 +409,7 @@ _请参见 [config.lua#L9](./lua/avante/config.lua) 以获取完整配置_
       enabled = true, -- true, false 启用/禁用标题
       align = "center", -- left, center, right 用于标题
       rounded = true,
+      title_colors = { "#98c379", "#56b6c2", "#61afef", "#e5c07b", "#c678dd", "#e06c75" },
     },
     spinner = {
       editing = { "⡀", "⠄", "⠂", "⠁", "⠈", "⠐", "⠠", "⢀", "⣀", "⢄", "⢂", "⢁", "⢈", "⢐", "⢠", "⣠", "⢤", "⢢", "⢡", "⢨", "⢰", "⣰", "⢴", "⢲", "⢱", "⢸", "⣸", "⢼", "⢺", "⢹", "⣹", "⢽", "⢻", "⣻", "⢿", "⣿" },
@@ -524,6 +525,7 @@ Avante.nvim 提供了多个可以与 blink.cmp 集成的补全项：
 - `/clear` - 清除聊天历史
 - `/new` - 开始新聊天
 - `/compact` - 压缩历史消息以节省令牌
+- `/title [name]` - 设置当前会话标题（未提供名称时会提示输入）
 - `/lines <start>-<end> <question>` - 询问特定行的问题
 - `/commit` - 为更改生成提交消息
 
@@ -763,6 +765,8 @@ return {
 | --------------------------- | -------------------------- | ------------------------------------------ |
 | AvanteTitle                 | 标题                       |                                            |
 | AvanteReversedTitle         | 用于圆角边框               |                                            |
+| AvanteSessionTitle{n}       | 轮换会话标题               | 由 `sidebar_header.title_colors` 生成      |
+| AvanteReversedSessionTitle{n} | 圆角会话标题边框         | 由 `sidebar_header.title_colors` 生成      |
 | AvanteSubtitle              | 选定代码标题               |                                            |
 | AvanteReversedSubtitle      | 用于圆角边框               |                                            |
 | AvanteThirdTitle            | 提示标题                   |                                            |

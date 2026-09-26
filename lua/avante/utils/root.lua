@@ -185,7 +185,66 @@ end
 M.cache = {}
 local buf_names = {}
 
+---Git worktrees have a `.git` *file* pointing at the main repo, not a
+---directory. LSP and `vim.fs.find(".git")` both follow that pointer, so two
+---Neovim instances — one in `~/nuon/nuon`, one in a worktree — used to share a
+---project root, a history folder, and `latest_filename`. A reply in the
+---worktree then showed up as the live thread in the other pane.
+---@param path? string
+---@return string|nil
+function M.git_worktree_root(path)
+  if not path or path == "" then return nil end
+  local git = vim.fs.find(".git", { path = path, upward = true })[1]
+  if not git then return nil end
+  local stat = vim.uv.fs_stat(git)
+  if not stat or stat.type ~= "file" then return nil end
+  return M.realpath(vim.fs.dirname(git)) or vim.fs.dirname(git)
+end
+
+---Pick the directory Avante should treat as "this project".
+---
+---`detected` is whatever LSP / `.git` / patterns found, which for a worktree
+---is usually the main checkout. History and ACP sessions are keyed off the
+---result, so a worktree must win over that.
+---@param detected? string
+---@param cwd? string
+---@return string|nil
+function M.resolve_project_root(detected, cwd)
+  cwd = cwd and (M.realpath(cwd) or cwd) or nil
+  detected = detected and (M.realpath(detected) or detected) or nil
+  if cwd then
+    local worktree = M.git_worktree_root(cwd)
+    if worktree then return worktree end
+    if detected and #detected > #cwd then return cwd end
+  end
+  return detected or cwd
+end
+
+---Whether `:cd` to `target` would stay inside this Neovim's checkout.
+---
+---Auto-restoring `last_session.working_directory` used to `:cd` the original
+---repo's Vim into the worktree the other pane had just been chatting in,
+---because that path was the last thing written to the shared metadata file.
+---@param target? string
+---@param cwd? string
+---@return boolean
+function M.should_follow_working_directory(target, cwd)
+  if not target or target == "" or not cwd or cwd == "" then return false end
+  if vim.fn.isdirectory(target) ~= 1 then return false end
+  target = M.realpath(target) or target
+  cwd = M.realpath(cwd) or cwd
+  if target == cwd then return false end
+  local target_wt = M.git_worktree_root(target)
+  local cwd_wt = M.git_worktree_root(cwd)
+  if target_wt or cwd_wt then return (target_wt or target) == (cwd_wt or cwd) end
+  local function under(child, parent)
+    return child == parent or vim.startswith(child, parent .. "/")
+  end
+  return under(target, cwd) or under(cwd, target)
+end
+
 -- returns the root directory based on:
+-- * git worktree of cwd (so worktrees don't share the main checkout's history)
 -- * lsp workspace folders
 -- * lsp root_dir
 -- * root pattern of filename of the current buffer
@@ -208,7 +267,7 @@ function M.get(opts)
     buf_names[buf] = buf_name
     M.cache[buf] = ret
   end
-  if cwd ~= nil and #ret > #cwd then ret = cwd end
+  ret = M.resolve_project_root(ret, cwd) or ret
   if opts and opts.normalize then return ret end
   return Utils.is_win() and ret:gsub("/", "\\") or ret
 end

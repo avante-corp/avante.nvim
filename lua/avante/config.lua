@@ -835,6 +835,7 @@ M._defaults = {
       enabled = true, -- true, false to enable/disable the header
       align = "center", -- left, center, right for title
       rounded = true,
+      title_colors = { "#98c379", "#56b6c2", "#61afef", "#e5c07b", "#c678dd", "#e06c75" },
     },
     spinner = {
       editing = {
@@ -998,7 +999,7 @@ M._defaults = {
   ---@type boolean Enable passthrough of unknown slash commands to ACP agent
   enable_acp_command_passthrough = true,
   ---@type string[] Commands that should only be handled locally (never sent to ACP)
-  local_only_commands = { "clear", "new", "help", "init", "compact", "avante-modes" },
+  local_only_commands = { "clear", "new", "help", "init", "compact", "avante-modes", "title" },
   ---@type boolean Auto-clear input buffer after slash command is submitted
   auto_clear_slash_commands = true,
   ---@type string | nil Path to directory containing .mdx shortcut files

@@ -578,6 +578,7 @@ _See [config.lua#L9](./lua/avante/config.lua) for the full config_
       enabled = true, -- true, false to enable/disable the header
       align = "center", -- left, center, right for title
       rounded = true,
+      title_colors = { "#98c379", "#56b6c2", "#61afef", "#e5c07b", "#c678dd", "#e06c75" },
     },
     spinner = {
       editing = { "⡀", "⠄", "⠂", "⠁", "⠈", "⠐", "⠠", "⢀", "⣀", "⢄", "⢂", "⢁", "⢈", "⢐", "⢠", "⣠", "⢤", "⢢", "⢡", "⢨", "⢰", "⣰", "⢴", "⢲", "⢱", "⢸", "⣸", "⢼", "⢺", "⢹", "⣹", "⢽", "⢻", "⣻", "⢿", "⣿" },
@@ -789,6 +790,7 @@ Built-in slash commands for common operations:
 - `/clear` - Clear chat history
 - `/new` - Start a new chat
 - `/compact` - Compact history messages to save tokens
+- `/title [name]` - Set the current thread title (prompts when no name is given)
 - `/lines <start>-<end> <question>` - Ask about specific lines
 - `/commit` - Generate commit message for changes
 
@@ -1077,6 +1079,8 @@ return {
 | --------------------------- | --------------------------------------------- | -------------------------------------------- |
 | AvanteTitle                 | Title                                         |                                              |
 | AvanteReversedTitle         | Used for rounded border                       |                                              |
+| AvanteSessionTitle{n}       | Round-robin thread title                      | Generated from `sidebar_header.title_colors` |
+| AvanteReversedSessionTitle{n} | Rounded thread title border                 | Generated from `sidebar_header.title_colors` |
 | AvanteSubtitle              | Selected code title                           |                                              |
 | AvanteReversedSubtitle      | Used for rounded border                       |                                              |
 | AvanteThirdTitle            | Prompt title                                  |                                              |
