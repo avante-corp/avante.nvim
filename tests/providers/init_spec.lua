@@ -1,5 +1,6 @@
 describe("providers", function()
   local Config
+  local Providers
   local previous_avante
   local previous_avante_module
 
@@ -27,12 +28,18 @@ describe("providers", function()
           setup = function() end,
         },
       },
+      acp_providers = {
+        test_acp = {
+          command = "test-agent",
+        },
+      },
       windows = {
         sidebar_header = {
           include_model = true,
         },
       },
     })
+    Providers = require("avante.providers")
   end)
 
   after_each(function()
@@ -40,6 +47,12 @@ describe("providers", function()
     package.loaded["avante"] = previous_avante_module
     package.loaded["avante.config"] = nil
     package.loaded["avante.providers"] = nil
+    Providers = nil
+  end)
+
+  it("marks ACP providers in provider picker labels", function()
+    assert.are.same("test_openai", Providers.format_provider_name("test_openai"))
+    assert.are.same("test_acp (ACP)", Providers.format_provider_name("test_acp"))
   end)
 
   it("redraws the sidebar header after switching providers", function()

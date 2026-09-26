@@ -36,6 +36,7 @@ local Utils = require("avante.utils")
 ---@field openai AvanteProviderFunctor
 ---@field vertex_claude AvanteProviderFunctor
 ---@field watsonx_code_assistant AvanteProviderFunctor
+---@field format_provider_name fun(provider_name: avante.ProviderName): string
 local M = {}
 
 ---@class EnvironmentHandler
@@ -245,6 +246,13 @@ function M.setup()
       E.setup({ provider = memory_summary_provider })
     end
   end
+end
+
+---@param provider_name avante.ProviderName
+---@return string
+function M.format_provider_name(provider_name)
+  if Config.acp_providers[provider_name] then return provider_name .. " (ACP)" end
+  return provider_name
 end
 
 ---@param provider_name avante.ProviderName
