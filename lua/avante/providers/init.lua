@@ -251,15 +251,16 @@ end
 function M.refresh(provider_name)
   require("avante.config").override({ provider = provider_name })
 
-  if Config.acp_providers[provider_name] then
-    Config.provider = provider_name
-  else
+  if not Config.acp_providers[provider_name] then
     ---@type AvanteProviderFunctor | AvanteBedrockProviderFunctor
     local p = M[Config.provider]
     E.setup({ provider = p, refresh = true })
   end
   local sidebar = require("avante").get()
-  if sidebar and sidebar:is_open() then sidebar:render_result() end
+  if sidebar and sidebar:is_open() then
+    sidebar:render_result()
+    if Config.acp_providers[provider_name] then sidebar:handle_submit("") end
+  end
   Utils.info("Switch to provider: " .. provider_name, { once = true, title = "Avante" })
 end
 

@@ -3017,6 +3017,7 @@ function Sidebar:handle_submit(request)
       on_state_change = on_state_change,
       acp_client = self.acp_client,
       on_save_acp_client = function(client) self.acp_client = client end,
+      on_acp_config_change = vim.schedule_wrap(function() self:render_result() end),
       acp_session_id = self.chat_history.acp_session_id,
       on_save_acp_session_id = function(session_id)
         self.chat_history.acp_session_id = session_id
