@@ -445,6 +445,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@class AvanteLLMStreamOptions: AvanteGeneratePromptsOptions
 ---@field acp_client? avante.acp.ACPClient
 ---@field on_save_acp_client? fun(client: avante.acp.ACPClient): boolean|nil Return false to discard the client and stop the request
+---@field on_acp_config_change? fun(): nil
 ---@field just_connect_acp_client? boolean
 ---@field acp_session_id? string
 ---@field acp_session_cwd? string Directory the ACP session belongs to; defaults to the project root

@@ -3099,6 +3099,7 @@ function Sidebar:handle_submit(request)
         self.acp_client = client
         return true
       end,
+      on_acp_config_change = vim.schedule_wrap(function() self:render_result() end),
       acp_session_id = chat_history.acp_session_id,
       acp_session_cwd = chat_history.acp_session_cwd,
       on_save_acp_session_id = function(session_id)

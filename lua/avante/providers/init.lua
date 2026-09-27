@@ -259,7 +259,10 @@ function M.refresh(provider_name)
     E.setup({ provider = p, refresh = true })
   end
   local sidebar = require("avante").get()
-  if sidebar and sidebar:is_open() then sidebar:render_result() end
+  if sidebar and sidebar:is_open() then
+    sidebar:render_result()
+    if Config.acp_providers[provider_name] then sidebar:handle_submit("") end
+  end
   Utils.info("Switch to provider: " .. provider_name, { once = true, title = "Avante" })
 end
 
