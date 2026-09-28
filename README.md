@@ -888,6 +888,34 @@ Here's a complete blink.cmp configuration example with all Avante sources:
 
 ## Usage
 
+### Tsubasa
+
+Use the existing OpenAI-compatible provider for text chat. Set
+`TSUBASA_API_KEY` in Neovim's environment, then add this configuration:
+
+```lua
+require("avante").setup({
+  provider = "tsubasa",
+  providers = {
+    tsubasa = {
+      __inherited_from = "openai",
+      endpoint = "https://api.tsubasa.sh/v1",
+      api_key_name = "TSUBASA_API_KEY",
+      model = "tsubasa-pro",
+      context_window = 32768,
+      use_response_api = false,
+      disable_tools = true,
+      extra_request_body = { max_completion_tokens = 16384 },
+    },
+  },
+})
+```
+
+To select Fast, set `model = "tsubasa-fast"` and reduce
+`max_completion_tokens` to 8192 or less. Both models share a 32,768-token
+input/output context window; reduce the output budget further to leave room
+for a larger prompt. Tools and the Responses API are disabled in this example.
+
 ### Using Claude Pro/Max Subscription
 To login with your Claude subscription, set the **auth_type** of the Claude provider entry in your config to "max", re-open Neovim then the authentication process will start in your browser. Once logged in and authorized, a code will show that needs to be copied into the prompt in Neovim, which should then give access to use your subscription with Avante.
 
