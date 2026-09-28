@@ -213,7 +213,11 @@ function M:parse_messages(opts)
 
   vim.iter(opts.messages):each(function(msg)
     if type(msg.content) == "string" then
-      table.insert(messages, { role = self.role_map[msg.role], content = msg.content })
+      table.insert(messages, {
+        role = self.role_map[msg.role],
+        content = msg.content,
+        phase = use_response_api and msg.role == "assistant" and msg.phase or nil,
+      })
     elseif type(msg.content) == "table" then
       -- Check if this is a reasoning message (object with type "reasoning")
       if msg.content.type == "reasoning" then
@@ -385,6 +389,8 @@ function M:parse_messages(opts)
     messages[#messages].content = message_content
   end
 
+  if use_response_api then return messages end
+
   local final_messages = {}
   local prev_role = nil
   local prev_type = nil
@@ -438,6 +444,7 @@ function M:add_text_message(ctx, text, state, opts)
     uuid = ctx.content_uuid,
     original_content = ctx.content,
   })
+  msg.message.phase = ctx.response_phase
   ctx.content_uuid = msg.uuid
   local msgs = { msg }
   local xml_content = ctx.content
@@ -676,6 +683,8 @@ function M:parse_response(ctx, data_stream, _, opts)
         end
       elseif jsn.item and jsn.item.type == "reasoning" then
         self:add_reasoning_message(ctx, jsn.item, opts)
+      elseif jsn.item and jsn.item.type == "message" then
+        ctx.response_phase = jsn.item.phase
       end
     elseif jsn.type == "response.completed" or jsn.type == "response.done" then
       -- Response completed - save response.id for future requests

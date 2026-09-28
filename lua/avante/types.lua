@@ -86,6 +86,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@class AvanteLLMMessage
 ---@field role "user" | "assistant"
 ---@field content AvanteLLMMessageContent
+---@field phase? "commentary" | "final_answer"
 
 ---@class avante.TODO
 ---@field id string
