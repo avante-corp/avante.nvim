@@ -174,7 +174,8 @@ local Utils = require("avante.utils")
 
 local function copilot_use_response_api(opts)
   local model = opts and opts.model
-  return type(model) == "string" and model:match("gpt%-%d+%.?%d*%-codex") ~= nil
+  return type(model) == "string"
+    and (model:match("^gpt%-[56][%.%-]") ~= nil or model:match("gpt%-%d+%.?%d*%-codex") ~= nil)
 end
 
 ---@alias avante.ProviderName "claude" | "openai" | "azure" | "gemini" | "vertex" | "cohere" | "copilot" | "bedrock" | "ollama" | "watsonx_code_assistant" | "mistral" | string
@@ -405,7 +406,7 @@ M._defaults = {
       model = "gpt-4o",
       timeout = 30000,
       context_window = 128000, -- Number of tokens to send to the model for context
-      use_response_api = copilot_use_response_api, -- Automatically switch to Response API for GPT-5 Codex models
+      use_response_api = copilot_use_response_api, -- Automatically switch GPT-5 and GPT-6 models to the Response API
       support_previous_response_id = true, -- OpenAI Response API supports previous_response_id for stateful conversations
       extra_request_body = {
         temperature = 0.75,
@@ -431,10 +432,10 @@ M._defaults = {
       allow_insecure = false, -- Allow insecure server connections
       timeout = 30000, -- Timeout in milliseconds
       context_window = 64000, -- Number of tokens to send to the model for context
-      use_response_api = copilot_use_response_api, -- Automatically switch to Response API for GPT-5 Codex models
+      use_response_api = copilot_use_response_api, -- Automatically switch GPT-5 and GPT-6 models to the Response API
       support_previous_response_id = false, -- Copilot doesn't support previous_response_id, must send full history
       -- NOTE: Copilot doesn't support previous_response_id, always sends full conversation history including tool_calls
-      -- NOTE: Response API doesn't support some parameters like top_p, frequency_penalty, presence_penalty
+      -- NOTE: Responses doesn't support frequency_penalty or presence_penalty
       extra_request_body = {
         -- temperature is not supported by Response API for reasoning models
         max_tokens = 20480,

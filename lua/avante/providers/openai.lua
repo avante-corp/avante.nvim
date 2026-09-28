@@ -146,15 +146,24 @@ end
 
 function M.set_allowed_params(provider_conf, request_body)
   local use_response_api = Providers.resolve_use_response_api(provider_conf, nil)
-  if M.is_reasoning_model(provider_conf.model) then
-    -- Reasoning models have specific parameter requirements
-    request_body.temperature = 1
-    -- Response API doesn't support temperature for reasoning models
-    if use_response_api then request_body.temperature = nil end
-  else
+  local is_reasoning_model = M.is_reasoning_model(provider_conf.model)
+  local reasoning_effort = request_body.reasoning_effort
+  if reasoning_effort == nil and type(request_body.reasoning) == "table" then
+    reasoning_effort = request_body.reasoning.effort
+  end
+  local reasoning_enabled = is_reasoning_model and reasoning_effort ~= "none"
+
+  if reasoning_enabled then
+    -- Reasoning rejects sampling controls and Chat-style log probabilities.
+    for _, param in ipairs({ "temperature", "top_p", "top_logprobs", "logprobs" }) do
+      request_body[param] = nil
+    end
+  elseif not is_reasoning_model then
+    -- Do not send reasoning-only fields to non-reasoning models.
     request_body.reasoning_effort = nil
     request_body.reasoning = nil
   end
+
   -- If max_tokens is set in config, unset max_completion_tokens
   if request_body.max_tokens then request_body.max_completion_tokens = nil end
 
@@ -171,12 +180,10 @@ function M.set_allowed_params(provider_conf, request_body)
     -- Response API doesn't support some parameters
     -- Remove unsupported parameters for Response API
     local unsupported_params = {
-      "top_p",
       "frequency_penalty",
       "presence_penalty",
       "logit_bias",
       "logprobs",
-      "top_logprobs",
       "n",
     }
     for _, param in ipairs(unsupported_params) do
@@ -657,12 +664,9 @@ function M:parse_response(ctx, data_stream, _, opts)
           input_json = "",
         }
         self:add_tool_use_message(ctx, ctx.tool_use_map[tool_key], "generating", opts)
-      elseif jsn.item and jsn.item.type == "reasoning" then
-        -- Add reasoning item to history
-        self:add_reasoning_message(ctx, jsn.item, opts)
       end
     elseif jsn.type == "response.output_item.done" then
-      -- Output item done (finalize function call)
+      -- Output item done (finalize function call or preserve final reasoning state)
       if jsn.item and jsn.item.type == "function_call" then
         local tool_key = tostring(jsn.output_index or 0)
         if ctx.tool_use_map and ctx.tool_use_map[tool_key] then
@@ -670,6 +674,8 @@ function M:parse_response(ctx, data_stream, _, opts)
           if jsn.item.arguments then tool_use.input_json = jsn.item.arguments end
           self:add_tool_use_message(ctx, tool_use, "generated", opts)
         end
+      elseif jsn.item and jsn.item.type == "reasoning" then
+        self:add_reasoning_message(ctx, jsn.item, opts)
       end
     elseif jsn.type == "response.completed" or jsn.type == "response.done" then
       -- Response completed - save response.id for future requests
