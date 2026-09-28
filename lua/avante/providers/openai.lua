@@ -137,8 +137,11 @@ function M.get_user_message(opts)
 end
 
 function M.is_reasoning_model(model)
-  return model
-    and (string.match(model, "^o%d+") ~= nil or (string.match(model, "gpt%-5") ~= nil and model ~= "gpt-5-chat"))
+  return model ~= nil
+    and (
+      string.match(model, "^o%d+") ~= nil
+      or (string.match(model, "^gpt%-[56]") ~= nil and string.match(model, "%-chat") == nil)
+    )
 end
 
 function M.set_allowed_params(provider_conf, request_body)
@@ -584,8 +587,8 @@ function M.transform_openai_usage(usage)
   if usage == vim.NIL then return nil end
   ---@type avante.LLMTokenUsage
   local res = {
-    prompt_tokens = usage.prompt_tokens,
-    completion_tokens = usage.completion_tokens,
+    prompt_tokens = usage.prompt_tokens or rawget(usage, "input_tokens"),
+    completion_tokens = usage.completion_tokens or rawget(usage, "output_tokens"),
     -- total_tokens is the sum of both
   }
   return res
