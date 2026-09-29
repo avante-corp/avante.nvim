@@ -187,6 +187,7 @@ local Log = require("avante.utils.log")
 
 ---@class avante.acp.BaseSessionUpdate
 ---@field sessionUpdate "user_message_chunk" | "agent_message_chunk" | "agent_thought_chunk" | "tool_call" | "tool_call_update" | "plan" | "available_commands_update" | "config_option_update" | "current_mode_update"
+---@field _replayed? boolean Set by ACPClient when the update was replayed during a session/load request
 
 ---@class avante.acp.UserMessageChunk : avante.acp.BaseSessionUpdate
 ---@field sessionUpdate "user_message_chunk"
