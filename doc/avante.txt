@@ -3431,12 +3431,22 @@ avante.Providers                                              *avante.Providers*
         {openai}                  (AvanteProviderFunctor)
         {vertex_claude}           (AvanteProviderFunctor)
         {watsonx_code_assistant}  (AvanteProviderFunctor)
+        {format_provider_name}    (fun(provider_name:avante.ProviderName):string)
 
 
 EnvironmentHandler                                          *EnvironmentHandler*
 
 
 M.setup()                                               *avante-providers.setup*
+
+
+M.format_provider_name({provider_name})  *avante-providers.format_provider_name*
+
+    Parameters: ~
+        {provider_name}  (avante.ProviderName)
+
+    Returns: ~
+        (string)
 
 
 M.refresh({provider_name})                            *avante-providers.refresh*
