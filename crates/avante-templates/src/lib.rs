@@ -1,4 +1,4 @@
-use minijinja::{Environment, context};
+use minijinja::{Environment, Error, ErrorKind, context, path_loader};
 use mlua::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -99,38 +99,56 @@ fn render(state: &State, template: &str, context: TemplateContext) -> LuaResult<
     }
 }
 
+fn contained_loader(
+    directory: &str,
+) -> LuaResult<impl Fn(&str) -> Result<Option<String>, Error> + Send + Sync + 'static> {
+    let root = std::fs::canonicalize(directory)?;
+    let loader = path_loader(root.clone());
+
+    Ok(move |name: &str| {
+        if Path::new(name).is_absolute() {
+            return Err(Error::new(
+                ErrorKind::InvalidOperation,
+                "absolute template paths are not allowed",
+            ));
+        }
+
+        // MiniJinja filters template names but follows symlinks. Check the
+        // resolved target before letting its loader read any template contents.
+        let target = match root.join(name).canonicalize() {
+            Ok(target) => target,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => {
+                return Err(Error::new(
+                    ErrorKind::InvalidOperation,
+                    "could not resolve template path",
+                )
+                .with_source(err));
+            }
+        };
+        if !target.starts_with(&root) {
+            return Err(Error::new(
+                ErrorKind::InvalidOperation,
+                "template path escapes its template directory",
+            ));
+        }
+
+        loader(name)
+    })
+}
+
 fn initialize(state: &State, cache_directory: String, project_directory: String) -> LuaResult<()> {
     let mut environment_mutex = state.lock_environment()?;
+    // Failed initialization must not retain a previous project's loader.
+    *environment_mutex = None;
+    let cache_loader = contained_loader(&cache_directory)?;
+    let project_loader = contained_loader(&project_directory)?;
     let mut env = Environment::new();
 
-    // Create a custom loader that searches both cache and project directories
-    let cache_dir = cache_directory.clone();
-    let project_dir = project_directory.clone();
-
-    env.set_loader(
-        move |name: &str| -> Result<Option<String>, minijinja::Error> {
-            // First try the cache directory (for built-in templates)
-            let cache_path = Path::new(&cache_dir).join(name);
-            if cache_path.exists() {
-                match std::fs::read_to_string(&cache_path) {
-                    Ok(content) => return Ok(Some(content)),
-                    Err(_) => {} // Continue to try project directory
-                }
-            }
-
-            // Then try the project directory (for custom includes)
-            let project_path = Path::new(&project_dir).join(name);
-            if project_path.exists() {
-                match std::fs::read_to_string(&project_path) {
-                    Ok(content) => return Ok(Some(content)),
-                    Err(_) => {} // File not found or read error
-                }
-            }
-
-            // Template not found in either directory
-            Ok(None)
-        },
-    );
+    env.set_loader(move |name: &str| match cache_loader(name)? {
+        Some(content) => Ok(Some(content)),
+        None => project_loader(name),
+    });
 
     *environment_mutex = Some(env);
     Ok(())
