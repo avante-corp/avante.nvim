@@ -249,17 +249,24 @@ end
 
 ---@param provider_name avante.ProviderName
 function M.refresh(provider_name)
+  local sidebar = require("avante").get()
+  if sidebar and sidebar.is_generating then
+    Utils.warn("Cannot switch providers during generation", { title = "Avante" })
+    return
+  end
+
   require("avante.config").override({ provider = provider_name })
 
-  if Config.acp_providers[provider_name] then
-    Config.provider = provider_name
-  else
+  if not Config.acp_providers[provider_name] then
     ---@type AvanteProviderFunctor | AvanteBedrockProviderFunctor
     local p = M[Config.provider]
     E.setup({ provider = p, refresh = true })
   end
-  local sidebar = require("avante").get()
-  if sidebar and sidebar:is_open() then sidebar:render_result() end
+  if sidebar and sidebar:is_open() then
+    sidebar:render_result()
+    -- Initialize ACP config options for the model/mode header without sending a prompt.
+    if Config.acp_providers[provider_name] then sidebar:handle_submit("") end
+  end
   Utils.info("Switch to provider: " .. provider_name, { once = true, title = "Avante" })
 end
 

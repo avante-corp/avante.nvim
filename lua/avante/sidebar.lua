@@ -2823,7 +2823,7 @@ function Sidebar:handle_submit(request)
   if Config.prompt_logger.enabled then PromptLogger.log_prompt(request) end
 
   if self.is_generating then
-    self:add_history_messages({ History.Message:new("user", request) })
+    if request ~= "" then self:add_history_messages({ History.Message:new("user", request) }) end
     return
   end
 
@@ -3017,6 +3017,7 @@ function Sidebar:handle_submit(request)
       on_state_change = on_state_change,
       acp_client = self.acp_client,
       on_save_acp_client = function(client) self.acp_client = client end,
+      on_acp_config_change = vim.schedule_wrap(function() self:render_result() end),
       acp_session_id = self.chat_history.acp_session_id,
       on_save_acp_session_id = function(session_id)
         self.chat_history.acp_session_id = session_id
@@ -3061,7 +3062,10 @@ function Sidebar:handle_submit(request)
 
     stream_options.on_memory_summarize = on_memory_summarize
 
-    if request ~= "" then on_state_change("generating") end
+    if request ~= "" then
+      self.is_generating = true
+      on_state_change("generating")
+    end
     Llm.stream(stream_options)
   end)
 end

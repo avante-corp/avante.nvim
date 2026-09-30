@@ -17,6 +17,10 @@ function M.open(category, prompt_label)
     Utils.warn("Please open the Avante sidebar first")
     return
   end
+  if sidebar.is_generating then
+    Utils.warn("Cannot switch ACP configuration during generation")
+    return
+  end
 
   local function show_selector()
     local client = sidebar.acp_client
@@ -46,6 +50,10 @@ function M.open(category, prompt_label)
 
     vim.ui.select(display, { prompt = prompt_label }, function(_, idx)
       if not idx then return end
+      if sidebar.is_generating then
+        Utils.warn("Cannot switch ACP configuration during generation")
+        return
+      end
 
       local choice = items[idx]
       local session_id = sidebar.chat_history and sidebar.chat_history.acp_session_id

@@ -1012,6 +1012,11 @@ function M._stream_acp(opts)
           -- navigate the editor to files edited in the loaded session.
           if update._replayed then return end
 
+          if update.sessionUpdate == "config_option_update" or update.sessionUpdate == "current_mode_update" then
+            if opts.on_acp_config_change then opts.on_acp_config_change() end
+            return
+          end
+
           if update.sessionUpdate == "plan" then
             local todos = {}
             for idx, entry in ipairs(update.entries) do
@@ -1393,6 +1398,7 @@ function M._create_acp_session_and_continue(opts, acp_client)
     end
     opts.acp_session_id = session_id_
     if opts.on_save_acp_session_id then opts.on_save_acp_session_id(session_id_) end
+    if opts.on_acp_config_change then opts.on_acp_config_change() end
 
     if opts.just_connect_acp_client then return end
     M._continue_stream_acp(opts, acp_client, session_id_)
@@ -1410,6 +1416,8 @@ function M._load_acp_session_and_continue(opts, acp_client, session_id)
       M._create_acp_session_and_continue(opts, acp_client)
       return
     end
+
+    if opts.on_acp_config_change then opts.on_acp_config_change() end
 
     if opts.just_connect_acp_client then
       vim.schedule(function()

@@ -132,6 +132,12 @@ function M.open(all, timeout)
     local choice = vim.iter(models):find(function(item) return item.name == item_ids[1] end)
     if not choice then return end
 
+    local sidebar = require("avante").get(false)
+    if sidebar and sidebar.is_generating then
+      Utils.warn("Cannot switch models during generation")
+      return
+    end
+
     -- Switch provider if needed
     if choice.provider_name ~= Config.provider then require("avante.providers").refresh(choice.provider_name) end
 
@@ -150,7 +156,6 @@ function M.open(all, timeout)
     if provider_cfg then provider_cfg.model = choice.model end
 
     if Config.windows.sidebar_header.include_model then
-      local sidebar = require("avante").get()
       if sidebar and sidebar:is_open() then sidebar:render_result() end
     else
       Utils.info("Switched to model: " .. choice.name)
