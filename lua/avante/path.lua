@@ -28,6 +28,9 @@ local function filepath_to_filename(filepath) return tostring(filepath):sub(tost
 -- History path
 local History = {}
 
+---Returns folder appropriate for 'bufnr', akin to
+--- history.storage_path / projects / <bufnr_ROOT_PATH>
+---Creates the folder if needed, along with its metada.json that saves the last loaded history
 function History.get_history_dir(bufnr)
   local dirname = generate_project_dirname_in_storage(bufnr)
   local history_dir = Path:new(Config.history.storage_path):joinpath(dirname):joinpath("history")
@@ -45,6 +48,7 @@ function History.get_history_dir(bufnr)
   return history_dir
 end
 
+---List past histories for that project
 ---@return avante.ChatHistory[]
 function History.list(bufnr)
   local history_dir = History.get_history_dir(bufnr)
@@ -465,6 +469,7 @@ function P._init_templates_lib()
   return _templates_lib
 end
 
+---Creates path if needed
 function P.setup()
   local history_path = Config.history.storage_path
   if vim.uv.fs_stat(history_path) == nil then vim.fn.mkdir(history_path, "p") end
@@ -481,8 +486,10 @@ function P.setup()
   vim.defer_fn(P._init_templates_lib, 1000)
 end
 
+---Check if templates rust library is ok
 function P.available() return P._init_templates_lib() ~= nil end
 
+---Removes all folder
 function P.clear()
   vim.fs.rm(P.cache_path, { recursive = true })
   vim.fs.rm(P.history_path, { recursive = true })
