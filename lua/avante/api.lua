@@ -272,6 +272,10 @@ function M.select_acp_model() require("avante.acp_config_selector").open_model()
 
 function M.select_acp_mode() require("avante.acp_config_selector").open_mode() end
 
+---List the current ACP agent's sessions for this project, including ones started outside avante
+---(e.g. in the agent's CLI), and resume the selected one in the sidebar
+function M.select_acp_session() require("avante.acp_session_selector").open() end
+
 function M.select_history()
   local buf = vim.api.nvim_get_current_buf()
   require("avante.history_selector").open(buf, function(filename)

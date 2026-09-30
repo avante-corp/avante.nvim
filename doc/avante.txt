@@ -673,6 +673,11 @@ M.select_acp_model()                               *avante-api.select_acp_model*
 M.select_acp_mode()                                 *avante-api.select_acp_mode*
 
 
+M.select_acp_session()                           *avante-api.select_acp_session*
+    List the current ACP agent's sessions for this project, including ones started outside avante
+    (e.g. in the agent's CLI), and resume the selected one in the sidebar
+
+
 M.select_history()                                   *avante-api.select_history*
 
 
@@ -708,7 +713,14 @@ Commands (:AvanteAsk,...)                                      *avante-commands*
 >
          :Avante rag query How does authentication work?
 <
-         Use :Avante --help or :Avante rag --help for generated help.
+ :Avante acp sessions
+         List the current ACP agent's sessions for this project, including
+         ones started outside avante (e.g. in the agent's CLI), and resume
+         the selected one in the sidebar. Requires an ACP provider that
+         supports `session/list` and `session/load`.
+
+         Use :Avante --help, :Avante rag --help or :Avante acp --help for
+         generated help.
 
                                                      *:AvanteAsk*
  :AvanteAsk [question] [position=left|right|top|bottom] [ask=true|false]
@@ -886,11 +898,22 @@ avante.Sidebar                                                  *avante.Sidebar*
         {old_result_lines}           (avante.ui.Line[])
         {token_count}                (integer|nil)
         {acp_client}                 (avante.acp.ACPClient|nil)
+        {acp_client_generation}      (integer)                                                                                              Bumped whenever the ACP client is dropped, so a connection still in flight is discarded
+        {pending_acp_import}         (avante.PendingAcpImport|nil)
         {post_render?}               (fun(sidebar:avante.Sidebar))
         {permission_handler}         (fun(id:string)|nil)
         {permission_button_options}  ({id:string,icon:string|nil,name:string}[]|nil)
         {expanded_message_uuids}     (table<string,boolean>)
         {tool_message_positions}     (table)
+
+
+avante.PendingAcpImport                                *avante.PendingAcpImport*
+
+    Fields: ~
+        {session_id}          (string)
+        {filename}            (string)   The chat the session is imported into
+        {created}             (boolean)  Whether the chat was created for this import
+        {previous_filename?}  (string)   Chat to return to if a newly created chat's session can't be loaded
 
 
 avante.CodeState                                              *avante.CodeState*
@@ -1246,6 +1269,40 @@ Sidebar:compact_history_messages()     *avante-sidebar:compact_history_messages*
 
 
 Sidebar:new_chat()                                     *avante-sidebar:new_chat*
+
+
+Sidebar:stop_acp_client()                       *avante-sidebar:stop_acp_client*
+    Stop the ACP client so the next request starts a fresh agent process.
+    A connection still in flight is discarded when it completes.
+
+
+                                *avante-sidebar:switch_to_history_and_reconnect*
+Sidebar:switch_to_history_and_reconnect()
+    Show the latest chat history and reconnect the ACP agent for it
+
+
+                                              *avante-sidebar:finish_acp_import*
+Sidebar:finish_acp_import({import}, {session_id}, {messages})
+
+    Parameters: ~
+        {import}      (avante.PendingAcpImport)
+        {session_id}  (string)
+        {messages}    (avante.HistoryMessage[])
+
+
+Sidebar:fail_acp_import({import}, {err})        *avante-sidebar:fail_acp_import*
+
+    Parameters: ~
+        {import}  (avante.PendingAcpImport)
+        {err}     (avante.acp.ACPError)
+
+
+                                        *avante-sidebar:discard_acp_import_chat*
+Sidebar:discard_acp_import_chat({import})
+    Delete the chat an import created, as long as nothing was added to it
+
+    Parameters: ~
+        {import}  (avante.PendingAcpImport)
 
 
 Sidebar:save_history()                             *avante-sidebar:save_history*
@@ -2772,8 +2829,40 @@ avante.acp.FileSystemCapability                *avante.acp.FileSystemCapability*
 avante.acp.AgentCapabilities                      *avante.acp.AgentCapabilities*
 
     Fields: ~
-        {loadSession}         (boolean)
-        {promptCapabilities}  (avante.acp.PromptCapabilities)
+        {loadSession}           (boolean)
+        {promptCapabilities}    (avante.acp.PromptCapabilities)
+        {sessionCapabilities?}  (avante.acp.SessionCapabilities)
+
+
+avante.acp.SessionListCapability              *avante.acp.SessionListCapability*
+
+
+avante.acp.SessionCapabilities                  *avante.acp.SessionCapabilities*
+
+    Fields: ~
+        {list?}  (avante.acp.SessionListCapability)
+
+
+avante.acp.SessionInfo                                  *avante.acp.SessionInfo*
+
+    Fields: ~
+        {sessionId}   (string)
+        {cwd}         (string)
+        {title?}      (string)
+        {updatedAt?}  (string)  ISO 8601 timestamp
+
+
+avante.acp.ListSessionsResult                    *avante.acp.ListSessionsResult*
+
+    Fields: ~
+        {sessions}     (avante.acp.SessionInfo[])
+        {nextCursor?}  (string)
+
+
+avante.acp.LoadSessionOpts                          *avante.acp.LoadSessionOpts*
+
+    Fields: ~
+        {on_replay?}  (fun(update:table):boolean)  Receives updates replayed while the load is in flight; return true to consume one instead of passing it to the session update handler
 
 
 avante.acp.PromptCapabilities                    *avante.acp.PromptCapabilities*
@@ -3079,14 +3168,15 @@ avante.acp.ACPError                                        *avante.acp.ACPError*
 avante.acp.ACPClient                                      *avante.acp.ACPClient*
 
     Fields: ~
-        {protocol_version}    (number)
-        {capabilities}        (avante.acp.ClientCapabilities)
-        {agent_capabilities}  (avante.acp.AgentCapabilities|nil)
-        {config_options}      (avante.acp.ConfigOption[]|nil)
-        {_legacy_api}         (boolean|nil)                                                      Whether agent uses old modes/models API instead of configOptions
-        {config}              (ACPConfig)
-        {callbacks}           (table<number,fun(result:table|nil,err:avante.acp.ACPError|nil)>)
-        {debug_log_file}      (file)
+        {protocol_version}         (number)
+        {capabilities}             (avante.acp.ClientCapabilities)
+        {agent_capabilities}       (avante.acp.AgentCapabilities|nil)
+        {config_options}           (avante.acp.ConfigOption[]|nil)
+        {_legacy_api}              (boolean|nil)                                                      Whether agent uses old modes/models API instead of configOptions
+        {config}                   (ACPConfig)
+        {callbacks}                (table<number,fun(result:table|nil,err:avante.acp.ACPError|nil)>)
+        {session_replay_handlers}  (table<string,fun(update:table):boolean>)                          Replay handlers keyed by session id, set while a session/load is in flight
+        {debug_log_file}           (file)
 
 
 ACPHandlers                                                        *ACPHandlers*
@@ -3276,10 +3366,35 @@ ACPClient:create_session({callback})                 *avante-acp:create_session*
         {callback}  (fun(session_id:string|nil,err:avante.acp.ACPError|nil))
 
 
-ACPClient:load_session({callback})                     *avante-acp:load_session*
+ACPClient:load_session({callback}, {opts?})            *avante-acp:load_session*
 
     Parameters: ~
         {callback}  (fun(result:table|nil,err:avante.acp.ACPError|nil))
+        {opts?}     (avante.acp.LoadSessionOpts)
+
+
+ACPClient:supports_list_sessions()           *avante-acp:supports_list_sessions*
+    Whether the agent supports session/list
+
+    Returns: ~
+        (boolean)
+
+
+ACPClient:list_sessions({cwd}, {cursor}, {callback})  *avante-acp:list_sessions*
+    List one page of the agent's sessions for a working directory
+
+    Parameters: ~
+        {cwd}       (string)
+        {cursor}    (string|nil)
+        {callback}  (fun(result:avante.acp.ListSessionsResult|nil,err:avante.acp.ACPError|nil))
+
+
+ACPClient:list_all_sessions({cwd}, {callback})    *avante-acp:list_all_sessions*
+    List all of the agent's sessions for a working directory, following pagination
+
+    Parameters: ~
+        {cwd}       (string)
+        {callback}  (fun(sessions:avante.acp.SessionInfo[],err:avante.acp.ACPError|nil))
 
 
                                                   *avante-acp:set_config_option*

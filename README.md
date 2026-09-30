@@ -1047,6 +1047,7 @@ The following key bindings are available for use with `avante.nvim`:
 | `:AvanteChat`                      | Start a chat session with AI about your codebase. Default is `ask`=false                                    |                                                     |
 | `:AvanteChatNew`                   | Start a new chat session. The current chat can be re-opened with the chat session selector                  |                                                     |
 | `:AvanteHistory`                   | Opens a picker for your previous chat sessions                                                              |                                                     |
+| `:Avante acp sessions`             | Lists the current ACP agent's sessions (including ones started in its CLI) and resumes the selected one     |                                                     |
 | `:AvanteClear`                     | Clear the chat history for your current chat session                                                        |                                                     |
 | `:AvanteEdit`                      | Edit the selected code blocks                                                                               |                                                     |
 | `:AvanteFocus`                     | Switch focus to/from the sidebar                                                                            |                                                     |

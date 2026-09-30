@@ -134,6 +134,8 @@ local SIDEBAR_CONTAINERS = {
 ---@field old_result_lines avante.ui.Line[]
 ---@field token_count integer | nil
 ---@field acp_client avante.acp.ACPClient | nil
+---@field acp_client_generation integer Bumped whenever the ACP client is dropped, so a connection still in flight is discarded
+---@field pending_acp_import avante.PendingAcpImport | nil
 ---@field post_render? fun(sidebar: avante.Sidebar)
 ---@field permission_handler fun(id: string) | nil
 ---@field permission_button_options ({ id: string, icon: string|nil, name: string }[]) | nil
@@ -145,6 +147,12 @@ local SIDEBAR_CONTAINERS = {
 ---@field is_in_full_view boolean
 local Sidebar = {}
 Sidebar.__index = Sidebar
+
+---@class avante.PendingAcpImport
+---@field session_id string
+---@field filename string The chat the session is imported into
+---@field created boolean Whether the chat was created for this import
+---@field previous_filename? string Chat to return to if a newly created chat's session can't be loaded
 
 ---@param acp_client avante.acp.ACPClient | nil
 ---@param provider avante.ProviderName
@@ -179,6 +187,8 @@ function Sidebar:new(id)
     containers = {},
     file_selector = FileSelector:new(id),
     is_generating = false,
+    acp_client_generation = 0,
+    pending_acp_import = nil,
     chat_history = nil,
     current_state = nil,
     state_timer = nil,
@@ -2407,6 +2417,90 @@ function Sidebar:new_chat(args, cb)
   vim.schedule(function() self:create_todos_container() end)
 end
 
+---Stop the ACP client so the next request starts a fresh agent process.
+---A connection still in flight is discarded when it completes.
+function Sidebar:stop_acp_client()
+  self.acp_client_generation = self.acp_client_generation + 1
+  local client = self.acp_client
+  self.acp_client = nil
+  if client then pcall(client.stop, client) end
+end
+
+---Show the latest chat history and reconnect the ACP agent for it
+function Sidebar:switch_to_history_and_reconnect()
+  self.current_state = nil
+  self.expanded_message_uuids = {}
+  self.tool_message_positions = {}
+  self.current_tool_use_extmark_id = nil
+  self:update_content_with_history()
+  self:create_todos_container()
+  self:initialize_token_count()
+  if Config.acp_providers[Config.provider] then self:handle_submit("") end
+end
+
+---@param import avante.PendingAcpImport
+---@param session_id string
+---@param messages avante.HistoryMessage[]
+function Sidebar:finish_acp_import(import, session_id, messages)
+  if self.pending_acp_import ~= import then return end
+  self.pending_acp_import = nil
+
+  local chat_history = self.chat_history
+  if not chat_history or chat_history.filename ~= import.filename or chat_history.acp_session_id ~= session_id then
+    -- Another chat was opened while the session loaded: the client now holds the wrong session
+    self:stop_acp_client()
+    self:discard_acp_import_chat(import)
+    return
+  end
+
+  if #messages == 0 then
+    if not import.created then
+      Utils.warn("The agent returned no conversation for this session; kept the chat as it was")
+    end
+    return
+  end
+
+  -- The agent's copy of the session is the source of truth, so re-importing picks up
+  -- anything added outside avante
+  chat_history.messages = messages
+  chat_history.entries = {}
+  chat_history.todos = {}
+  chat_history.memory = nil
+  chat_history.tokens_usage = nil
+  Path.history.save(self.code.bufnr, chat_history)
+
+  if not self:is_open() then return end
+  self:update_content_with_history()
+  self:create_todos_container()
+  self:initialize_token_count()
+end
+
+---@param import avante.PendingAcpImport
+---@param err avante.acp.ACPError
+function Sidebar:fail_acp_import(import, err)
+  if self.pending_acp_import ~= import then return end
+  self.pending_acp_import = nil
+  Utils.error("Couldn't resume the ACP session: " .. ((err and err.message) or "unknown error"))
+  self:stop_acp_client()
+  if not import.created then return end
+
+  local showing_import = self.chat_history ~= nil and self.chat_history.filename == import.filename
+  self:discard_acp_import_chat(import)
+  if not showing_import then return end
+  if import.previous_filename then Path.history.save_latest_filename(self.code.bufnr, import.previous_filename) end
+  if self:is_open() then self:switch_to_history_and_reconnect() end
+end
+
+---Delete the chat an import created, as long as nothing was added to it
+---@param import avante.PendingAcpImport
+function Sidebar:discard_acp_import_chat(import)
+  if not import.created then return end
+  local ok, history = pcall(Path.history.load, self.code.bufnr, import.filename)
+  if ok and history and #History.get_history_messages(history) == 0 then
+    Path.history.delete(self.code.bufnr, import.filename)
+  end
+end
+
 local debounced_save_history = Utils.debounce(
   function(self) Path.history.save(self.code.bufnr, self.chat_history) end,
   1000
@@ -3006,6 +3100,14 @@ function Sidebar:handle_submit(request)
   end
 
   self:get_generate_prompts_options(request, function(generate_prompts_options)
+    -- Captured so callbacks that arrive after a chat switch still update the chat they belong to
+    local chat_history = self.chat_history --[[@as avante.ChatHistory]]
+    local acp_client_generation = self.acp_client_generation
+    local acp_import = self.pending_acp_import
+    if not (request == "" and acp_import and acp_import.session_id == chat_history.acp_session_id) then
+      acp_import = nil
+    end
+
     ---@type AvanteLLMStreamOptions
     ---@diagnostic disable-next-line: assign-type-mismatch
     local stream_options = vim.tbl_deep_extend("force", generate_prompts_options, {
@@ -3016,12 +3118,23 @@ function Sidebar:handle_submit(request)
       on_messages_add = on_messages_add,
       on_state_change = on_state_change,
       acp_client = self.acp_client,
-      on_save_acp_client = function(client) self.acp_client = client end,
-      acp_session_id = self.chat_history.acp_session_id,
-      on_save_acp_session_id = function(session_id)
-        self.chat_history.acp_session_id = session_id
-        Path.history.save(self.code.bufnr, self.chat_history)
+      on_save_acp_client = function(client)
+        if self.acp_client_generation ~= acp_client_generation then
+          pcall(client.stop, client)
+          return false
+        end
+        self.acp_client = client
+        return true
       end,
+      acp_session_id = chat_history.acp_session_id,
+      acp_session_cwd = chat_history.acp_session_cwd,
+      on_save_acp_session_id = function(session_id)
+        chat_history.acp_session_id = session_id
+        Path.history.save(self.code.bufnr, chat_history)
+      end,
+      on_acp_session_replay = acp_import
+        and function(session_id, messages) self:finish_acp_import(acp_import, session_id, messages) end,
+      on_acp_session_load_error = acp_import and function(_, err) self:fail_acp_import(acp_import, err) end,
       set_tool_use_store = set_tool_use_store,
       get_history_messages = function(opts) return self:get_history_messages_for_api(opts) end,
       get_todos = function()

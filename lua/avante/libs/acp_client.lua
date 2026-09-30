@@ -49,6 +49,25 @@ local Log = require("avante.utils.log")
 ---@class avante.acp.AgentCapabilities
 ---@field loadSession boolean
 ---@field promptCapabilities avante.acp.PromptCapabilities
+---@field sessionCapabilities? avante.acp.SessionCapabilities
+
+---@class avante.acp.SessionListCapability
+
+---@class avante.acp.SessionCapabilities
+---@field list? avante.acp.SessionListCapability
+
+---@class avante.acp.SessionInfo
+---@field sessionId string
+---@field cwd string
+---@field title? string
+---@field updatedAt? string ISO 8601 timestamp
+
+---@class avante.acp.ListSessionsResult
+---@field sessions avante.acp.SessionInfo[]
+---@field nextCursor? string
+
+---@class avante.acp.LoadSessionOpts
+---@field on_replay? fun(update: table): boolean Receives updates replayed while the load is in flight; return true to consume one instead of passing it to the session update handler
 
 ---@class avante.acp.PromptCapabilities
 ---@field image boolean
@@ -249,6 +268,7 @@ local Log = require("avante.utils.log")
 ---@field _legacy_api boolean|nil Whether agent uses old modes/models API instead of configOptions
 ---@field config ACPConfig
 ---@field callbacks table<number, fun(result: table|nil, err: avante.acp.ACPError|nil)>
+---@field session_replay_handlers table<string, fun(update: table): boolean> Replay handlers keyed by session id, set while a session/load is in flight
 ---@field debug_log_file file*|nil
 ---@field is_loading_session boolean Whether a session/load request is in flight
 local ACPClient = {}
@@ -287,6 +307,7 @@ local LOG_SEPARATOR = string.rep("=", 80) .. "\n"
 ---@field max_reconnect_attempts? number Maximum reconnection attempts
 ---@field heartbeat_interval? number Heartbeat interval in milliseconds
 ---@field auth_method? string Authentication method
+---@field mcp_servers? table[] MCP servers from the provider config, passed to new and loaded sessions
 ---@field handlers? ACPHandlers
 ---@field on_state_change? fun(new_state: ACPConnectionState, old_state: ACPConnectionState)
 
@@ -305,6 +326,7 @@ function ACPClient:new(config)
     },
     debug_log_file = nil,
     callbacks = {},
+    session_replay_handlers = {},
     transport = nil,
     config = config or {},
     config_options = nil,
@@ -694,6 +716,11 @@ function ACPClient:_handle_session_update(params)
   -- after all replay notifications have been read.
   if self.is_loading_session then update._replayed = true end
 
+  -- An import collects the replay instead. Called synchronously: the session/load response
+  -- callback runs inline once the replay is done, so a scheduled call would come too late.
+  local replay_handler = self.session_replay_handlers[session_id]
+  if replay_handler and replay_handler(update) then return end
+
   if self.config.handlers and self.config.handlers.on_session_update then
     vim.schedule(function() self.config.handlers.on_session_update(update) end)
   end
@@ -894,7 +921,8 @@ end
 ---@param cwd string
 ---@param mcp_servers table[]?
 ---@param callback fun(result: table|nil, err: avante.acp.ACPError|nil)
-function ACPClient:load_session(session_id, cwd, mcp_servers, callback)
+---@param opts? avante.acp.LoadSessionOpts
+function ACPClient:load_session(session_id, cwd, mcp_servers, callback, opts)
   callback = callback or function() end
 
   if not self.agent_capabilities or not self.agent_capabilities.loadSession then
@@ -905,15 +933,121 @@ function ACPClient:load_session(session_id, cwd, mcp_servers, callback)
   end
 
   self.is_loading_session = true
+  if opts and opts.on_replay then self.session_replay_handlers[session_id] = opts.on_replay end
+
   self:_send_request("session/load", {
     sessionId = session_id,
     cwd = cwd,
     mcpServers = mcp_servers or {},
   }, function(result, err)
     self.is_loading_session = false
+    self.session_replay_handlers[session_id] = nil
     if result then self:_convert_legacy_session_fields(result) end
     callback(result, err)
   end)
+end
+
+---@param value any
+---@return any
+local function without_json_null(value)
+  if value == vim.NIL then return nil end
+  return value
+end
+
+---@param value any
+---@return string|nil
+local function string_or_nil(value)
+  if type(value) == "string" then return value end
+  return nil
+end
+
+---Whether the agent supports session/list
+---@return boolean
+function ACPClient:supports_list_sessions()
+  local session_capabilities = self.agent_capabilities
+    and without_json_null(self.agent_capabilities.sessionCapabilities)
+  return type(session_capabilities) == "table" and without_json_null(session_capabilities.list) ~= nil
+end
+
+---List one page of the agent's sessions for a working directory
+---@param cwd string
+---@param cursor string|nil
+---@param callback fun(result: avante.acp.ListSessionsResult|nil, err: avante.acp.ACPError|nil)
+function ACPClient:list_sessions(cwd, cursor, callback)
+  if not self:supports_list_sessions() then
+    callback(nil, self:_create_error(self.ERROR_CODES.METHOD_NOT_FOUND, "Agent does not support listing sessions"))
+    return
+  end
+
+  local params = { cwd = cwd }
+  if cursor then params.cursor = cursor end
+
+  self:_send_request("session/list", params, function(result, err)
+    if err or not result then
+      callback(
+        nil,
+        err or self:_create_error(self.ERROR_CODES.INTERNAL_ERROR, "Failed to list sessions: missing result")
+      )
+      return
+    end
+
+    local sessions = {}
+    for _, session in ipairs(without_json_null(result.sessions) or {}) do
+      if type(session) == "table" and type(session.sessionId) == "string" then
+        table.insert(sessions, {
+          sessionId = session.sessionId,
+          cwd = string_or_nil(session.cwd) or cwd,
+          title = string_or_nil(session.title),
+          updatedAt = string_or_nil(session.updatedAt),
+        })
+      end
+    end
+
+    local next_cursor = without_json_null(result.nextCursor)
+    if type(next_cursor) ~= "string" or next_cursor == "" then next_cursor = nil end
+    callback({ sessions = sessions, nextCursor = next_cursor }, nil)
+  end)
+end
+
+local MAX_SESSION_LIST_PAGES = 50
+
+---List all of the agent's sessions for a working directory, following pagination
+---@param cwd string
+---@param callback fun(sessions: avante.acp.SessionInfo[], err: avante.acp.ACPError|nil)
+function ACPClient:list_all_sessions(cwd, callback)
+  local all_sessions = {}
+  local seen_cursors = {}
+  local pages = 0
+
+  local function fetch(cursor)
+    pages = pages + 1
+    self:list_sessions(cwd, cursor, function(result, err)
+      if err or not result then
+        callback(all_sessions, err)
+        return
+      end
+      vim.list_extend(all_sessions, result.sessions)
+
+      local next_cursor = result.nextCursor
+      if not next_cursor then
+        callback(all_sessions, nil)
+        return
+      end
+      if seen_cursors[next_cursor] or pages >= MAX_SESSION_LIST_PAGES then
+        local reason = seen_cursors[next_cursor] and "the agent repeated a page"
+          or ("stopped after " .. MAX_SESSION_LIST_PAGES .. " pages")
+        callback(
+          all_sessions,
+          self:_create_error(self.ERROR_CODES.INTERNAL_ERROR, "Session list incomplete: " .. reason)
+        )
+        return
+      end
+      seen_cursors[next_cursor] = true
+      fetch(next_cursor)
+    end)
+  end
+
+  fetch(nil)
 end
 
 ---Set a session config option (model, mode, etc.)

@@ -441,10 +441,13 @@ vim.g.avante_login = vim.g.avante_login
 ---
 ---@class AvanteLLMStreamOptions: AvanteGeneratePromptsOptions
 ---@field acp_client? avante.acp.ACPClient
----@field on_save_acp_client? fun(client: avante.acp.ACPClient): nil
+---@field on_save_acp_client? fun(client: avante.acp.ACPClient): boolean|nil Return false to discard the client and stop the request
 ---@field just_connect_acp_client? boolean
 ---@field acp_session_id? string
+---@field acp_session_cwd? string Directory the ACP session belongs to; defaults to the project root
 ---@field on_save_acp_session_id? fun(session_id: string): nil
+---@field on_acp_session_replay? fun(session_id: string, messages: avante.HistoryMessage[]): nil Set to receive the conversation an agent replays on session/load; a failed load then calls on_acp_session_load_error instead of starting a new session
+---@field on_acp_session_load_error? fun(session_id: string, err: avante.acp.ACPError): nil
 ---@field on_start AvanteLLMStartCallback
 ---@field on_chunk? AvanteLLMChunkCallback
 ---@field on_stop AvanteLLMStopCallback
@@ -535,6 +538,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field system_prompt string | nil
 ---@field tokens_usage avante.LLMTokenUsage | nil
 ---@field acp_session_id string | nil
+---@field acp_session_cwd string | nil Directory of an imported ACP session, used to load it
 ---
 ---@class avante.ChatMemory
 ---@field content string

@@ -14,6 +14,7 @@ local LLMToolHelpers = require("avante.llm_tools.helpers")
 local LLMTools = require("avante.llm_tools")
 local History = require("avante.history")
 local HistoryRender = require("avante.history.render")
+local AcpReplay = require("avante.history.acp_replay")
 local ACPConfirmAdapter = require("avante.ui.acp_confirm_adapter")
 local log = require("avante.utils.log")
 
@@ -1344,7 +1345,15 @@ function M._stream_acp(opts)
     acp_client = ACPClient:new(acp_config)
 
     acp_client:connect(function(conn_err)
+      -- When importing a session, report failures to the import instead of falling back
+      local import_session_id = opts.on_acp_session_load_error and opts.acp_session_id
+
       if conn_err then
+        if import_session_id then
+          pcall(acp_client.stop, acp_client)
+          opts.on_acp_session_load_error(import_session_id, conn_err)
+          return
+        end
         opts.on_stop({ reason = "error", error = conn_err })
         return
       end
@@ -1356,8 +1365,19 @@ function M._stream_acp(opts)
 
       -- If we create a new client and it does not support sesion loading,
       -- remove the old session
-      if not acp_client.agent_capabilities.loadSession then opts.acp_session_id = nil end
-      if opts.on_save_acp_client then opts.on_save_acp_client(acp_client) end
+      if not acp_client.agent_capabilities.loadSession then
+        if import_session_id then
+          pcall(acp_client.stop, acp_client)
+          opts.on_acp_session_load_error(
+            import_session_id,
+            acp_client:_create_error(ACPClient.ERROR_CODES.METHOD_NOT_FOUND, "Agent does not support loading sessions")
+          )
+          return
+        end
+        opts.acp_session_id = nil
+      end
+      -- The caller rejects a client it no longer wants (e.g. it switched chats meanwhile)
+      if opts.on_save_acp_client and opts.on_save_acp_client(acp_client) == false then return end
 
       session_id = opts.acp_session_id
       if not session_id then
@@ -1403,12 +1423,42 @@ end
 ---@param acp_client avante.acp.ACPClient
 ---@param session_id string
 function M._load_acp_session_and_continue(opts, acp_client, session_id)
-  local project_root = Utils.root.get()
-  acp_client:load_session(session_id, project_root, {}, function(_, err)
+  local project_root = opts.acp_session_cwd or Utils.root.get()
+  local acp_provider = Config.acp_providers[Config.provider] or {}
+  local mcp_servers = acp_provider.mcp_servers or {}
+
+  local on_replay = opts.on_acp_session_replay
+  ---@type table[]
+  local replayed_updates = {}
+  -- When importing a session, collect the conversation the agent replays. (On a normal reload
+  -- the replay is marked `_replayed` and ignored, since the chat history already holds it.)
+  ---@type avante.acp.LoadSessionOpts|nil
+  local load_opts = nil
+  if on_replay then
+    load_opts = {
+      on_replay = function(update)
+        if not AcpReplay.is_conversation_update(update) then return false end
+        table.insert(replayed_updates, update)
+        return true
+      end,
+    }
+  end
+
+  acp_client:load_session(session_id, project_root, mcp_servers, function(_, err)
     if err then
+      if on_replay then
+        -- The caller asked for this exact session, so don't silently swap in a new one
+        if opts.on_acp_session_load_error then opts.on_acp_session_load_error(session_id, err) end
+        return
+      end
       -- Failed to load session, create a new one. It happens after switching acp providers
       M._create_acp_session_and_continue(opts, acp_client)
       return
+    end
+
+    if on_replay then
+      local messages = AcpReplay.to_messages(replayed_updates)
+      vim.schedule(function() on_replay(session_id, messages) end)
     end
 
     if opts.just_connect_acp_client then
@@ -1418,7 +1468,7 @@ function M._load_acp_session_and_continue(opts, acp_client, session_id)
       return
     end
     M._continue_stream_acp(opts, acp_client, session_id)
-  end)
+  end, load_opts)
 end
 
 ---@param opts AvanteLLMStreamOptions
