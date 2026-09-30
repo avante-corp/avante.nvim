@@ -58,7 +58,7 @@ local function open_logfile()
 end
 
 local log_levels = vim.deepcopy(vim.log.levels)
-for levelstr, levelnr in pairs(log_levels) do
+for levelstr, levelnr in pairs(vim.log.levels) do
   log_levels[levelnr] = levelstr
 end
 
