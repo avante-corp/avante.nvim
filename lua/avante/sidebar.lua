@@ -2836,35 +2836,8 @@ function Sidebar:get_generate_prompts_options(request, cb)
 
   local LLMTools = require("avante.llm_tools")
   local tools = vim.deepcopy(LLMTools.get_tools(request, history_messages))
-  table.insert(tools, {
-    name = "add_file_to_context",
-    description = "Add a file to the context",
-    ---@type AvanteLLMToolFunc<{ rel_path: string }>
-    func = function(input)
-      self.file_selector:add_selected_file(input.rel_path)
-      return "Added file to context", nil
-    end,
-    param = {
-      type = "table",
-      fields = { { name = "rel_path", description = "Relative path to the file", type = "string" } },
-    },
-    returns = {},
-  })
-
-  table.insert(tools, {
-    name = "remove_file_from_context",
-    description = "Remove a file from the context",
-    ---@type AvanteLLMToolFunc<{ rel_path: string }>
-    func = function(input)
-      self.file_selector:remove_selected_file(input.rel_path)
-      return "Removed file from context", nil
-    end,
-    param = {
-      type = "table",
-      fields = { { name = "rel_path", description = "Relative path to the file", type = "string" } },
-    },
-    returns = {},
-  })
+  local Context = require("avante.llm_tools.context")
+  vim.list_extend(tools, { Context.add_file_to_context, Context.remove_file_from_context })
 
   local selected_filepaths = self.file_selector.selected_filepaths or {}
 
