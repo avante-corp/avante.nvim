@@ -58,8 +58,16 @@
 ---@brief ]]
 ---@mod avante-events User events
 ---@brief [[
----Avante triggers user events at various points in the codebase. The list might not be exhaustive:
---- - AvanteRequestLogin: when avante needs an API key for instance
+--- Avante emits the following |User| autocommand events:
+---
+--- - AvanteRequestLogin: The provider may prompt for a missing API key.
+--- - AvanteInputSubmitted: project-initialization prompt. `ev.data.request` contains the request string.
+--- - AvanteEditSubmitted: `ev.data.request` contains the request string.
+--- - AvanteLLMEscape: signals cancellation
+--- - AvanteViewBufferUpdated: fires after the sidebar result buffer is updated
+---   when a generation stops without an error, including cancellation.
+--- - AvanteConflictDetected: a parsed diff buffer contains conflict markers.
+--- - AvanteConflictResolved: a parsed diff buffer contains no conflict markers.
 ---@brief ]]
 ---@mod avante-init
 
