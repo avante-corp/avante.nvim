@@ -129,11 +129,11 @@ vim.g.avante_login = vim.g.avante_login
 ---@field is_user_declined? boolean
 
 ---@class AvantePromptOptions: table<[string], string>
----@field system_prompt string
+---@field system_prompt string highest priority initial prompt (see config.system_prompt)
 ---@field messages AvanteLLMMessage[]
 ---@field image_paths? string[]
----@field tools? AvanteLLMTool[]
----@field pending_compaction_history_messages? AvanteLLMMessage[]
+---@field tools? AvanteLLMTool[] Available tools
+---@field pending_compaction_history_messages? AvanteLLMMessage[] messages that might need to get compacted
 ---
 ---@class AvanteGeminiMessage
 ---@field role "user"

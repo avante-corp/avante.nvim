@@ -3,32 +3,25 @@
 ---
 --- Avante uses different prompts for planning, editing, suggesting, and
 --- agentic flows. You can set a global prompt:
---->
+--->lua
 ---   vim.g.avante = {
 ---     system_prompt = "MY CUSTOM SYSTEM PROMPT",
 ---   }
 ---<
 ---
---- Or override the prompt directory:
---->
----   vim.g.avante = {
----     override_prompt_dir = vim.fn.expand("~/.config/nvim/avante_prompts"),
----   }
----<
----
 ---By default Avante reads `avante.md` from the project root as
 ---project-specific instructions. Change the filename with:
----<
+--->lua
 ---   vim.g.avante = {
 ---     instructions_file = "avante.md",
 ---   }
---->
+---<
 ---
 ---Project prompt rules
 ---
 ---Avante can load `*.avanterules` files from a project. Configure rule
 --- directories:
---->
+--->lua
 ---   vim.g.avante = {
 ---     rules = {
 ---       project_dir = ".avante/rules",
@@ -43,6 +36,8 @@
 --- 2. `rules.global_dir`
 --- 3. Project root
 ---
+--- Rules are jinja templates that can include other files.
+---
 --- Example files:
 ---
 --- - `typescript.planning.avanterules`
@@ -50,6 +45,13 @@
 --- - `suggesting.avanterules`
 ---
 --- `*.avanterules` files are Jinja templates rendered with minijinja.
+---
+--- avante can override the prompt directory:
+--->lua
+---   vim.g.avante = {
+---     override_prompt_dir = vim.fn.expand("~/.config/nvim/avante_prompts"),
+---   }
+---<
 ---
 ---@brief ]]
 
@@ -199,7 +201,13 @@ Parameters:
   return system_prompt
 end
 
---- Get the content of the first file found in the list [ AGENTS.md, CLAUDE.md, ... ]
+--- Returns the content of the first file found in the list:
+--- - AGENTS.md
+--- - CLAUDE.md
+--- - OPENCODE.md
+--- - .cursorrules
+--- - .windsurfrules
+--- - .github/copilot-instructions.md
 ---@return string | nil
 function M.get_agents_rules_prompt()
   local Utils = require("avante.utils")

@@ -274,7 +274,7 @@ local Prompt = {}
 ---@return string
 function Prompt.get_custom_prompts_filepath(mode) return string.format("custom.%s.avanterules", mode) end
 
----Appends .avanterules to the path
+---Appends ".avanterules" to the path
 function Prompt.get_builtin_prompts_filepath(mode) return string.format("%s.avanterules", mode) end
 
 ---@class AvanteTemplates
@@ -283,6 +283,7 @@ function Prompt.get_builtin_prompts_filepath(mode) return string.format("%s.avan
 ---@field render fun(template: string, context: AvanteTemplateOptions): string
 local _templates_lib = nil
 
+---tell which rules to load
 Prompt.custom_modes = {
   agentic = true,
   legacy = true,
@@ -290,9 +291,15 @@ Prompt.custom_modes = {
   suggesting = true,
 }
 
+---Saved prompts for custom_modes
 Prompt.custom_prompts_contents = {}
 
----Load Config.rules.project_dir
+---Search and load avanterules in this order:
+--- - Config.rules.project_dir
+--- - Config.rules.global_dir
+--- - project_root directory
+---
+--- then looks at Config.override_prompt_dir, fixing files if necessary
 ---@param project_root string
 ---@return string templates_dir
 function Prompt.get_templates_dir(project_root)
@@ -308,6 +315,7 @@ function Prompt.get_templates_dir(project_root)
   local cache_dir_str = tostring(cache_prompt_dir):gsub("\\", "/")
   if vim.fn.isdirectory(cache_dir_str) == 0 then vim.fn.mkdir(cache_dir_str, "p") end
 
+  ---Loop over files searching for [MODE].avanterules
   local function find_rules(dir)
     if not dir then return end
     if vim.fn.isdirectory(dir) ~= 1 then return end
@@ -349,6 +357,8 @@ function Prompt.get_templates_dir(project_root)
   -- Check for override prompt
   local override_prompt_dir = Config.override_prompt_dir
   if override_prompt_dir then
+    Utils.debug("override_prompt_dir set")
+
     -- Handle the case where override_prompt_dir is a function
     if type(override_prompt_dir) == "function" then
       local ok, result = pcall(override_prompt_dir)
@@ -370,11 +380,13 @@ function Prompt.get_templates_dir(project_root)
               local content = file:read()
 
               if not content:match("{%% block extra_prompt %%}[%s,\\n]*{%% endblock %%}") then
+                Utils.warn("Appending missing extra_prompt block")
                 file:write("{% block extra_prompt %}\n", "a")
                 file:write("{% endblock %}\n", "a")
               end
 
               if not content:match("{%% block custom_prompt %%}[%s,\\n]*{%% endblock %%}") then
+                Utils.warn("Appending missing custom_prompt block")
                 file:write("{% block custom_prompt %}\n", "a")
                 file:write("{% endblock %}", "a")
               end
@@ -408,9 +420,13 @@ function Prompt.get_filepath(mode)
 end
 
 ---Wrapper around rust library 'render'
+---Render jinja template
 ---@param path string
 ---@param opts AvanteTemplateOptions
-function Prompt.render_file(path, opts) return _templates_lib.render(path, opts) end
+function Prompt.render_file(path, opts)
+  Utils.debug("Rendering prompt for " .. path)
+  return _templates_lib.render(path, opts)
+end
 
 ---@param mode AvanteLlmMode
 ---@param opts AvanteTemplateOptions
@@ -422,6 +438,7 @@ function Prompt.render_mode(mode, opts)
   return res
 end
 
+---@Initialize the rust library avante_templates
 function Prompt.initialize(cache_directory, project_directory)
   _templates_lib.initialize(cache_directory, project_directory)
 end
@@ -430,10 +447,10 @@ P.prompts = Prompt
 
 local RepoMap = {}
 
--- Get a chat history file name given a buffer
+-- Get the path where to expect the repo map
 ---@param project_root string
 ---@param ext string
----@return string
+---@return string name of the repo map (suffixed with .repo_map.json)
 function RepoMap.filename(project_root, ext)
   -- Replace path separators with double underscores
   local path_with_separators = fn.substitute(project_root, "/", "__", "g")

@@ -256,7 +256,12 @@ function M.agent_loop(opts)
   M._stream(stream_options)
 end
 
---- Loads prompt from various locations (see config.instructions_file, defaults to avante.md, )
+--- Loads prompt from various locations:
+--- - see config.instructions_file (defaults to avante.md)
+--- - depending on your mode either legacy.avanterules or agentic.avanterules
+--- - system info
+--- - selected files
+---@see avante-sidebar:get_generate_prompts_options
 ---@param opts AvanteGeneratePromptsOptions
 ---@return AvantePromptOptions
 function M.generate_prompts(opts)
@@ -346,6 +351,7 @@ function M.generate_prompts(opts)
   if opts.prompt_opts and opts.prompt_opts.system_prompt then
     system_prompt = opts.prompt_opts.system_prompt
   else
+    Utils.debug("Load system_prompt for mode " .. mode)
     system_prompt = Path.prompts.render_mode(mode, template_opts)
   end
 
@@ -354,10 +360,12 @@ function M.generate_prompts(opts)
     if type(Config.system_prompt) == "function" then
       Utils.debug("Loading system_prompt from function...")
       custom_system_prompt = Config.system_prompt()
+    elseif type(Config.system_prompt) == "string" then
+      custom_system_prompt = Config.system_prompt
     end
-    if type(Config.system_prompt) == "string" then custom_system_prompt = Config.system_prompt end
+
     if custom_system_prompt ~= nil and custom_system_prompt ~= "" and custom_system_prompt ~= "null" then
-      Utils.debug("Appending custom prompt to system prompt")
+      Utils.debug("Appending g:avante.system_prompt to system prompt")
       system_prompt = system_prompt .. "\n\n" .. custom_system_prompt
     end
   end
@@ -403,13 +411,11 @@ function M.generate_prompts(opts)
   end
 
   if context_window and context_window > 0 then
-    Utils.debug("Context window", context_window)
     if opts.get_tokens_usage then
       local tokens_usage = opts.get_tokens_usage()
       if tokens_usage and tokens_usage.prompt_tokens ~= nil and tokens_usage.completion_tokens ~= nil then
         local target_tokens = context_window * 0.9
         local tokens_count = tokens_usage.prompt_tokens + tokens_usage.completion_tokens
-        Utils.debug("Tokens count", tokens_count)
         if tokens_count > target_tokens then pending_compaction_history_messages = opts.history_messages end
       end
     end
