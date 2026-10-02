@@ -1,5 +1,5 @@
 {
-  description = "Development shell for avante.nvim";
+  description = "Packages and development shells for avante.nvim";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs?rev=62e3050a29278c985725a86704faa1e99236b51a";
@@ -93,6 +93,42 @@
       packages = forAllSystems (
         system:
         let
+          pkgs = import nixpkgs { inherit system; };
+          rustPackages = lib.genAttrs [
+            "avante-html2md"
+            "avante-repo-map"
+            "avante-templates"
+            "avante-tokenizers"
+          ] (pname: pkgs.rustPlatform.buildRustPackage {
+            inherit pname;
+            version = (fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
+            src = lib.fileset.toSource {
+              root = ./.;
+              fileset = lib.fileset.unions [
+                ./Cargo.toml
+                ./Cargo.lock
+                ./.cargo
+                ./crates
+              ];
+            };
+
+            cargoDepsName = "avante";
+            cargoHash = "sha256-Mtku+MLkDdBYN5xj2x4XbyFXFZ+qTfl1eX2g9VcfpFU=";
+            cargoBuildFlags = [ "--package" pname ];
+            nativeBuildInputs = [ pkgs.pkg-config pkgs.perl ];
+            buildInputs = [ pkgs.openssl ];
+            OPENSSL_NO_VENDOR = 1;
+
+            # The workspace tests fetch web pages and tokenizer models, which
+            # are unavailable in the Nix build sandbox.
+            doCheck = false;
+
+            meta = {
+              description = "${pname} rust library for avante.nvim";
+              license = lib.licenses.asl20;
+              platforms = systems;
+            };
+          });
           pythonSet = ragPythonSets.${system};
           ragService = (pythonSet.mkVirtualEnv "rag-service-env" ragWorkspace.deps.default).overrideAttrs (
               old: {
@@ -115,7 +151,7 @@
             }
           );
         in
-        {
+        rustPackages // {
           inherit ragService;
           default = ragService;
         }
