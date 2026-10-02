@@ -88,8 +88,16 @@ Now all you need to do is alias this command to avante; then every time you simp
 ==============================================================================
 User events                                                      *avante-events*
 
-Avante triggers user events at various points in the codebase. The list might not be exhaustive:
- - AvanteRequestLogin: when avante needs an API key for instance
+ Avante emits the following |User| autocommand events:
+
+ - AvanteRequestLogin: The provider may prompt for a missing API key.
+ - AvanteInputSubmitted: project-initialization prompt. `ev.data.request` contains the request string.
+ - AvanteEditSubmitted: `ev.data.request` contains the request string.
+ - AvanteLLMEscape: signals cancellation
+ - AvanteViewBufferUpdated: fires after the sidebar result buffer is updated
+   when a generation stops without an error, including cancellation.
+ - AvanteConflictDetected: a parsed diff buffer contains conflict markers.
+ - AvanteConflictResolved: a parsed diff buffer contains no conflict markers.
 
 ==============================================================================
                                                                    *avante-init*
@@ -2047,32 +2055,25 @@ Custom prompts                                                  *avante-prompts*
 
  Avante uses different prompts for planning, editing, suggesting, and
  agentic flows. You can set a global prompt:
->
+>lua
    vim.g.avante = {
      system_prompt = "MY CUSTOM SYSTEM PROMPT",
    }
 <
 
- Or override the prompt directory:
->
-   vim.g.avante = {
-     override_prompt_dir = vim.fn.expand("~/.config/nvim/avante_prompts"),
-   }
-<
-
 By default Avante reads `avante.md` from the project root as
 project-specific instructions. Change the filename with:
-<
+>lua
    vim.g.avante = {
      instructions_file = "avante.md",
    }
->
+<
 
 Project prompt rules
 
 Avante can load `*.avanterules` files from a project. Configure rule
  directories:
->
+>lua
    vim.g.avante = {
      rules = {
        project_dir = ".avante/rules",
@@ -2087,6 +2088,8 @@ Avante can load `*.avanterules` files from a project. Configure rule
  2. `rules.global_dir`
  3. Project root
 
+ Rules are jinja templates that can include other files.
+
  Example files:
 
  - `typescript.planning.avanterules`
@@ -2094,6 +2097,13 @@ Avante can load `*.avanterules` files from a project. Configure rule
  - `suggesting.avanterules`
 
  `*.avanterules` files are Jinja templates rendered with minijinja.
+
+ avante can override the prompt directory:
+>lua
+   vim.g.avante = {
+     override_prompt_dir = vim.fn.expand("~/.config/nvim/avante_prompts"),
+   }
+<
 
 
                                         *avante-prompts.get_ReAct_system_prompt*
@@ -2108,7 +2118,13 @@ M.get_ReAct_system_prompt({provider_conf}, {opts})
 
 
 M.get_agents_rules_prompt()             *avante-prompts.get_agents_rules_prompt*
-     Get the content of the first file found in the list [ AGENTS.md, CLAUDE.md, ... ]
+     Returns the content of the first file found in the list:
+     - AGENTS.md
+     - CLAUDE.md
+     - OPENCODE.md
+     - .cursorrules
+     - .windsurfrules
+     - .github/copilot-instructions.md
 
     Returns: ~
         (string|nil)
