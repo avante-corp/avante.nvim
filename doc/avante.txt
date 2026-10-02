@@ -2029,6 +2029,7 @@ Web search tools                                       *avante-tools-web-search*
  - Google: `GOOGLE_SEARCH_API_KEY` and `GOOGLE_SEARCH_ENGINE_ID`
  - Kagi: `KAGI_API_KEY`
  - Brave Search: `BRAVE_API_KEY`
+ - Firecrawl: `FIRECRAWL_API_KEY`
  - SearXNG: `SEARXNG_API_URL`
 
 WebSearchProviderName                                    *WebSearchProviderName*
@@ -2040,6 +2041,7 @@ WebSearchProviderName                                    *WebSearchProviderName*
         ("google")
         ("kagi")
         ("brave")
+        ("firecrawl")
         ("searxng")
 
 

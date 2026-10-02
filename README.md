@@ -1309,11 +1309,12 @@ Avante's tools include some web search engines, currently support:
 - Google's [Programmable Search Engine](https://developers.google.com/custom-search/v1/overview)
 - [Kagi](https://help.kagi.com/kagi/api/search.html)
 - [Brave Search](https://api-dashboard.search.brave.com/app/documentation/web-search/get-started)
+- [Firecrawl](https://docs.firecrawl.dev/features/search?utm_source=avante&utm_medium=integration)
 - [SearXNG](https://searxng.github.io/searxng/)
 
 Each engine is exposed as its own tool (`web_search_tavily`, `web_search_serpapi`,
 `web_search_searchapi`, `web_search_google`, `web_search_kagi`, `web_search_brave`,
-and `web_search_searxng`). Shared settings remain under `web_search_engine`:
+`web_search_firecrawl`, and `web_search_searxng`). Shared settings remain under `web_search_engine`:
 
 ```lua
 web_search_engine = {
@@ -1331,6 +1332,7 @@ Environment variables required for providers:
   - `GOOGLE_SEARCH_ENGINE_ID` as the [search engine](https://programmablesearchengine.google.com) ID
 - Kagi: `KAGI_API_KEY` as the [API Token](https://kagi.com/settings?p=api)
 - Brave Search: `BRAVE_API_KEY` as the [API key](https://api-dashboard.search.brave.com/app/keys)
+- Firecrawl: `FIRECRAWL_API_KEY` as the [API key](https://www.firecrawl.dev/app/api-keys?utm_source=avante&utm_medium=integration)
 - SearXNG: `SEARXNG_API_URL` as the [API URL](https://docs.searxng.org/dev/search_api.html)
 
 ## Custom prompts
