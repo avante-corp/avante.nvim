@@ -2834,7 +2834,8 @@ ACP providers offer several advantages over traditional API-based providers:
 avante.acp.ClientCapabilities                    *avante.acp.ClientCapabilities*
 
     Fields: ~
-        {fs}  (avante.acp.FileSystemCapability)
+        {fs}        (avante.acp.FileSystemCapability)
+        {terminal}  (boolean)
 
 
 avante.acp.FileSystemCapability                *avante.acp.FileSystemCapability*
@@ -2897,6 +2898,7 @@ avante.acp.AuthMethod                                    *avante.acp.AuthMethod*
         {id}           (string)
         {name}         (string)
         {description}  (string|nil)
+        {type?}        ()
 
 
 avante.acp.McpServer                                      *avante.acp.McpServer*

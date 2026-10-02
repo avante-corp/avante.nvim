@@ -38,9 +38,11 @@
 local Config = require("avante.config")
 local Utils = require("avante.utils")
 local Log = require("avante.utils.log")
+local AVANTE_VERSION = require("avante.version")
 
 ---@class avante.acp.ClientCapabilities
 ---@field fs avante.acp.FileSystemCapability
+---@field terminal boolean
 
 ---@class avante.acp.FileSystemCapability
 ---@field readTextFile boolean
@@ -78,6 +80,7 @@ local Log = require("avante.utils.log")
 ---@field id string
 ---@field name string
 ---@field description string|nil
+---@field type? "agent" | "terminal" | string
 
 ---@class avante.acp.McpServer
 ---@field name string
@@ -315,20 +318,24 @@ local LOG_SEPARATOR = string.rep("=", 80) .. "\n"
 ---@param config ACPConfig
 ---@return avante.acp.ACPClient
 function ACPClient:new(config)
+  config = config or {}
+  local handlers = config.handlers or {}
   local client = setmetatable({
-    id_counter = 0,
+    id_counter = -1,
     protocol_version = 1,
     capabilities = {
+      terminal = false,
+      -- Advertise only methods this client can actually serve.
       fs = {
-        readTextFile = true,
-        writeTextFile = true,
+        readTextFile = type(handlers.on_read_file) == "function",
+        writeTextFile = type(handlers.on_write_file) == "function",
       },
     },
     debug_log_file = nil,
     callbacks = {},
     session_replay_handlers = {},
     transport = nil,
-    config = config or {},
+    config = config,
     config_options = nil,
     state = "disconnected",
     reconnect_count = 0,
@@ -796,11 +803,14 @@ function ACPClient:_handle_write_text_file(message_id, params)
 
   if self.config.handlers and self.config.handlers.on_write_file then
     vim.schedule(function()
-      self.config.handlers.on_write_file(
-        path,
-        content,
-        function(error) self:_send_result(message_id, error == nil and vim.NIL or error) end
-      )
+      self.config.handlers.on_write_file(path, content, function(error)
+        if error then
+          self:_send_error(message_id, error)
+        else
+          -- WriteTextFileResponse is an empty object.
+          self:_send_result(message_id, vim.empty_dict())
+        end
+      end)
     end)
   else
     self:_send_error(message_id, "fs/write_text_file handler not configured", ACPClient.ERROR_CODES.METHOD_NOT_FOUND)
@@ -845,6 +855,7 @@ function ACPClient:initialize(callback)
   self:_send_request("initialize", {
     protocolVersion = self.protocol_version,
     clientCapabilities = self.capabilities,
+    clientInfo = { name = "avante.nvim", title = "Avante.nvim", version = AVANTE_VERSION },
   }, function(result, err)
     if err or not result then
       self:_set_state("error")
@@ -852,16 +863,30 @@ function ACPClient:initialize(callback)
       callback(err or self:_create_error(self.ERROR_CODES.PROTOCOL_ERROR, "Failed to initialize: missing result"))
       return
     end
-
-    -- Update protocol version and capabilities
+    -- Both peers must agree on a version before any session is created.
+    if result.protocolVersion ~= self.protocol_version then
+      self:_set_state("error")
+      self.transport:stop()
+      callback(self:_create_error(self.ERROR_CODES.INVALID_REQUEST, "Agent returned an unsupported protocol version"))
+      return
+    end
     self.protocol_version = result.protocolVersion
-    self.agent_capabilities = result.agentCapabilities
+    -- These response fields default to empty values when omitted.
+    self.agent_capabilities = result.agentCapabilities or {}
     self.auth_methods = result.authMethods or {}
 
     -- Check if we need to authenticate
     local auth_method = self.config.auth_method
 
     if auth_method then
+      local selected = vim.iter(self.auth_methods):find(function(method) return method.id == auth_method end)
+      -- A missing type means "agent"; only this type uses authenticate.
+      if not selected or (selected.type or "agent") ~= "agent" then
+        self:_set_state("error")
+        callback(self:_create_error(self.ERROR_CODES.INVALID_REQUEST, "Unsupported ACP authentication method"))
+        return
+      end
+
       Utils.debug("Authenticating with method " .. auth_method)
       self:authenticate(auth_method, function(auth_err)
         if auth_err then
@@ -896,6 +921,12 @@ end
 ---@param callback fun(session_id: string|nil, err: avante.acp.ACPError|nil)
 function ACPClient:create_session(cwd, mcp_servers, callback)
   callback = callback or function() end
+
+  -- ACP requires initialization to finish before session/new.
+  if self.state ~= "ready" then
+    callback(nil, self:_create_error(self.ERROR_CODES.INVALID_REQUEST, "Cannot create session before initialization"))
+    return
+  end
 
   self:_send_request("session/new", {
     cwd = cwd,
