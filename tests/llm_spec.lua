@@ -20,6 +20,7 @@ describe("generate_prompts", function()
 
     -- Mock Config.providers
     local Config = require("avante.config")
+    Config.setup() -- TODO remove we should be able to do without
     Config.instructions_file = "avante.md"
     Config.provider = "openai"
     Config.acp_providers = {}

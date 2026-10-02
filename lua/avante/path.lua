@@ -300,6 +300,7 @@ Prompt.custom_prompts_contents = {}
 --- - project_root directory
 ---
 --- then looks at Config.override_prompt_dir, fixing files if necessary
+---@see avante-prompts
 ---@param project_root string
 ---@return string templates_dir
 function Prompt.get_templates_dir(project_root)
