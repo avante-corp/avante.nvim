@@ -74,9 +74,8 @@ local function format_response(resp, formatter) return formatter(vim.json.decode
 ---@param formatter WebSearchResponseFormatter
 local function request(method, url, request_opts, opts, formatter)
   if Config.web_search_engine.proxy then return nil, "web_search_engine.proxy is not supported by vim.net" end
-  --- TODO: Remove this suppression when the vendored Neovim 0.12 runtime annotations include the method overload.
-  ---@diagnostic disable-next-line: redundant-parameter, param-type-mismatch
-  vim.net.request(method, url, request_opts, function(err, resp)
+  -- vim.net.request calls back from a fast event; on_complete may call nvim APIs, so leave it first.
+  local on_response = vim.schedule_wrap(function(err, resp)
     if err then
       opts.on_complete(nil, err)
       return
@@ -85,6 +84,9 @@ local function request(method, url, request_opts, opts, formatter)
     local result, format_err = format_response(resp, formatter)
     opts.on_complete(result, format_err)
   end)
+  --- TODO: Remove this suppression when the vendored Neovim 0.12 runtime annotations include the method overload.
+  ---@diagnostic disable-next-line: redundant-parameter, param-type-mismatch
+  vim.net.request(method, url, request_opts, on_response)
   return nil, nil
 end
 
