@@ -1126,19 +1126,21 @@ function Sidebar:render_header(winid, bufnr, header_text, hl, reverse_hl, opts)
   end
 
   if Config.windows.sidebar_header.rounded then
-    header_text = format_segment(Utils.icon("", "『"), reverse_hl)
-      .. format_segment(header_text, hl)
-      .. format_segment(Utils.icon("", "』"), reverse_hl)
+    if header_text ~= "" then
+      header_text = format_segment(Utils.icon("", "『"), reverse_hl)
+        .. format_segment(header_text, hl)
+        .. format_segment(Utils.icon("", "』"), reverse_hl)
+    end
 
     if model_name and model_name ~= "" then
       header_text = header_text
-        .. " "
+        .. (header_text ~= "" and " " or "")
         .. format_segment(Utils.icon("", "『"), reverse_hl)
         .. format_segment(model_name, hl)
         .. format_segment(Utils.icon("", "』"), reverse_hl)
     end
   else
-    header_text = format_segment(" " .. header_text .. " ", hl)
+    if header_text ~= "" then header_text = format_segment(" " .. header_text .. " ", hl) end
     if model_name and model_name ~= "" then
       header_text = header_text .. format_segment(" " .. model_name .. " ", hl)
     end
@@ -1161,11 +1163,10 @@ end
 --- @see render_header
 function Sidebar:render_result()
   if not Utils.is_valid_container(self.containers.result) then return end
-  local header_text = Utils.icon("󰭻 ") .. "Avante"
   self:render_header(
     self.containers.result.winid,
     self.containers.result.bufnr,
-    header_text,
+    "",
     Highlights.TITLE,
     Highlights.REVERSED_TITLE,
     { include_model = Config.windows.sidebar_header.include_model }
