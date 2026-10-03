@@ -186,7 +186,7 @@ describe("acp_session_selector", function()
       return client
     end
 
-    local LISTING = { loadSession = true, sessionCapabilities = { list = {} } }
+    local LISTING = { loadSession = true, sessionCapabilities = { list = vim.empty_dict() } }
 
     ---@param opts table
     local function open_with(opts, histories)

@@ -113,11 +113,25 @@ end
 ---Cleanup all registered ACP clients
 function M.cleanup_all_acp_clients()
   Utils.debug("Cleaning up all ACP clients...")
+  local pending = {}
   for client_id, client in pairs(M.acp_clients) do
     if client and client.stop then
       Utils.debug("Stopping ACP client: " .. client_id)
-      pcall(function() client:stop() end)
+      pending[client] = true
+      local ok = pcall(function()
+        client:stop(function() pending[client] = nil end)
+      end)
+      if not ok then
+        pending[client] = nil
+        if client.force_stop then pcall(client.force_stop, client) end
+      end
     end
+  end
+
+  -- Give session/close responses a bounded chance to arrive before Vim tears down the event loop.
+  if next(pending) ~= nil then vim.wait(600, function() return next(pending) == nil end, 10) end
+  for client in pairs(pending) do
+    if client.force_stop then pcall(client.force_stop, client) end
   end
   M.acp_clients = {}
   Utils.debug("All ACP clients cleaned up")

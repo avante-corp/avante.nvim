@@ -2850,16 +2850,30 @@ avante.acp.AgentCapabilities                      *avante.acp.AgentCapabilities*
     Fields: ~
         {loadSession}           (boolean)
         {promptCapabilities}    (avante.acp.PromptCapabilities)
+        {mcpCapabilities?}      (avante.acp.McpCapabilities)
         {sessionCapabilities?}  (avante.acp.SessionCapabilities)
 
 
 avante.acp.SessionListCapability              *avante.acp.SessionListCapability*
 
 
+avante.acp.SessionCapability                      *avante.acp.SessionCapability*
+
+
 avante.acp.SessionCapabilities                  *avante.acp.SessionCapabilities*
 
     Fields: ~
-        {list?}  (avante.acp.SessionListCapability)
+        {list?}                   (avante.acp.SessionListCapability)
+        {resume?}                 (avante.acp.SessionCapability)
+        {close?}                  (avante.acp.SessionCapability)
+        {additionalDirectories?}  (avante.acp.SessionCapability)
+
+
+avante.acp.McpCapabilities                          *avante.acp.McpCapabilities*
+
+    Fields: ~
+        {http}  (boolean)
+        {sse}   (boolean)
 
 
 avante.acp.SessionInfo                                  *avante.acp.SessionInfo*
@@ -2881,7 +2895,8 @@ avante.acp.ListSessionsResult                    *avante.acp.ListSessionsResult*
 avante.acp.LoadSessionOpts                          *avante.acp.LoadSessionOpts*
 
     Fields: ~
-        {on_replay?}  (fun(update:table):boolean)  Receives updates replayed while the load is in flight; return true to consume one instead of passing it to the session update handler
+        {on_replay?}               (fun(update:table):boolean)  Receives updates replayed while the load is in flight; return true to consume one instead of passing it to the session update handler
+        {additional_directories?}  (string[])                   Additional absolute workspace roots
 
 
 avante.acp.PromptCapabilities                    *avante.acp.PromptCapabilities*
@@ -2904,10 +2919,7 @@ avante.acp.AuthMethod                                    *avante.acp.AuthMethod*
 avante.acp.McpServer                                      *avante.acp.McpServer*
 
     Fields: ~
-        {name}     (string)
-        {command}  (string)
-        {args}     (string[])
-        {env}      (avante.acp.EnvVariable[])
+        {type?}  ()
 
 
 avante.acp.EnvVariable                                  *avante.acp.EnvVariable*
@@ -3196,6 +3208,8 @@ avante.acp.ACPClient                                      *avante.acp.ACPClient*
         {config}                   (ACPConfig)
         {callbacks}                (table<number,fun(result:table|nil,err:avante.acp.ACPError|nil)>)
         {session_replay_handlers}  (table<string,fun(update:table):boolean>)                          Replay handlers keyed by session id, set while a session/load is in flight
+        {active_session_ids}       (table<string,boolean>)                                            Sessions successfully created, loaded, or resumed on this connection
+        {stop_callbacks}           (fun(err:avante.acp.ACPError|nil)[])
         {debug_log_file}           (file)
 
 
@@ -3361,8 +3375,21 @@ ACPClient:connect({callback})                               *avante-acp:connect*
         {callback}  (fun(err:avante.acp.ACPError|nil))
 
 
-ACPClient:stop()                                               *avante-acp:stop*
-    Stop client
+ACPClient:_complete_stop({err})                      *avante-acp:_complete_stop*
+
+    Parameters: ~
+        {err}  (avante.acp.ACPError|nil)
+
+
+ACPClient:stop({callback?})                                    *avante-acp:stop*
+    Stop the client after closing every active session advertised by this connection.
+
+    Parameters: ~
+        {callback?}  (fun(err:avante.acp.ACPError|nil))
+
+
+ACPClient:force_stop()                                   *avante-acp:force_stop*
+    Immediately stop the transport, bypassing graceful session closure.
 
 
 ACPClient:initialize({callback})                         *avante-acp:initialize*
@@ -3380,10 +3407,29 @@ ACPClient:authenticate({method_id}, {callback})        *avante-acp:authenticate*
         {callback}   (fun(err:avante.acp.ACPError|nil))
 
 
-ACPClient:create_session({callback})                 *avante-acp:create_session*
+                                       *avante-acp:_supports_session_capability*
+ACPClient:_supports_session_capability({capability})
 
     Parameters: ~
-        {callback}  (fun(session_id:string|nil,err:avante.acp.ACPError|nil))
+        {capability}  (string)
+
+    Returns: ~
+        (boolean)
+
+
+ACPClient:_session_setup_params()             *avante-acp:_session_setup_params*
+
+    Returns: ~
+        (table|nil)                params
+        (avante.acp.ACPError|nil)  err
+
+
+                                                     *avante-acp:create_session*
+ACPClient:create_session({callback}, {additional_directories?})
+
+    Parameters: ~
+        {callback}                 (fun(session_id:string|nil,err:avante.acp.ACPError|nil))
+        {additional_directories?}  (string[])
 
 
 ACPClient:load_session({callback}, {opts?})            *avante-acp:load_session*
@@ -3391,6 +3437,22 @@ ACPClient:load_session({callback}, {opts?})            *avante-acp:load_session*
     Parameters: ~
         {callback}  (fun(result:table|nil,err:avante.acp.ACPError|nil))
         {opts?}     (avante.acp.LoadSessionOpts)
+
+
+                                                     *avante-acp:resume_session*
+ACPClient:resume_session({callback}, {additional_directories?})
+
+    Parameters: ~
+        {callback}                 (fun(result:table|nil,err:avante.acp.ACPError|nil))
+        {additional_directories?}  (string[])
+
+
+ACPClient:close_session({session_id}, {callback?})    *avante-acp:close_session*
+    Close an active session
+
+    Parameters: ~
+        {session_id}  (string)
+        {callback?}   (fun(err:avante.acp.ACPError|nil))
 
 
 ACPClient:supports_list_sessions()           *avante-acp:supports_list_sessions*
@@ -3455,7 +3517,7 @@ ACPClient:_convert_legacy_session_fields({result})
     Otherwise, build synthetic ConfigOption[] from result.modes and result.models.
 
     Parameters: ~
-        {result}  (table)  The session/new or session/load result
+        {result}  (table)  The session/new, session/load, or session/resume result
 
 
                                                         *avante-acp:send_prompt*

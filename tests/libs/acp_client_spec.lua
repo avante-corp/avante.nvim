@@ -313,9 +313,10 @@ describe("ACPClient", function()
       client = ACPClient:new(mock_config)
       client.transport = mock_transport
       client.state = "ready"
+      client.agent_capabilities = { mcpCapabilities = { http = true, sse = false } }
 
       local mcp_servers = {
-        { type = "http", name = "lookup", url = "http://localhost:8080/mcp" },
+        { type = "http", name = "lookup", url = "http://localhost:8080/mcp", headers = {} },
       }
       local session_id = nil
       client:create_session("/tmp/test", mcp_servers, function(sid, _err) session_id = sid end)
@@ -396,7 +397,9 @@ describe("ACPClient", function()
                 })
               end
             )
-            vim.schedule(function() client:_handle_message({ jsonrpc = "2.0", id = decoded.id, result = {} }) end)
+            vim.schedule(
+              function() client:_handle_message({ jsonrpc = "2.0", id = decoded.id, result = vim.empty_dict() }) end
+            )
           end
         end,
         start = function(_self, _on_message) end,

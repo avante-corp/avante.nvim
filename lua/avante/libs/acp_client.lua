@@ -50,12 +50,22 @@ local Log = require("avante.utils.log")
 ---@class avante.acp.AgentCapabilities
 ---@field loadSession boolean
 ---@field promptCapabilities avante.acp.PromptCapabilities
+---@field mcpCapabilities? avante.acp.McpCapabilities
 ---@field sessionCapabilities? avante.acp.SessionCapabilities
 
 ---@class avante.acp.SessionListCapability
 
+---@class avante.acp.SessionCapability
+
 ---@class avante.acp.SessionCapabilities
 ---@field list? avante.acp.SessionListCapability
+---@field resume? avante.acp.SessionCapability
+---@field close? avante.acp.SessionCapability
+---@field additionalDirectories? avante.acp.SessionCapability
+
+---@class avante.acp.McpCapabilities
+---@field http boolean
+---@field sse boolean
 
 ---@class avante.acp.SessionInfo
 ---@field sessionId string
@@ -69,6 +79,7 @@ local Log = require("avante.utils.log")
 
 ---@class avante.acp.LoadSessionOpts
 ---@field on_replay? fun(update: table): boolean Receives updates replayed while the load is in flight; return true to consume one instead of passing it to the session update handler
+---@field additional_directories? string[] Additional absolute workspace roots
 
 ---@class avante.acp.PromptCapabilities
 ---@field image boolean
@@ -82,10 +93,13 @@ local Log = require("avante.utils.log")
 ---@field type? "agent" | "terminal" | string
 
 ---@class avante.acp.McpServer
+---@field type? "stdio" | "http" | "sse"
 ---@field name string
----@field command string
----@field args string[]
----@field env avante.acp.EnvVariable[]
+---@field command? string
+---@field args? string[]
+---@field env? avante.acp.EnvVariable[]
+---@field url? string
+---@field headers? avante.acp.EnvVariable[]
 
 ---@class avante.acp.EnvVariable
 ---@field name string
@@ -271,8 +285,12 @@ local Log = require("avante.utils.log")
 ---@field config ACPConfig
 ---@field callbacks table<number, fun(result: table|nil, err: avante.acp.ACPError|nil)>
 ---@field session_replay_handlers table<string, fun(update: table): boolean> Replay handlers keyed by session id, set while a session/load is in flight
+---@field active_session_ids table<string, boolean> Sessions successfully created, loaded, or resumed on this connection
+---@field stop_callbacks fun(err: avante.acp.ACPError|nil)[]
 ---@field debug_log_file file*|nil
 ---@field is_loading_session boolean Whether a session/load request is in flight
+---@field stop_requested boolean Whether an intentional shutdown has disabled reconnects
+---@field is_stopping boolean Whether graceful shutdown is waiting for session/close
 local ACPClient = {}
 
 -- ACP Error codes
@@ -283,6 +301,7 @@ ACPClient.ERROR_CODES = {
   METHOD_NOT_FOUND = -32601,
   INVALID_PARAMS = -32602,
   INTERNAL_ERROR = -32603,
+  PROTOCOL_ERROR = -32600,
   -- ACP
   AUTH_REQUIRED = -32000,
   RESOURCE_NOT_FOUND = -32002,
@@ -308,8 +327,10 @@ local LOG_SEPARATOR = string.rep("=", 80) .. "\n"
 ---@field reconnect? boolean Enable auto-reconnect
 ---@field max_reconnect_attempts? number Maximum reconnection attempts
 ---@field heartbeat_interval? number Heartbeat interval in milliseconds
+---@field session_close_timeout? number Maximum time to wait for session/close responses in milliseconds
 ---@field auth_method? string Authentication method
----@field mcp_servers? table[] MCP servers from the provider config, passed to new and loaded sessions
+---@field mcp_servers? table[] MCP servers from the provider config, passed to new, loaded, and resumed sessions
+---@field additional_directories? string[] Additional absolute workspace roots for sessions
 ---@field handlers? ACPHandlers
 ---@field on_state_change? fun(new_state: ACPConnectionState, old_state: ACPConnectionState)
 
@@ -333,6 +354,8 @@ function ACPClient:new(config)
     debug_log_file = nil,
     callbacks = {},
     session_replay_handlers = {},
+    active_session_ids = {},
+    stop_callbacks = {},
     transport = nil,
     config = config,
     config_options = nil,
@@ -340,6 +363,8 @@ function ACPClient:new(config)
     reconnect_count = 0,
     heartbeat_timer = nil,
     is_loading_session = false,
+    stop_requested = false,
+    is_stopping = false,
   }, { __index = self })
 
   client:_setup_transport()
@@ -420,6 +445,8 @@ function ACPClient:_create_stdio_transport()
     stdin = nil,
     --- @type uv.uv_pipe_t|nil
     stdout = nil,
+    --- @type uv.uv_pipe_t|nil
+    stderr = nil,
     --- @type uv.uv_process_t|nil
     process = nil,
   }
@@ -477,8 +504,19 @@ function ACPClient:_create_stdio_transport()
         transport_self.process = nil
       end
 
+      if self.is_stopping then
+        self:_complete_stop(nil)
+        return
+      end
+      self.active_session_ids = {}
+      transport_self:stop()
+
       -- Handle auto-reconnect
-      if self.config.reconnect and self.reconnect_count < (self.config.max_reconnect_attempts or 3) then
+      if
+        not self.stop_requested
+        and self.config.reconnect
+        and self.reconnect_count < (self.config.max_reconnect_attempts or 3)
+      then
         self.reconnect_count = self.reconnect_count + 1
         vim.defer_fn(function()
           if self.state == "disconnected" then self:connect(function(_err) end) end
@@ -496,6 +534,7 @@ function ACPClient:_create_stdio_transport()
     transport_self.process = handle
     transport_self.stdin = stdin
     transport_self.stdout = stdout
+    transport_self.stderr = stderr
 
     self:_set_state("connected")
 
@@ -564,6 +603,10 @@ function ACPClient:_create_stdio_transport()
       transport_self.stdout:close()
       transport_self.stdout = nil
     end
+    if transport_self.stderr then
+      transport_self.stderr:close()
+      transport_self.stderr = nil
+    end
     self:_set_state("disconnected")
   end
 
@@ -588,6 +631,10 @@ end
 ---@param params table?
 ---@param callback fun(result: table|nil, err: avante.acp.ACPError|nil)
 function ACPClient:_send_request(method, params, callback)
+  if self.is_stopping and method ~= "session/close" then
+    callback(nil, self:_create_error(self.ERROR_CODES.INVALID_REQUEST, "ACP client is stopping"))
+    return
+  end
   local id = self:_next_id()
   local message = {
     jsonrpc = "2.0",
@@ -600,13 +647,17 @@ function ACPClient:_send_request(method, params, callback)
 
   local data = vim.json.encode(message)
   self:_debug_log("request: " .. data .. "\n" .. LOG_SEPARATOR)
-  self.transport:send(data)
+  if self.transport:send(data) == false then
+    self.callbacks[id] = nil
+    callback(nil, self:_create_error(self.ERROR_CODES.INTERNAL_ERROR, "ACP transport is not writable"))
+  end
 end
 
 ---Send JSON-RPC notification
 ---@param method string
 ---@param params table?
 function ACPClient:_send_notification(method, params)
+  if self.is_stopping then return end
   local message = {
     jsonrpc = "2.0",
     method = method,
@@ -826,16 +877,74 @@ function ACPClient:connect(callback)
     return
   end
 
+  self.stop_requested = false
   self.transport:start(vim.schedule_wrap(function(message) self:_handle_message(message) end))
 
   self:initialize(callback)
 end
 
----Stop client
-function ACPClient:stop()
+---@param err avante.acp.ACPError|nil
+function ACPClient:_complete_stop(err)
+  if not self.is_stopping then return end
+  self.is_stopping = false
+  self.active_session_ids = {}
+  self.session_replay_handlers = {}
+  self.callbacks = {}
+  self.is_loading_session = false
   self.transport:stop()
   self:_close_debug_log()
   self.reconnect_count = 0
+
+  local callbacks = self.stop_callbacks
+  self.stop_callbacks = {}
+  for _, callback in ipairs(callbacks) do
+    pcall(callback, err)
+  end
+end
+
+---Stop the client after closing every active session advertised by this connection.
+---@param callback? fun(err: avante.acp.ACPError|nil)
+function ACPClient:stop(callback)
+  if callback then table.insert(self.stop_callbacks, callback) end
+  if self.is_stopping then return end
+
+  self.stop_requested = true
+  self.is_stopping = true
+  if self.state == "disconnected" then
+    self:_complete_stop(nil)
+    return
+  end
+
+  local session_ids = vim.tbl_keys(self.active_session_ids)
+  if self.state ~= "ready" or #session_ids == 0 or not self:_supports_session_capability("close") then
+    self:_complete_stop(nil)
+    return
+  end
+
+  local remaining = #session_ids
+  local first_error ---@type avante.acp.ACPError|nil
+  for _, session_id in ipairs(session_ids) do
+    self:close_session(session_id, function(err)
+      if not self.is_stopping then return end
+      first_error = first_error or err
+      remaining = remaining - 1
+      if remaining == 0 then self:_complete_stop(first_error) end
+    end)
+  end
+
+  if self.is_stopping then
+    vim.defer_fn(function()
+      if not self.is_stopping then return end
+      self:_complete_stop(self:_create_error(self.ERROR_CODES.INTERNAL_ERROR, "Timed out waiting for session/close"))
+    end, self.config.session_close_timeout or 500)
+  end
+end
+
+---Immediately stop the transport, bypassing graceful session closure.
+function ACPClient:force_stop()
+  self.stop_requested = true
+  if not self.is_stopping then self.is_stopping = true end
+  self:_complete_stop(nil)
 end
 
 ---Initialize protocol connection
@@ -914,35 +1023,177 @@ function ACPClient:authenticate(method_id, callback)
   }, function(_result, err) callback(err) end)
 end
 
+---@param value any
+---@return any
+local function without_json_null(value)
+  if value == vim.NIL then return nil end
+  return value
+end
+
+---@param value any
+---@return boolean
+local function is_json_object(value) return type(value) == "table" and not vim.islist(value) end
+
+---@param capability string
+---@return boolean
+function ACPClient:_supports_session_capability(capability)
+  -- ACP advertises optional session methods with JSON object markers; null or arrays mean unsupported.
+  if not is_json_object(self.agent_capabilities) then return false end
+  local session_capabilities = without_json_null(self.agent_capabilities.sessionCapabilities)
+  return is_json_object(session_capabilities) and is_json_object(without_json_null(session_capabilities[capability]))
+end
+
+---@param values any
+---@param label string
+---@param absolute boolean?
+---@return string|nil
+local function validate_string_array(values, label, absolute)
+  if type(values) ~= "table" or not vim.islist(values) then return label .. " must be an array" end
+  for i, value in ipairs(values) do
+    if type(value) ~= "string" then return string.format("%s[%d] must be a string", label, i) end
+    if absolute and (value == "" or vim.fn.isabsolutepath(value) ~= 1) then
+      return string.format("%s[%d] must be an absolute path", label, i)
+    end
+  end
+  return nil
+end
+
+---@param values any
+---@param label string
+---@return string|nil
+local function validate_name_value_array(values, label)
+  if type(values) ~= "table" or not vim.islist(values) then return label .. " must be an array" end
+  for i, value in ipairs(values) do
+    if not is_json_object(value) or type(value.name) ~= "string" or type(value.value) ~= "string" then
+      return string.format("%s[%d] must contain string name and value fields", label, i)
+    end
+  end
+  return nil
+end
+
+---@param client avante.acp.ACPClient
+---@param servers any
+---@return string|nil
+---@return integer|nil
+local function validate_mcp_servers(client, servers)
+  if type(servers) ~= "table" or not vim.islist(servers) then return "MCP servers must be an array" end
+
+  local capabilities = is_json_object(client.agent_capabilities)
+      and without_json_null(client.agent_capabilities.mcpCapabilities)
+    or nil
+  for i, server in ipairs(servers) do
+    local label = string.format("MCP server %d", i)
+    if not is_json_object(server) then return label .. " must be an object" end
+    if type(server.name) ~= "string" then return label .. ".name must be a string" end
+
+    local transport = server.type
+    -- Stdio is the required default transport; HTTP and SSE require explicit agent capabilities.
+    if transport == nil then transport = "stdio" end
+    if transport == "stdio" then
+      if type(server.command) ~= "string" or server.command == "" or vim.fn.isabsolutepath(server.command) ~= 1 then
+        return label .. ".command must be an absolute path"
+      end
+      local err = validate_string_array(server.args, label .. ".args")
+        or validate_name_value_array(server.env, label .. ".env")
+      if err then return err end
+    elseif transport == "http" or transport == "sse" then
+      if type(server.url) ~= "string" then return label .. ".url must be a string" end
+      local err = validate_name_value_array(server.headers, label .. ".headers")
+      if err then return err end
+      if not is_json_object(capabilities) or capabilities[transport] ~= true then
+        return "Agent does not support the " .. transport .. " MCP transport", ACPClient.ERROR_CODES.INVALID_REQUEST
+      end
+    else
+      return label .. ".type is not a supported MCP transport"
+    end
+  end
+
+  return nil
+end
+
+---@param cwd string
+---@param mcp_servers table[]?
+---@param session_id string?
+---@param additional_directories string[]?
+---@return table|nil params
+---@return avante.acp.ACPError|nil err
+function ACPClient:_session_setup_params(cwd, mcp_servers, session_id, additional_directories)
+  -- ACP forbids session setup before initialization and requires an absolute primary working directory.
+  if self.state ~= "ready" then
+    return nil, self:_create_error(self.ERROR_CODES.INVALID_REQUEST, "Cannot set up session before initialization")
+  end
+  if self.is_stopping then
+    return nil, self:_create_error(self.ERROR_CODES.INVALID_REQUEST, "Cannot set up session while stopping")
+  end
+  if type(cwd) ~= "string" or cwd == "" or vim.fn.isabsolutepath(cwd) ~= 1 then
+    return nil, self:_create_error(self.ERROR_CODES.INVALID_PARAMS, "Session cwd must be an absolute path")
+  end
+  if session_id ~= nil and (type(session_id) ~= "string" or session_id == "") then
+    return nil, self:_create_error(self.ERROR_CODES.INVALID_PARAMS, "Session ID must be a non-empty string")
+  end
+
+  local servers = mcp_servers
+  -- Session setup always carries mcpServers, including an empty JSON array when none are configured.
+  if servers == nil then servers = {} end
+  local mcp_err, mcp_err_code = validate_mcp_servers(self, servers)
+  if mcp_err then return nil, self:_create_error(mcp_err_code or self.ERROR_CODES.INVALID_PARAMS, mcp_err) end
+
+  local params = { cwd = cwd, mcpServers = servers }
+  if session_id then params.sessionId = session_id end
+
+  local directories = additional_directories
+  if directories == nil then directories = self.config.additional_directories end
+  if directories ~= nil then
+    local directories_err = validate_string_array(directories, "Additional session directories", true)
+    if directories_err then return nil, self:_create_error(self.ERROR_CODES.INVALID_PARAMS, directories_err) end
+  end
+  if directories and #directories > 0 then
+    -- Clients may only widen the effective root set when the agent advertises this capability.
+    if not self:_supports_session_capability("additionalDirectories") then
+      return nil,
+        self:_create_error(self.ERROR_CODES.INVALID_REQUEST, "Agent does not support additional session directories")
+    end
+    params.additionalDirectories = directories
+  end
+
+  return params, nil
+end
+
 ---Create new session
 ---@param cwd string
 ---@param mcp_servers table[]?
 ---@param callback fun(session_id: string|nil, err: avante.acp.ACPError|nil)
-function ACPClient:create_session(cwd, mcp_servers, callback)
+---@param additional_directories? string[]
+function ACPClient:create_session(cwd, mcp_servers, callback, additional_directories)
   callback = callback or function() end
 
-  -- ACP requires initialization to finish before session/new.
-  if self.state ~= "ready" then
-    callback(nil, self:_create_error(self.ERROR_CODES.INVALID_REQUEST, "Cannot create session before initialization"))
+  local params, params_err = self:_session_setup_params(cwd, mcp_servers, nil, additional_directories)
+  if params_err then
+    callback(nil, params_err)
     return
   end
 
-  self:_send_request("session/new", {
-    cwd = cwd,
-    mcpServers = mcp_servers or {},
-  }, function(result, err)
+  self:_send_request("session/new", params, function(result, err)
     if err then
       vim.schedule(function() vim.notify("Failed to create session: " .. err.message, vim.log.levels.ERROR) end)
       callback(nil, err)
       return
     end
-    if not result then
-      local error = self:_create_error(self.ERROR_CODES.PROTOCOL_ERROR, "Failed to create session: missing result")
+    -- session/new must return a usable session ID before any session-scoped request can be sent.
+    if result == nil or not is_json_object(result) then
+      local error = self:_create_error(self.ERROR_CODES.PROTOCOL_ERROR, "Failed to create session: invalid sessionId")
       callback(nil, error)
       return
     end
+    local session_id = result.sessionId
+    if type(session_id) ~= "string" or session_id == "" then
+      local error = self:_create_error(self.ERROR_CODES.PROTOCOL_ERROR, "Failed to create session: invalid sessionId")
+      callback(nil, error)
+      return
+    end
+    self.active_session_ids[session_id] = true
     self:_convert_legacy_session_fields(result)
-    callback(result.sessionId, nil)
+    callback(session_id, nil)
   end)
 end
 
@@ -955,33 +1206,107 @@ end
 function ACPClient:load_session(session_id, cwd, mcp_servers, callback, opts)
   callback = callback or function() end
 
-  if not self.agent_capabilities or not self.agent_capabilities.loadSession then
+  local additional_directories = opts and opts.additional_directories
+  local params, params_err = self:_session_setup_params(cwd, mcp_servers, session_id, additional_directories)
+  if params_err then
+    callback(nil, params_err)
+    return
+  end
+
+  -- Clients MUST NOT call session/load unless loadSession is explicitly true.
+  if not is_json_object(self.agent_capabilities) or self.agent_capabilities.loadSession ~= true then
     vim.schedule(function() vim.notify("Agent does not support loading sessions", vim.log.levels.WARN) end)
-    local err = self:_create_error(self.ERROR_CODES.PROTOCOL_ERROR, "Agent does not support loading sessions")
+    local err = self:_create_error(self.ERROR_CODES.METHOD_NOT_FOUND, "Agent does not support loading sessions")
     callback(nil, err)
     return
   end
 
+  -- Updates received before the response are the required history replay for session/load.
   self.is_loading_session = true
   if opts and opts.on_replay then self.session_replay_handlers[session_id] = opts.on_replay end
 
-  self:_send_request("session/load", {
-    sessionId = session_id,
-    cwd = cwd,
-    mcpServers = mcp_servers or {},
-  }, function(result, err)
+  self:_send_request("session/load", params, function(result, err)
     self.is_loading_session = false
     self.session_replay_handlers[session_id] = nil
-    if result then self:_convert_legacy_session_fields(result) end
-    callback(result, err)
+    if err then
+      callback(nil, err)
+      return
+    end
+    if result == nil or not is_json_object(result) then
+      callback(nil, self:_create_error(self.ERROR_CODES.PROTOCOL_ERROR, "Failed to load session: missing result"))
+      return
+    end
+    self.active_session_ids[session_id] = true
+    self:_convert_legacy_session_fields(result)
+    callback(result, nil)
   end)
 end
 
----@param value any
----@return any
-local function without_json_null(value)
-  if value == vim.NIL then return nil end
-  return value
+---Resume an existing session without replaying its conversation history
+---@param session_id string
+---@param cwd string
+---@param mcp_servers table[]?
+---@param callback fun(result: table|nil, err: avante.acp.ACPError|nil)
+---@param additional_directories? string[]
+function ACPClient:resume_session(session_id, cwd, mcp_servers, callback, additional_directories)
+  callback = callback or function() end
+  local params, params_err = self:_session_setup_params(cwd, mcp_servers, session_id, additional_directories)
+  if params_err then
+    callback(nil, params_err)
+    return
+  end
+  -- session/resume is optional and, unlike session/load, must not enter replay mode.
+  if not self:_supports_session_capability("resume") then
+    callback(nil, self:_create_error(self.ERROR_CODES.METHOD_NOT_FOUND, "Agent does not support resuming sessions"))
+    return
+  end
+
+  self:_send_request("session/resume", params, function(result, err)
+    if err then
+      callback(nil, err)
+      return
+    end
+    if result == nil or not is_json_object(result) then
+      callback(nil, self:_create_error(self.ERROR_CODES.PROTOCOL_ERROR, "Failed to resume session: missing result"))
+      return
+    end
+    self.active_session_ids[session_id] = true
+    self:_convert_legacy_session_fields(result)
+    callback(result, nil)
+  end)
+end
+
+---Close an active session
+---@param session_id string
+---@param callback? fun(err: avante.acp.ACPError|nil)
+function ACPClient:close_session(session_id, callback)
+  callback = callback or function() end
+  if self.state ~= "ready" then
+    callback(self:_create_error(self.ERROR_CODES.INVALID_REQUEST, "Cannot close session before initialization"))
+    return
+  end
+  -- session/close is optional and must be capability-gated before sending.
+  if not self:_supports_session_capability("close") then
+    callback(self:_create_error(self.ERROR_CODES.METHOD_NOT_FOUND, "Agent does not support closing sessions"))
+    return
+  end
+  if type(session_id) ~= "string" or session_id == "" then
+    callback(self:_create_error(self.ERROR_CODES.INVALID_PARAMS, "Session ID must be a non-empty string"))
+    return
+  end
+
+  self:_send_request("session/close", { sessionId = session_id }, function(result, err)
+    if err then
+      callback(err)
+      return
+    end
+    if not is_json_object(result) then
+      callback(self:_create_error(self.ERROR_CODES.PROTOCOL_ERROR, "Failed to close session: missing result"))
+      return
+    end
+    self.active_session_ids[session_id] = nil
+    callback(nil)
+  end)
 end
 
 ---@param value any
@@ -993,11 +1318,7 @@ end
 
 ---Whether the agent supports session/list
 ---@return boolean
-function ACPClient:supports_list_sessions()
-  local session_capabilities = self.agent_capabilities
-    and without_json_null(self.agent_capabilities.sessionCapabilities)
-  return type(session_capabilities) == "table" and without_json_null(session_capabilities.list) ~= nil
-end
+function ACPClient:supports_list_sessions() return self:_supports_session_capability("list") end
 
 ---List one page of the agent's sessions for a working directory
 ---@param cwd string
@@ -1163,9 +1484,9 @@ end
 ---Convert legacy session fields (modes/models) to synthetic config_options.
 ---If result.configOptions exists, use it directly and clear _legacy_api flag.
 ---Otherwise, build synthetic ConfigOption[] from result.modes and result.models.
----@param result table The session/new or session/load result
+---@param result table The session/new, session/load, or session/resume result
 function ACPClient:_convert_legacy_session_fields(result)
-  if result.configOptions then
+  if result.configOptions and result.configOptions ~= vim.NIL then
     self.config_options = result.configOptions
     self._legacy_api = false
     return
@@ -1174,7 +1495,7 @@ function ACPClient:_convert_legacy_session_fields(result)
   local config_options = {}
 
   -- Convert legacy modes field
-  if result.modes and result.modes.availableModes then
+  if type(result.modes) == "table" and result.modes.availableModes then
     local options = {}
     for _, m in ipairs(result.modes.availableModes) do
       table.insert(options, {
@@ -1194,7 +1515,7 @@ function ACPClient:_convert_legacy_session_fields(result)
   end
 
   -- Convert legacy models field
-  if result.models and result.models.availableModels then
+  if type(result.models) == "table" and result.models.availableModels then
     local options = {}
     for _, m in ipairs(result.models.availableModels) do
       table.insert(options, {
@@ -1346,7 +1667,7 @@ end
 
 ---Convenience method: Check if client is ready
 ---@return boolean
-function ACPClient:is_ready() return self.state == "ready" end
+function ACPClient:is_ready() return self.state == "ready" and not self.is_stopping end
 
 ---Convenience method: Check if client is connected
 ---@return boolean

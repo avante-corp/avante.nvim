@@ -391,6 +391,9 @@ vim.g.avante_login = vim.g.avante_login
 ---@field args string[]
 ---@field env table<string, string>
 ---@field auth_method string
+---@field mcp_servers? avante.acp.McpServer[]
+---@field additional_directories? string[] Additional absolute workspace roots for ACP sessions
+---@field session_close_timeout? integer Maximum time to wait for session/close before stopping the agent
 ---
 ---@alias AvanteLlmMode avante.Mode | "editing" | "suggesting"
 ---
