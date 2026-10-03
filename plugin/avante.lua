@@ -143,7 +143,13 @@ api.nvim_create_user_command("AvanteSwitchProvider", function(opts)
   local providers = vim.tbl_keys(Config.providers)
   vim.list_extend(providers, vim.tbl_keys(Config.acp_providers))
   table.sort(providers)
-  vim.ui.select(providers, { prompt = "Provider> " }, function(choice, idx)
+  vim.ui.select(providers, {
+    prompt = "Provider> ",
+    format_item = function(provider_name)
+      if Config.acp_providers[provider_name] then return provider_name .. " (ACP)" end
+      return provider_name
+    end,
+  }, function(choice, idx)
     if idx ~= nil then require("avante.api").switch_provider(vim.trim(choice), opts.args == "--save") end
   end)
 end, {
