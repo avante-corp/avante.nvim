@@ -38,7 +38,6 @@
 local Config = require("avante.config")
 local Utils = require("avante.utils")
 local Log = require("avante.utils.log")
-local AVANTE_VERSION = require("avante.version")
 
 ---@class avante.acp.ClientCapabilities
 ---@field fs avante.acp.FileSystemCapability
@@ -855,7 +854,7 @@ function ACPClient:initialize(callback)
   self:_send_request("initialize", {
     protocolVersion = self.protocol_version,
     clientCapabilities = self.capabilities,
-    clientInfo = { name = "avante.nvim", title = "Avante.nvim", version = AVANTE_VERSION },
+    clientInfo = { name = "avante.nvim", title = "Avante.nvim", version = "unknown" },
   }, function(result, err)
     if err or not result then
       self:_set_state("error")
