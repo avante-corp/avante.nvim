@@ -32,6 +32,11 @@ jobs:
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v23
+        with:
+          extra-conf: |
+            # extra-substituters = https://avante-nvim.cachix.org
+            # extra-trusted-public-keys = avante-nvim.cachix.org-1:bxXX3jAkVDlvhLePyKfznp+rsvUpKm0onR8j0BuUKkA=
+            accept-flake-config = true
 
       - name: Setup test environment
         run:

@@ -1,6 +1,11 @@
 {
   description = "Packages and development shells for avante.nvim";
 
+  nixConfig = {
+    extra-substituters = [ "https://avante-nvim.cachix.org" ];
+    extra-trusted-public-keys = [ "avante-nvim.cachix.org-1:bxXX3jAkVDlvhLePyKfznp+rsvUpKm0onR8j0BuUKkA=" ];
+  };
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs?rev=62e3050a29278c985725a86704faa1e99236b51a";
     pyproject-nix = {
@@ -38,6 +43,13 @@
         "x86_64-darwin"
         "x86_64-linux"
       ];
+
+      rustLibraryNames = [
+          "avante-html2md"
+          "avante-repo-map"
+          "avante-templates"
+          "avante-tokenizers"
+        ];
 
       forAllSystems = lib.genAttrs systems;
 
@@ -94,12 +106,7 @@
         system:
         let
           pkgs = import nixpkgs { inherit system; };
-          rustPackages = lib.genAttrs [
-            "avante-html2md"
-            "avante-repo-map"
-            "avante-templates"
-            "avante-tokenizers"
-          ] (pname: pkgs.rustPlatform.buildRustPackage {
+          rustPackages = lib.genAttrs rustLibraryNames (pname: pkgs.rustPlatform.buildRustPackage {
             inherit pname;
             version = (fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
             src = lib.fileset.toSource {
@@ -228,6 +235,12 @@
             ];
             shellHook = oa.shellHook + ''
               export VIMRUNTIME=${pkgs.neovim-unwrapped}/share/nvim/runtime
+              ${lib.concatMapStringsSep "\n" (name:
+                let
+                  moduleName = lib.replaceStrings [ "-" ] [ "_" ] name;
+                in
+                ''ln -sfv "${self.packages.${system}.${name}}/lib/lib${moduleName}${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}" "lua/${moduleName}.so"''
+              ) rustLibraryNames}
               '';
           });
         }
