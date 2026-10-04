@@ -139,24 +139,62 @@ api.nvim_create_user_command("AvanteFocus", function() require("avante.api").foc
   desc = "avante: switch focus windows",
   nargs = 0,
 })
-api.nvim_create_user_command("AvanteSwitchProvider", function(opts)
-  local providers = vim.tbl_keys(Config.providers)
-  vim.list_extend(providers, vim.tbl_keys(Config.acp_providers))
-  table.sort(providers)
-  vim.ui.select(providers, {
-    prompt = "Provider> ",
-    format_item = function(provider_name)
-      if Config.acp_providers[provider_name] then return provider_name .. " (ACP)" end
-      return provider_name
-    end,
-  }, function(choice, idx)
-    if idx ~= nil then require("avante.api").switch_provider(vim.trim(choice), opts.args == "--save") end
-  end)
-end, {
-  nargs = "?",
-  desc = "avante: switch provider",
-  complete = function() return { "--save" } end,
+local cmdparse = require("mega.cmdparse")
+local switch_provider = cmdparse.ParameterParser.new({ name = "AvanteSwitchProvider", help = "Switch AI provider" })
+switch_provider:add_parameter({ name = "--save", action = "store_true", help = "Persist the provider choice" })
+switch_provider:add_parameter({
+  name = "--acp",
+  choices = { "true", "false" },
+  default = "true",
+  help = "Include ACP providers (default: true)",
 })
+switch_provider:add_parameter({ name = "filter", required = false, help = "Initial selector input" })
+switch_provider:set_execute(function(data)
+  local providers = vim.tbl_keys(Config.providers)
+  if data.namespace.acp == "true" then vim.list_extend(providers, vim.tbl_keys(Config.acp_providers)) end
+  table.sort(providers)
+  local filter = data.namespace.filter or ""
+  local items = vim.tbl_map(
+    function(provider_name)
+      return {
+        id = provider_name,
+        title = provider_name .. (Config.acp_providers[provider_name] and " (ACP)" or ""),
+      }
+    end,
+    providers
+  )
+  local provider_opts = vim.deepcopy(Config.selector.provider_opts or {})
+  if filter ~= "" then
+    provider_opts = vim.tbl_deep_extend("force", provider_opts, {
+      default_text = filter,
+      query = filter,
+      search = filter,
+      snacks = { search = filter },
+    })
+  end
+  require("avante.ui.selector")
+    :new({
+      title = "Provider> ",
+      items = items,
+      provider = Config.selector.provider,
+      provider_opts = provider_opts,
+      on_select = function(selected)
+        if selected and selected[1] then
+          require("avante.api").switch_provider(selected[1], data.namespace.save == true)
+        end
+      end,
+    })
+    :open()
+end)
+api.nvim_create_user_command(
+  "AvanteSwitchProvider",
+  cmdparse.make_parser_triager(function() return switch_provider end),
+  {
+    nargs = "*",
+    desc = "avante: switch provider",
+    complete = cmdparse.make_parser_completer(function() return switch_provider end),
+  }
+)
 api.nvim_create_user_command(
   "AvanteSwitchSelectorProvider",
   function(opts) require("avante.api").switch_selector_provider(vim.trim(opts.args or "")) end,
