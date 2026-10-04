@@ -42,8 +42,7 @@ jobs:
         uses: cachix/cachix-action@v17
         with:
           name: avante-nvim
-          authToken: ${{ github.event_name != 'pull_request' && secrets.CACHIX_AUTH_TOKEN || '' }}
-          skipPush: ${{ github.event_name == 'pull_request' }}
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
 
       - name: Build all flake outputs
         shell: bash
