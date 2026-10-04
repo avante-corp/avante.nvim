@@ -27,11 +27,6 @@ describe("providers", function()
           setup = function() end,
         },
       },
-      acp_providers = {
-        test_acp = {
-          command = "test-agent",
-        },
-      },
       windows = {
         sidebar_header = {
           include_model = true,
