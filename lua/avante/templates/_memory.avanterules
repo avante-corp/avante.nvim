@@ -1,5 +1,5 @@
 {%- if memory -%}
 <memory>
-{{memory}}
+{{memory|replace("</memory>", "&lt;/memory&gt;")}}
 </memory>
 {%- endif %}
