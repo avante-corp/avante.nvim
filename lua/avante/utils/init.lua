@@ -1555,6 +1555,7 @@ function M.llm_tool_param_fields_to_json_schema(fields)
       }
       if field.choices then properties[field.name].enum = field.choices end
     end
+    if field.default ~= nil then properties[field.name].default = field.default end
     if not field.optional then table.insert(required, field.name) end
   end
   if vim.tbl_isempty(properties) then properties = vim.empty_dict() end

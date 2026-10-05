@@ -20,11 +20,7 @@ function M.enabled()
 end
 
 M.description =
-  [[Use the tool to think about something. It will not obtain new information or make any changes to the repository, but just log the thought. Use it when complex reasoning or brainstorming is needed. For example, if you explore the repo and discover the source of a bug, call this tool to brainstorm several unique ways of fixing the bug, and assess which change(s) are likely to be simplest and most effective. Alternatively, if you receive some test results, call this tool to brainstorm ways to fix the failing tests.
-
-RULES:
-- Remember to frequently use the `think` tool to resolve tasks, especially before each tool call.
-]]
+  [[Record a thought when complex reasoning or brainstorming is useful. This tool does not obtain new information or change the repository. Use it only when it helps the task; it is not required before other tool calls.]]
 
 M.support_streaming = true
 
