@@ -32,9 +32,12 @@
 ---@brief [[
 --- Built-in tool names include:
 --->
----   rag_search, python, git_diff, git_commit, glob, search_keyword,
----   read_file_toplevel_symbols, read_file, create_file, move_path, copy_path,
----   delete_path, create_dir, bash, web_search_tavily, fetch
+---   dispatch_agent, glob, rag_search, run_python, git_diff, git_commit, ls, grep,
+---   delete_tool_use_messages, read_todos, write_todos, read_file_toplevel_symbols,
+---   str_replace, view, write_to_file, insert, undo_edit, read_global_file,
+---   write_global_file, move_path, copy_path, delete_path, create_dir, think,
+---   get_diagnostics, bash, attempt_completion, edit_file, web_search_tavily, fetch,
+---   read_definitions
 ---<
 ---
 ---@brief ]]
@@ -659,6 +662,7 @@ M._tools = {
           name = "scope",
           description = "Scope for the git diff (e.g. specific files or directories)",
           type = "string",
+          optional = true,
         },
       },
       usage = {
@@ -1110,6 +1114,7 @@ You can delete the first file by providing a path of "directory1/a/something.txt
           name = "show_line_numbers",
           description = "Whether to show line numbers in the definitions",
           type = "boolean",
+          optional = true,
           default = false,
         },
       },

@@ -511,6 +511,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field items? AvanteLLMToolParamField
 ---@field choices? string[]
 ---@field optional? boolean
+---@field default? string|integer|boolean|table
 
 ---@class AvanteLLMToolReturn
 ---@field name string

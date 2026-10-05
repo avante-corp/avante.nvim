@@ -1290,15 +1290,18 @@ In case you want to ban some tools to avoid its usage (like Claude 3.7 overusing
 
 ```lua
 {
-  disabled_tools = { "python" },
+  disabled_tools = { "run_python" },
 }
 ```
 
 Tool list
 
-> rag_search, python, git_diff, git_commit, glob, search_keyword, read_file_toplevel_symbols,
-> read_file, create_file, move_path, copy_path, delete_path, create_dir, bash,
-> web_search_tavily
+> dispatch_agent, glob, rag_search, run_python, git_diff, git_commit, ls, grep,
+> delete_tool_use_messages, read_todos, write_todos, read_file_toplevel_symbols,
+> str_replace, view, write_to_file, insert, undo_edit, read_global_file,
+> write_global_file, move_path, copy_path, delete_path, create_dir, think,
+> get_diagnostics, bash, attempt_completion, edit_file, web_search_tavily, fetch,
+> read_definitions
 
 ### Web Search Engines
 
@@ -1502,7 +1505,7 @@ You can also disable specific tools while keeping agentic mode enabled by config
 ```lua
 {
   mode = "agentic",
-  disabled_tools = { "bash", "python" }, -- Disable specific tools
+  disabled_tools = { "bash", "run_python" }, -- Disable specific tools
   -- ... your other configuration options
 }
 ```
