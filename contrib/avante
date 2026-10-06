@@ -1,3 +1,50 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # launches neovim with avante to mimic a typical harness
-nvim -c 'lua vim.defer_fn(function()require("avante.api").zen_mode()end, 100)'
+# Usage: avante [--provider NAME] [--] QUESTION...
+# Unrecognized arguments form the question; -- ends option parsing.
+provider=""
+question=()
+while (( $# )); do
+  case "$1" in
+    --provider)
+      if (( $# < 2 )) || [[ -z $2 || $2 == --* ]]; then
+        printf '%s\n' 'avante: --provider requires a name' >&2
+        exit 2
+      fi
+      provider=$2
+      shift 2
+      ;;
+    --provider=*)
+      provider=${1#*=}
+      if [[ -z $provider ]]; then
+        printf '%s\n' 'avante: --provider requires a name' >&2
+        exit 2
+      fi
+      shift
+      ;;
+    --)
+      shift
+      question+=("$@")
+      break
+      ;;
+    *)
+      question+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# Encode user input so it can be embedded safely in Lua.
+prompt_hex=$(printf '%s' "${question[*]}" | od -An -v -tx1 | tr -d ' \n')
+provider_command=""
+if [[ -n $provider ]]; then
+  # Escape the provider for a single-quoted Lua string literal.
+  provider=${provider//\\/\\\\}
+  provider=${provider//\'/\\\'}
+  provider=${provider//$'\n'/\\n}
+  provider=${provider//$'\r'/\\r}
+  provider_command="api.switch_provider('$provider');"
+fi
+# Switch after startup configuration has loaded, immediately before asking.
+exec nvim \
+  -c "lua vim.defer_fn(function() local api = require('avante.api'); $provider_command local question = ('$prompt_hex'):gsub('..', function(byte) return string.char(tonumber(byte, 16)) end); api.zen_mode({ question = question }) end, 100)"

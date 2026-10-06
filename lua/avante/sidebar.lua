@@ -291,7 +291,7 @@ function Sidebar:open(opts)
   end
 
   local acp_provider = Config.acp_providers[Config.provider]
-  if acp_provider then
+  if acp_provider and (not opts.question or opts.question == "") then
     -- When opening a new chat, drop the previous chat's session id before
     -- preconnecting, otherwise session/load replays the old conversation into
     -- the new chat (new_chat() only runs after open() returns).
@@ -1641,7 +1641,13 @@ function Sidebar:on_mount(opts)
         if Utils.is_valid_container(self.containers.input, true) then
           api.nvim_set_current_win(self.containers.input.winid)
           vim.defer_fn(function()
-            if Config.windows.ask.start_insert then vim.cmd("noautocmd startinsert!") end
+            if
+              Config.windows.ask.start_insert
+              and Utils.is_valid_container(self.containers.input, true)
+              and api.nvim_get_current_win() == self.containers.input.winid
+            then
+              vim.cmd("noautocmd startinsert!")
+            end
           end, 300)
         end
       end
@@ -1760,7 +1766,7 @@ function Sidebar:render_logo()
   local max_width = 30
   --- get editor width
   local editor_width = vim.api.nvim_win_get_width(self.containers.result.winid)
-  local padding = math.floor((editor_width - max_width) / 2)
+  local padding = math.max(0, math.floor((editor_width - max_width) / 2))
   Utils.unlock_buf(self.containers.result.bufnr)
   for i, line in ipairs(logo_lines) do
     --- center logo
@@ -3412,14 +3418,14 @@ function Sidebar:render(opts)
 
   self:setup_colors()
 
+  -- Load history before open() returns and the API submits the initial question.
+  self:update_content_with_history()
   if opts.sidebar_post_render then
     self.post_render = opts.sidebar_post_render
     vim.defer_fn(function()
       opts.sidebar_post_render(self)
-      self:update_content_with_history()
+      self:update_content("")
     end, 100)
-  else
-    self:update_content_with_history()
   end
 
   api.nvim_create_autocmd("User", {

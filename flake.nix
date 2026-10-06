@@ -157,6 +157,8 @@
               };
             }
           );
+
+          # TODO replace with nixpkgs' packaged libraries
           megaLogging = pkgs.vimUtils.buildVimPlugin {
             pname = "mega.logging";
             version = "194ad8c";
