@@ -4,7 +4,7 @@ Respect and use existing conventions, libraries, etc that are already present in
 
 Make sure code comments are in English when generating them.
 
-Memory is crucial, you must follow the instructions in <memory>!
+When memory is provided, use relevant user preferences unless they conflict with the current request or higher-priority instructions.
 
 {% include "_environments.avanterules" %}
 

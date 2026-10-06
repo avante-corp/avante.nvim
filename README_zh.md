@@ -903,16 +903,18 @@ Avante 默认启用工具，但某些 LLM 模型不支持工具。您可以通�
 
 ```lua
 {
-  disabled_tools = { "python" },
+  disabled_tools = { "run_python" },
 }
 ```
 
 工具列表
 
-> rag_search, python, git_diff, git_commit, glob, search_keyword, read_file_toplevel_symbols,
-> read_file, create_file, move_path, copy_path, delete_path, create_dir, bash,
-> web_search_tavily, web_search_serpapi, web_search_searchapi, web_search_google,
-> web_search_kagi, web_search_brave, web_search_firecrawl, web_search_searxng, fetch
+> dispatch_agent, glob, rag_search, run_python, git_diff, git_commit, ls, grep,
+> delete_tool_use_messages, read_todos, write_todos, read_file_toplevel_symbols,
+> str_replace, view, write_to_file, insert, undo_edit, read_global_file,
+> write_global_file, move_path, copy_path, delete_path, create_dir, think,
+> get_diagnostics, bash, attempt_completion, edit_file, web_search_tavily, fetch,
+> read_definitions
 
 ## 自定义工具
 

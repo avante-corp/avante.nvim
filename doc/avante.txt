@@ -469,7 +469,7 @@ avante.Config                                                    *avante.Config*
         {behaviour}                   (avante.Config.Behaviour)        Behaviour and automation options.
         {prompt_logger}               (avante.Config.PromptLogger)     Prompt logging options.
         {windows}                     (table)
-        {disabled_tools}              (string[])                       You can choose to disable tools by their names in case you want to avoid its usage (like Claude 3.7 overusing the python tool). For example: `{ "python" }`
+        {disabled_tools}              (string[])                       You can choose to disable tools by their names in case you want to avoid its usage (like Claude 3.7 overusing the python tool). For example: `{ "run_python" }`
         {custom_tools}                (AvanteSlashCommand[])           see |avante-custom-tools|
         {slash_commands}              (AvanteSlashCommand[])           see |avante-slashcommands|
         {shortcuts}                   (AvanteShortcut[])               see |avante-shortcuts|
@@ -1844,9 +1844,12 @@ You can disable tools like this:
                                                          *avante-tools-builtins*
  Built-in tool names include:
 >
-   rag_search, python, git_diff, git_commit, glob, search_keyword,
-   read_file_toplevel_symbols, read_file, create_file, move_path, copy_path,
-   delete_path, create_dir, bash, web_search_tavily, fetch
+   dispatch_agent, glob, rag_search, run_python, git_diff, git_commit, ls, grep,
+   delete_tool_use_messages, read_todos, write_todos, read_file_toplevel_symbols,
+   str_replace, view, write_to_file, insert, undo_edit, read_global_file,
+   write_global_file, move_path, copy_path, delete_path, create_dir, think,
+   get_diagnostics, bash, attempt_completion, edit_file, web_search_tavily, fetch,
+   read_definitions
 <
 
 

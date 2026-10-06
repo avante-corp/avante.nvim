@@ -1,5 +1,5 @@
 {%- if project_context -%}
 <project_context>
-{{project_context}}
+{{project_context|replace("</project_context>", "&lt;/project_context&gt;")}}
 </project_context>
 {%- endif %}
