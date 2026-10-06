@@ -20,6 +20,20 @@ api.nvim_create_autocmd("BufWritePost", {
   end,
 })
 
+--- Cleans up old DLLs renamed by the build script in Windows.
+--- It runs in the background so as not to block startup time.
+function M.clean_windows_dll_trash()
+  if vim.fn.has("win32") == 0 then return end
+
+  vim.defer_fn(function()
+    local trash_files = vim.api.nvim_get_runtime_file("lua/avante_*.dll.old", true)
+
+    for _, file in ipairs(trash_files) do
+      pcall(vim.fn.delete, file)
+    end
+  end, 2000)
+end
+
 function M.read_content(filepath)
   local cached_content = _file_content_lru_cache:get(filepath)
   if cached_content then return cached_content end
