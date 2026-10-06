@@ -133,6 +133,9 @@ function M.resume(bufnr, session)
   end
   if session.title and session.title ~= "" then history.title = session.title end
   if session.cwd and session.cwd ~= "" then history.acp_session_cwd = session.cwd end
+  -- A list entry is a complete snapshot, including an omitted additional-root list.
+  history.acp_session_info = vim.deepcopy(session)
+  history.acp_session_additional_directories = vim.deepcopy(session.additionalDirectories or {})
   Path.history.save(bufnr, history)
 
   if not sidebar then
@@ -162,7 +165,8 @@ end
 
 ---List the current ACP provider's sessions for this project and resume the selected one
 function M.open()
-  local acp_provider = Config.acp_providers[Config.provider]
+  local provider = Config.provider
+  local acp_provider = Config.acp_providers[provider]
   if not acp_provider then
     Utils.warn("The current provider is not an ACP provider")
     return
@@ -175,15 +179,16 @@ function M.open()
 
   with_client(sidebar, acp_provider, function(client, release)
     local capabilities = client.agent_capabilities
-    if not (capabilities and capabilities.loadSession == true and client:supports_list_sessions()) then
+    if not client:supports_list_sessions() then
       release()
-      Utils.warn(Config.provider .. " does not support listing and resuming sessions")
+      Utils.warn(provider .. " does not support listing sessions")
       return
     end
 
     client:list_all_sessions(cwd, function(sessions, err)
       release()
       vim.schedule(function()
+        if Config.provider ~= provider then return end
         if err and #sessions == 0 then
           Utils.error("Failed to list sessions: " .. (err.message or tostring(err)))
           return
@@ -192,7 +197,7 @@ function M.open()
           Utils.warn("Showing the first " .. #sessions .. " sessions: " .. (err.message or tostring(err)))
         end
         if #sessions == 0 then
-          Utils.info("No " .. Config.provider .. " sessions found for this project")
+          Utils.info("No " .. provider .. " sessions found for this project")
           return
         end
 
@@ -220,10 +225,15 @@ function M.open()
         Selector:new({
           provider = Config.selector.provider,
           provider_opts = Config.selector.provider_opts,
-          title = Config.provider .. " sessions (* = already in avante history)",
+          title = provider .. " sessions (* = already in avante history)",
           items = items,
           on_select = function(item_ids)
             if not item_ids or #item_ids == 0 then return end
+            if Config.provider ~= provider then return end
+            if not capabilities or capabilities.loadSession ~= true then
+              Utils.warn(provider .. " does not support importing session history")
+              return
+            end
             local session = by_id[item_ids[1]]
             if session then M.resume(bufnr, session) end
           end,

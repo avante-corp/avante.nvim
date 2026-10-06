@@ -2426,6 +2426,27 @@ function Sidebar:stop_acp_client()
   if client then pcall(client.stop, client) end
 end
 
+---Apply a metadata patch to its owning chat, including updates replayed during session/load.
+---@param chat_history avante.ChatHistory
+---@param session_id string
+---@param update avante.acp.SessionInfoUpdate
+function Sidebar:update_acp_session_info(chat_history, session_id, update)
+  if chat_history.acp_session_id ~= session_id then return end
+  local info = chat_history.acp_session_info
+    or { sessionId = session_id, cwd = chat_history.acp_session_cwd or Utils.root.get({ buf = self.code.bufnr }) }
+  -- Omitted fields are unchanged; JSON null explicitly clears title/updatedAt.
+  for _, field in ipairs({ "title", "updatedAt" }) do
+    if update[field] ~= nil then
+      info[field] = update[field]
+      if info[field] == vim.NIL then info[field] = nil end
+    end
+  end
+  if update._meta ~= nil and update._meta ~= vim.NIL then info._meta = update._meta end
+  chat_history.acp_session_info = info
+  if update.title ~= nil then chat_history.title = info.title or "untitled" end
+  Path.history.save(self.code.bufnr, chat_history)
+end
+
 ---Show the latest chat history and reconnect the ACP agent for it
 function Sidebar:switch_to_history_and_reconnect()
   self.current_state = nil
@@ -3101,6 +3122,11 @@ function Sidebar:handle_submit(request)
       end,
       acp_session_id = chat_history.acp_session_id,
       acp_session_cwd = chat_history.acp_session_cwd,
+      acp_session_additional_directories = chat_history.acp_session_additional_directories,
+      on_acp_session_info_update = function(session_id, update)
+        if self.acp_client_generation ~= acp_client_generation then return end
+        self:update_acp_session_info(chat_history, session_id, update)
+      end,
       on_save_acp_session_id = function(session_id)
         chat_history.acp_session_id = session_id
         Path.history.save(self.code.bufnr, chat_history)

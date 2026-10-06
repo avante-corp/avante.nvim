@@ -39,6 +39,38 @@ local Config = require("avante.config")
 local Utils = require("avante.utils")
 local Log = require("avante.utils.log")
 
+---@param value any
+---@return any
+local function without_json_null(value)
+  if value == vim.NIL then return nil end
+  return value
+end
+
+---@param value any
+---@return boolean
+local function is_json_object(value) return type(value) == "table" and not vim.islist(value) end
+
+---@param info table
+---@return string|nil
+local function normalize_session_metadata(info)
+  local invalid = {}
+  for _, field in ipairs({ "title", "updatedAt" }) do
+    local value = info[field]
+    -- ACP's schema defines updatedAt as string|null, without a narrower date-time format.
+    if value ~= nil and value ~= vim.NIL and type(value) ~= "string" then
+      info[field] = nil
+      table.insert(invalid, field)
+    end
+  end
+  if info._meta == vim.NIL then
+    info._meta = nil
+  elseif info._meta ~= nil and not is_json_object(info._meta) then
+    info._meta = nil
+    table.insert(invalid, "_meta")
+  end
+  return #invalid > 0 and table.concat(invalid, ", ") or nil
+end
+
 ---@class avante.acp.ClientCapabilities
 ---@field fs avante.acp.FileSystemCapability
 ---@field terminal boolean
@@ -59,6 +91,7 @@ local Log = require("avante.utils.log")
 
 ---@class avante.acp.SessionCapabilities
 ---@field list? avante.acp.SessionListCapability
+---@field delete? avante.acp.SessionCapability
 ---@field resume? avante.acp.SessionCapability
 ---@field close? avante.acp.SessionCapability
 ---@field additionalDirectories? avante.acp.SessionCapability
@@ -72,10 +105,13 @@ local Log = require("avante.utils.log")
 ---@field cwd string
 ---@field title? string
 ---@field updatedAt? string ISO 8601 timestamp
+---@field additionalDirectories? string[] Complete ordered additional workspace roots
+---@field _meta? table<string, any>
 
 ---@class avante.acp.ListSessionsResult
 ---@field sessions avante.acp.SessionInfo[]
 ---@field nextCursor? string
+---@field _meta? table<string, any>
 
 ---@class avante.acp.LoadSessionOpts
 ---@field on_replay? fun(update: table): boolean Receives updates replayed while the load is in flight; return true to consume one instead of passing it to the session update handler
@@ -221,7 +257,7 @@ local Log = require("avante.utils.log")
 ---@field input? table<string, any>
 
 ---@class avante.acp.BaseSessionUpdate
----@field sessionUpdate "user_message_chunk" | "agent_message_chunk" | "agent_thought_chunk" | "tool_call" | "tool_call_update" | "plan" | "available_commands_update" | "config_option_update" | "current_mode_update"
+---@field sessionUpdate "user_message_chunk" | "agent_message_chunk" | "agent_thought_chunk" | "tool_call" | "tool_call_update" | "plan" | "available_commands_update" | "config_option_update" | "current_mode_update" | "session_info_update"
 ---@field _replayed? boolean Set by ACPClient when the update was replayed during a session/load request
 
 ---@class avante.acp.UserMessageChunk : avante.acp.BaseSessionUpdate
@@ -254,6 +290,12 @@ local Log = require("avante.utils.log")
 ---@class avante.acp.AvailableCommandsUpdate : avante.acp.BaseSessionUpdate
 ---@field sessionUpdate "available_commands_update"
 ---@field availableCommands avante.acp.AvailableCommand[]
+
+---@class avante.acp.SessionInfoUpdate : avante.acp.BaseSessionUpdate
+---@field sessionUpdate "session_info_update"
+---@field title? string|vim.NIL
+---@field updatedAt? string|vim.NIL
+---@field _meta? table<string, any>|vim.NIL
 
 ---@class avante.acp.PermissionOption
 ---@field optionId string
@@ -310,7 +352,7 @@ ACPClient.ERROR_CODES = {
 local LOG_SEPARATOR = string.rep("=", 80) .. "\n"
 
 ---@class ACPHandlers
----@field on_session_update? fun(update: avante.acp.UserMessageChunk | avante.acp.AgentMessageChunk | avante.acp.AgentThoughtChunk | avante.acp.ToolCallUpdate | avante.acp.PlanUpdate | avante.acp.AvailableCommandsUpdate)
+---@field on_session_update? fun(update: avante.acp.UserMessageChunk | avante.acp.AgentMessageChunk | avante.acp.AgentThoughtChunk | avante.acp.ToolCallUpdate | avante.acp.PlanUpdate | avante.acp.AvailableCommandsUpdate | avante.acp.SessionInfoUpdate, session_id: string)
 ---@field on_request_permission? fun(tool_call: table, options: table[], callback: fun(option_id: string | nil)): nil
 ---@field on_read_file? fun(path: string, line: integer | nil, limit: integer | nil, callback: fun(content: string), error_callback: fun(message: string, code: integer|nil)): nil
 ---@field on_write_file? fun(path: string, content: string, callback: fun(error: string|nil)): nil
@@ -698,15 +740,15 @@ end
 ---@param message table
 function ACPClient:_handle_message(message)
   -- Check if this is a notification (has method but no id, or has both method and id for notifications)
-  if message.method and not message.result and not message.error then
+  if message.method and message.result == nil and message.error == nil then
     -- This is a notification
     self:_handle_notification(message.id, message.method, message.params)
-  elseif message.id and (message.result or message.error) then
+  elseif message.id ~= nil and (message.result ~= nil or message.error ~= nil) then
     self:_debug_log("response: " .. vim.inspect(message) .. "\n" .. string.rep("=", 100) .. "\n")
     local callback = self.callbacks[message.id]
     if callback then
-      callback(message.result, message.error)
       self.callbacks[message.id] = nil
+      callback(message.result, message.error)
     end
   else
     -- Unknown message type
@@ -741,14 +783,23 @@ function ACPClient:_handle_session_update(params)
   local session_id = params.sessionId
   local update = params.update
 
-  if not session_id then
-    vim.notify("Received session/update without sessionId", vim.log.levels.WARN)
+  if type(session_id) ~= "string" then
+    vim.notify("Received session/update without a string sessionId", vim.log.levels.WARN)
     return
   end
 
-  if not update then
+  if not is_json_object(update) then
     vim.notify("Received session/update without update data", vim.log.levels.WARN)
     return
+  end
+
+  if update.sessionUpdate == "session_info_update" then
+    local invalid = normalize_session_metadata(update)
+    if invalid then
+      vim.schedule(
+        function() vim.notify("Ignored invalid session_info_update fields: " .. invalid, vim.log.levels.WARN) end
+      )
+    end
   end
 
   if update.sessionUpdate == "config_option_update" and update.configOptions then
@@ -779,7 +830,7 @@ function ACPClient:_handle_session_update(params)
   if replay_handler and replay_handler(update) then return end
 
   if self.config.handlers and self.config.handlers.on_session_update then
-    vim.schedule(function() self.config.handlers.on_session_update(update) end)
+    vim.schedule(function() self.config.handlers.on_session_update(update, session_id) end)
   end
 end
 
@@ -886,6 +937,7 @@ end
 ---@param err avante.acp.ACPError|nil
 function ACPClient:_complete_stop(err)
   if not self.is_stopping then return end
+  local pending = self.callbacks
   self.is_stopping = false
   self.active_session_ids = {}
   self.session_replay_handlers = {}
@@ -894,6 +946,11 @@ function ACPClient:_complete_stop(err)
   self.transport:stop()
   self:_close_debug_log()
   self.reconnect_count = 0
+
+  local request_err = err or self:_create_error(self.ERROR_CODES.INTERNAL_ERROR, "ACP client stopped")
+  for _, callback in pairs(pending) do
+    pcall(callback, nil, request_err)
+  end
 
   local callbacks = self.stop_callbacks
   self.stop_callbacks = {}
@@ -1022,17 +1079,6 @@ function ACPClient:authenticate(method_id, callback)
     methodId = method_id,
   }, function(_result, err) callback(err) end)
 end
-
----@param value any
----@return any
-local function without_json_null(value)
-  if value == vim.NIL then return nil end
-  return value
-end
-
----@param value any
----@return boolean
-local function is_json_object(value) return type(value) == "table" and not vim.islist(value) end
 
 ---@param capability string
 ---@return boolean
@@ -1309,63 +1355,149 @@ function ACPClient:close_session(session_id, callback)
   end)
 end
 
----@param value any
----@return string|nil
-local function string_or_nil(value)
-  if type(value) == "string" then return value end
-  return nil
+---Delete a session from the agent's session history
+---@param session_id string
+---@param callback? fun(result: table|nil, err: avante.acp.ACPError|nil)
+---@param meta? table<string, any>|vim.NIL Request metadata; use vim.empty_dict() for an empty object
+function ACPClient:delete_session(session_id, callback, meta)
+  callback = callback or function() end
+  if self.state ~= "ready" or self.is_stopping then
+    callback(
+      nil,
+      self:_create_error(self.ERROR_CODES.INVALID_REQUEST, "Cannot delete sessions while the client is not ready")
+    )
+    return
+  end
+  if not self:_supports_session_capability("delete") then
+    callback(nil, self:_create_error(self.ERROR_CODES.METHOD_NOT_FOUND, "Agent does not support deleting sessions"))
+    return
+  end
+  if type(session_id) ~= "string" then
+    callback(nil, self:_create_error(self.ERROR_CODES.INVALID_PARAMS, "Session ID must be a string"))
+    return
+  end
+  meta = without_json_null(meta)
+  if meta ~= nil and not is_json_object(meta) then
+    callback(nil, self:_create_error(self.ERROR_CODES.INVALID_PARAMS, "Session delete _meta must be an object"))
+    return
+  end
+
+  local params = { sessionId = session_id }
+  if meta ~= nil then params._meta = meta end
+  self:_send_request("session/delete", params, function(result, err)
+    if err then
+      callback(nil, err)
+      return
+    end
+    if not is_json_object(result) then
+      callback(
+        nil,
+        self:_create_error(self.ERROR_CODES.PROTOCOL_ERROR, "Invalid session/delete response: expected an object")
+      )
+      return
+    end
+    ---@cast result table
+    local response = vim.empty_dict()
+    local response_meta = without_json_null(result._meta)
+    if is_json_object(response_meta) then response._meta = response_meta end
+    callback(response, nil)
+  end)
 end
 
 ---Whether the agent supports session/list
 ---@return boolean
 function ACPClient:supports_list_sessions() return self:_supports_session_capability("list") end
 
----List one page of the agent's sessions for a working directory
----@param cwd string
----@param cursor string|nil
+---List one page of the agent's sessions, optionally filtered by working directory
+---@param cwd string|vim.NIL|nil
+---@param cursor string|vim.NIL|nil
 ---@param callback fun(result: avante.acp.ListSessionsResult|nil, err: avante.acp.ACPError|nil)
-function ACPClient:list_sessions(cwd, cursor, callback)
+---@param meta? table<string, any>|vim.NIL Request metadata; use vim.empty_dict() for an empty object
+function ACPClient:list_sessions(cwd, cursor, callback, meta)
+  if self.state ~= "ready" or self.is_stopping then
+    callback(
+      nil,
+      self:_create_error(self.ERROR_CODES.INVALID_REQUEST, "Cannot list sessions while the client is not ready")
+    )
+    return
+  end
   if not self:supports_list_sessions() then
     callback(nil, self:_create_error(self.ERROR_CODES.METHOD_NOT_FOUND, "Agent does not support listing sessions"))
     return
   end
 
-  local params = { cwd = cwd }
-  if cursor then params.cursor = cursor end
+  cwd = without_json_null(cwd)
+  cursor = without_json_null(cursor)
+  meta = without_json_null(meta)
+  if cwd ~= nil and (type(cwd) ~= "string" or vim.fn.isabsolutepath(cwd) ~= 1) then
+    callback(nil, self:_create_error(self.ERROR_CODES.INVALID_PARAMS, "Session cwd must be an absolute path"))
+    return
+  end
+  if cursor ~= nil and type(cursor) ~= "string" then
+    callback(nil, self:_create_error(self.ERROR_CODES.INVALID_PARAMS, "Session cursor must be a string"))
+    return
+  end
+  if meta ~= nil and not is_json_object(meta) then
+    callback(nil, self:_create_error(self.ERROR_CODES.INVALID_PARAMS, "Session list _meta must be an object"))
+    return
+  end
+
+  local params = vim.empty_dict()
+  params.cwd = cwd
+  params.cursor = cursor
+  params._meta = meta
 
   self:_send_request("session/list", params, function(result, err)
-    if err or not result then
-      callback(
-        nil,
-        err or self:_create_error(self.ERROR_CODES.INTERNAL_ERROR, "Failed to list sessions: missing result")
-      )
+    if err then
+      callback(nil, err)
       return
     end
-
+    if not is_json_object(result) then
+      callback(nil, self:_create_error(self.ERROR_CODES.PROTOCOL_ERROR, "Invalid session/list response"))
+      return
+    end
+    ---@cast result table
+    local supports_additional_directories = self:_supports_session_capability("additionalDirectories")
     local sessions = {}
-    for _, session in ipairs(without_json_null(result.sessions) or {}) do
-      if type(session) == "table" and type(session.sessionId) == "string" then
-        table.insert(sessions, {
-          sessionId = session.sessionId,
-          cwd = string_or_nil(session.cwd) or cwd,
-          title = string_or_nil(session.title),
-          updatedAt = string_or_nil(session.updatedAt),
-        })
+    for _, session in ipairs(vim.islist(result.sessions) and result.sessions or {}) do
+      if
+        is_json_object(session)
+        and type(session.sessionId) == "string"
+        and type(session.cwd) == "string"
+        and vim.fn.isabsolutepath(session.cwd) == 1
+      then
+        local normalized = { sessionId = session.sessionId, cwd = session.cwd }
+        for _, field in ipairs({ "title", "updatedAt" }) do
+          if type(session[field]) == "string" then normalized[field] = session[field] end
+        end
+        if supports_additional_directories and vim.islist(session.additionalDirectories) then
+          normalized.additionalDirectories = {}
+          for _, directory in ipairs(session.additionalDirectories) do
+            if type(directory) == "string" and vim.fn.isabsolutepath(directory) == 1 then
+              table.insert(normalized.additionalDirectories, directory)
+            end
+          end
+        end
+        local session_meta = without_json_null(session._meta)
+        if is_json_object(session_meta) then normalized._meta = session_meta end
+        table.insert(sessions, normalized)
       end
     end
-
-    local next_cursor = without_json_null(result.nextCursor)
-    if type(next_cursor) ~= "string" or next_cursor == "" then next_cursor = nil end
-    callback({ sessions = sessions, nextCursor = next_cursor }, nil)
+    local response = { sessions = sessions }
+    if type(result.nextCursor) == "string" then response.nextCursor = result.nextCursor end
+    local response_meta = without_json_null(result._meta)
+    if is_json_object(response_meta) then response._meta = response_meta end
+    callback(response, nil)
   end)
 end
 
 local MAX_SESSION_LIST_PAGES = 50
 
 ---List all of the agent's sessions for a working directory, following pagination
----@param cwd string
+---@param cwd string|vim.NIL|nil
 ---@param callback fun(sessions: avante.acp.SessionInfo[], err: avante.acp.ACPError|nil)
-function ACPClient:list_all_sessions(cwd, callback)
+---@param meta? table<string, any>|vim.NIL Request metadata sent on every page
+function ACPClient:list_all_sessions(cwd, callback, meta)
   local all_sessions = {}
   local seen_cursors = {}
   local pages = 0
@@ -1385,17 +1517,17 @@ function ACPClient:list_all_sessions(cwd, callback)
         return
       end
       if seen_cursors[next_cursor] or pages >= MAX_SESSION_LIST_PAGES then
-        local reason = seen_cursors[next_cursor] and "the agent repeated a page"
+        local reason = seen_cursors[next_cursor] and "the agent repeated a cursor"
           or ("stopped after " .. MAX_SESSION_LIST_PAGES .. " pages")
         callback(
           all_sessions,
-          self:_create_error(self.ERROR_CODES.INTERNAL_ERROR, "Session list incomplete: " .. reason)
+          self:_create_error(self.ERROR_CODES.PROTOCOL_ERROR, "Session list incomplete: " .. reason)
         )
         return
       end
       seen_cursors[next_cursor] = true
       fetch(next_cursor)
-    end)
+    end, meta)
   end
 
   fetch(nil)

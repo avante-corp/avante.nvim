@@ -65,6 +65,54 @@ describe("Sidebar ACP import", function()
     end)
   end)
 
+  describe("session metadata", function()
+    it("preserves omitted fields, clears nulls, and replaces metadata without merging", function()
+      local chat = {
+        acp_session_id = "s1",
+        acp_session_cwd = "/p",
+        acp_session_additional_directories = { "/extra" },
+        title = "old",
+        acp_session_info = {
+          sessionId = "s1",
+          cwd = "/p",
+          title = "old",
+          updatedAt = "2026-01-01T00:00:00Z",
+          additionalDirectories = { "/extra" },
+          _meta = { old = true },
+        },
+      }
+      local sidebar = fake_sidebar({ chat_history = chat })
+      sidebar:update_acp_session_info(
+        chat,
+        "s1",
+        { sessionUpdate = "session_info_update", title = "new", _meta = { new = true } }
+      )
+      assert.equals("new", chat.title)
+      assert.equals("2026-01-01T00:00:00Z", chat.acp_session_info.updatedAt)
+      assert.same({ new = true }, chat.acp_session_info._meta)
+      sidebar:update_acp_session_info(
+        chat,
+        "s1",
+        { sessionUpdate = "session_info_update", title = vim.NIL, updatedAt = vim.NIL, _meta = vim.NIL }
+      )
+      assert.equals("untitled", chat.title)
+      assert.is_nil(chat.acp_session_info.title)
+      assert.is_nil(chat.acp_session_info.updatedAt)
+      assert.same({ new = true }, chat.acp_session_info._meta)
+      assert.same({ "/extra" }, chat.acp_session_info.additionalDirectories)
+      assert.same({ "/extra" }, chat.acp_session_additional_directories)
+      assert.equals(chat, saved)
+    end)
+
+    it("ignores patches belonging to another session", function()
+      local chat = { acp_session_id = "s1", title = "kept" }
+      local sidebar = fake_sidebar({ chat_history = chat })
+      sidebar:update_acp_session_info(chat, "s2", { sessionUpdate = "session_info_update", title = "other" })
+      assert.equals("kept", chat.title)
+      assert.is_nil(saved)
+    end)
+  end)
+
   describe("finish_acp_import", function()
     it("replaces the chat with the replayed conversation", function()
       local import = { session_id = "s1", filename = "3.json", created = false }

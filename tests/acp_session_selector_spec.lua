@@ -112,6 +112,24 @@ describe("acp_session_selector", function()
       assert.same({ session_id = "s1", filename = "3.json", created = false }, sidebar.pending_acp_import)
     end)
 
+    it("replaces the listed root snapshot instead of retaining earlier roots", function()
+      local linked = {
+        title = "chat",
+        acp_session_id = "s1",
+        filename = "3.json",
+        acp_session_info = {
+          sessionId = "s1",
+          cwd = "/p",
+          additionalDirectories = { "/old" },
+        },
+      }
+      histories = { linked }
+      AcpSessionSelector.resume(1, { sessionId = "s1", cwd = "/p", _meta = { count = 1 } })
+      assert.is_nil(saved.acp_session_info.additionalDirectories)
+      assert.same({}, saved.acp_session_additional_directories)
+      assert.same({ count = 1 }, saved.acp_session_info._meta)
+    end)
+
     it("keeps the chat's title when the session has none", function()
       histories = { { title = "my chat", acp_session_id = "s1", messages = {}, filename = "3.json" } }
 
@@ -180,6 +198,7 @@ describe("acp_session_selector", function()
         return self.agent_capabilities ~= nil and self.agent_capabilities.sessionCapabilities ~= nil
       end
       function client:list_all_sessions(_, callback)
+        if opts.on_list then return opts.on_list(callback) end
         callback(opts.sessions or {}, opts.list_error and { message = opts.list_error } or nil)
       end
       function client:stop() self.stopped = self.stopped + 1 end
@@ -241,7 +260,7 @@ describe("acp_session_selector", function()
       assert.equals(1, fake.stopped)
     end)
 
-    it("warns when the agent can't list or load sessions", function()
+    it("warns when the agent can't list sessions", function()
       open_with({ capabilities = { loadSession = true } })
 
       assert.stub(Utils.warn).was_called(1)
@@ -249,11 +268,46 @@ describe("acp_session_selector", function()
       assert.equals(1, fake.stopped)
     end)
 
+    it("allows discovery without load support and checks import capability only on selection", function()
+      local resume = stub(AcpSessionSelector, "resume")
+      stubs[#stubs + 1] = resume
+      for _, capabilities in ipairs({
+        { sessionCapabilities = { list = vim.empty_dict() } },
+        { sessionCapabilities = { list = vim.empty_dict(), resume = vim.empty_dict() } },
+      }) do
+        open_with({ capabilities = capabilities, sessions = { { sessionId = "a", cwd = "/p" } } })
+        assert.equals(1, #selector_opts.items)
+        selector_opts.on_select({ "a" })
+      end
+      assert.stub(Utils.warn).was_called(2)
+      assert.stub(resume).was_not_called()
+    end)
+
     it("says so when there are no sessions", function()
       open_with({ capabilities = LISTING, sessions = {} })
 
       assert.stub(Utils.info).was_called(1)
       assert.is_nil(selector_opts)
+    end)
+
+    it("ignores results after the provider changes", function()
+      local respond
+      open_with({
+        capabilities = LISTING,
+        on_list = function(callback) respond = callback end,
+      })
+      Config.provider = "other"
+      respond({ { sessionId = "a", cwd = "/p" } })
+      assert.is_nil(selector_opts)
+    end)
+
+    it("ignores a selection after the provider changes", function()
+      local resume = stub(AcpSessionSelector, "resume")
+      stubs[#stubs + 1] = resume
+      open_with({ capabilities = LISTING, sessions = { { sessionId = "a", cwd = "/p" } } })
+      Config.provider = "other"
+      selector_opts.on_select({ "a" })
+      assert.stub(resume).was_not_called()
     end)
 
     it("lists sessions newest first, marks linked ones and stops the temporary client", function()
@@ -284,7 +338,7 @@ describe("acp_session_selector", function()
       open_with({
         capabilities = LISTING,
         sessions = { { sessionId = "a", cwd = "/p", title = "A" } },
-        list_error = "Session list incomplete: stopped after 50 pages",
+        list_error = "Session list incomplete: the agent repeated a cursor",
       })
 
       assert.stub(Utils.warn).was_called(1)

@@ -383,6 +383,14 @@ describe("ACPClient sessions", function()
       assert.is_true(client.stop_requested)
       assert.same({}, client.active_session_ids)
     end)
+
+    it("fails pending requests when stopped", function()
+      local client = new_client(LIST_CAPABILITIES)
+      local list_err
+      client:list_sessions(nil, nil, function(_, err) list_err = err end)
+      client:stop()
+      assert.equals(ACPClient.ERROR_CODES.INTERNAL_ERROR, list_err.code)
+    end)
   end)
 
   describe("supports_list_sessions", function()
@@ -400,60 +408,176 @@ describe("ACPClient sessions", function()
     end)
   end)
 
+  describe("delete_session", function()
+    local DELETE_CAPABILITIES = { sessionCapabilities = { delete = vim.empty_dict() } }
+
+    it("sends session/delete and preserves opaque request and response metadata", function()
+      local response = { _meta = { vendor = { deleted = true } }, vendorExtension = "ignored" }
+      local client, requests = new_client(DELETE_CAPABILITIES, function(request, c) reply(c, request.id, response) end)
+      local result, err
+
+      client:delete_session("existing", function(res, e)
+        result, err = res, e
+      end, { vendor = "request" })
+
+      assert.is_nil(err)
+      assert.same({ _meta = response._meta }, result)
+      assert.equals("session/delete", requests[1].method)
+      assert.same({ sessionId = "existing", _meta = { vendor = "request" } }, requests[1].params)
+    end)
+
+    it("accepts an empty result and nullable metadata", function()
+      local client, requests = new_client(
+        DELETE_CAPABILITIES,
+        function(request, c) reply(c, request.id, vim.json.decode('{"_meta":null}')) end
+      )
+      local result, err
+
+      client:delete_session("", function(res, e)
+        result, err = res, e
+      end, vim.NIL)
+
+      assert.is_nil(err)
+      assert.same({}, result)
+      assert.same({ sessionId = "" }, requests[1].params)
+    end)
+
+    it("rejects unsupported, unready, stopping, or malformed requests without sending", function()
+      local cases = {
+        { capabilities = {}, code = ACPClient.ERROR_CODES.METHOD_NOT_FOUND },
+        {
+          capabilities = { sessionCapabilities = { delete = vim.NIL } },
+          code = ACPClient.ERROR_CODES.METHOD_NOT_FOUND,
+        },
+        { capabilities = { sessionCapabilities = { delete = {} } }, code = ACPClient.ERROR_CODES.METHOD_NOT_FOUND },
+        { state = "connected", code = ACPClient.ERROR_CODES.INVALID_REQUEST },
+        { stopping = true, code = ACPClient.ERROR_CODES.INVALID_REQUEST },
+        { session_id = 42, code = ACPClient.ERROR_CODES.INVALID_PARAMS },
+        { meta = {}, code = ACPClient.ERROR_CODES.INVALID_PARAMS },
+        { meta = "invalid", code = ACPClient.ERROR_CODES.INVALID_PARAMS },
+      }
+
+      for _, case in ipairs(cases) do
+        local client, requests = new_client(case.capabilities or DELETE_CAPABILITIES)
+        client.state = case.state or "ready"
+        client.is_stopping = case.stopping or false
+        local err
+        client:delete_session(case.session_id or "existing", function(_, e) err = e end, case.meta)
+        assert.equals(case.code, err.code)
+        assert.equals(0, #requests)
+      end
+    end)
+
+    it("rejects non-object success responses", function()
+      local responses = { {}, vim.NIL }
+      for _, response in ipairs(responses) do
+        local client = new_client(DELETE_CAPABILITIES, function(request, c) reply(c, request.id, response) end)
+        local result, err
+        client:delete_session("existing", function(res, e)
+          result, err = res, e
+        end)
+        assert.is_nil(result)
+        assert.equals(ACPClient.ERROR_CODES.PROTOCOL_ERROR, err.code)
+      end
+    end)
+
+    it("ignores malformed optional metadata after a successful deletion", function()
+      local client = new_client(
+        DELETE_CAPABILITIES,
+        function(request, c) reply(c, request.id, vim.json.decode('{"_meta":"invalid"}')) end
+      )
+      local result, err
+      client:delete_session("existing", function(res, e)
+        result, err = res, e
+      end)
+      assert.is_nil(err)
+      assert.same({}, result)
+    end)
+  end)
+
   describe("list_sessions", function()
-    it("sends session/list with the cwd, and the cursor only when given", function()
+    it("sends only provided filters and metadata", function()
       local client, requests = new_client(
         LIST_CAPABILITIES,
         function(request, c) reply(c, request.id, { sessions = {} }) end
       )
 
-      client:list_sessions("/project", nil, function() end)
-      client:list_sessions("/project", "page-2", function() end)
+      client:list_sessions(nil, nil, function() end)
+      client:list_sessions("/project", "page-2", function() end, { vendor = "filter" })
 
       assert.equals("session/list", requests[1].method)
-      assert.same({ cwd = "/project" }, requests[1].params)
-      assert.same({ cwd = "/project", cursor = "page-2" }, requests[2].params)
+      assert.equals("{}", vim.json.encode(requests[1].params))
+      assert.same({ cwd = "/project", cursor = "page-2", _meta = { vendor = "filter" } }, requests[2].params)
     end)
 
-    it("normalizes JSON nulls and drops sessions without an id", function()
-      local client = new_client(
-        LIST_CAPABILITIES,
-        function(request, c)
-          reply(c, request.id, {
-            sessions = {
-              { sessionId = "a", cwd = "/project", title = vim.NIL, updatedAt = "2026-09-24T23:37:10Z" },
-              { sessionId = "b", cwd = vim.NIL },
-              { cwd = "/project", title = "no id" },
-              { sessionId = "c", cwd = 42, title = { "not a string" }, updatedAt = 7 },
-            },
-            nextCursor = vim.NIL,
-          })
-        end
-      )
+    it("keeps protocol fields and normalizes optional session fields", function()
+      local response = vim.json.decode([=[{
+        "sessions": [
+          {
+            "sessionId":"a","cwd":"/p","title":null,"updatedAt":null,
+            "additionalDirectories":["/shared",42,"relative"],
+            "_meta":false,"vendor/session":true
+          },
+          {"sessionId":"relative","cwd":"relative"}
+        ],
+        "nextCursor": null, "_meta": {"vendor/page":{"count":1}}, "vendor/extension": [1,2]
+      }]=])
+      local capabilities = {
+        sessionCapabilities = { list = vim.empty_dict(), additionalDirectories = vim.empty_dict() },
+      }
+      local client = new_client(capabilities, function(request, c) reply(c, request.id, response) end)
+      client:list_sessions(nil, nil, function(result, err)
+        assert.is_nil(err)
+        assert.same({
+          sessions = { { sessionId = "a", cwd = "/p", additionalDirectories = { "/shared" } } },
+          _meta = { ["vendor/page"] = { count = 1 } },
+        }, result)
+      end)
+    end)
 
-      local result
-      client:list_sessions("/project", nil, function(res) result = res end)
-
-      assert.same({
+    it("skips malformed session entries", function()
+      local response = {
         sessions = {
-          { sessionId = "a", cwd = "/project", updatedAt = "2026-09-24T23:37:10Z" },
-          { sessionId = "b", cwd = "/project" },
-          { sessionId = "c", cwd = "/project" },
+          false,
+          { cwd = "/p" },
+          { sessionId = "a", cwd = false },
+          { sessionId = "b", cwd = "/p", title = {}, updatedAt = 42, additionalDirectories = { "/ignored" } },
         },
-      }, result)
+        _meta = "invalid",
+      }
+      local client = new_client(LIST_CAPABILITIES, function(request, c) reply(c, request.id, response) end)
+      client:list_sessions(nil, nil, function(result, err)
+        assert.is_nil(err)
+        assert.same({ { sessionId = "b", cwd = "/p" } }, result.sessions)
+      end)
     end)
 
-    it("returns an error without sending when listing is unsupported", function()
-      local client, requests = new_client({ loadSession = true })
+    it("rejects unsupported, unready, or malformed requests without sending", function()
+      local cases = {
+        { capabilities = {}, code = ACPClient.ERROR_CODES.METHOD_NOT_FOUND },
+        { state = "disconnected", code = ACPClient.ERROR_CODES.INVALID_REQUEST },
+        { cwd = "relative", code = ACPClient.ERROR_CODES.INVALID_PARAMS },
+        { cursor = false, code = ACPClient.ERROR_CODES.INVALID_PARAMS },
+        { meta = {}, code = ACPClient.ERROR_CODES.INVALID_PARAMS },
+      }
+      for _, case in ipairs(cases) do
+        local client, requests = new_client(case.capabilities or LIST_CAPABILITIES)
+        client.state = case.state or "ready"
+        local err
+        client:list_sessions(case.cwd, case.cursor, function(_, e) err = e end, case.meta)
+        assert.equals(case.code, err.code)
+        assert.equals(0, #requests)
+      end
+    end)
 
+    it("rejects a non-object response", function()
+      local client = new_client(LIST_CAPABILITIES, function(request, c) reply(c, request.id, vim.NIL) end)
       local result, err
-      client:list_sessions("/project", nil, function(res, e)
+      client:list_sessions(nil, nil, function(res, e)
         result, err = res, e
       end)
-
       assert.is_nil(result)
-      assert.is_not_nil(err)
-      assert.equals(0, #requests)
+      assert.equals(ACPClient.ERROR_CODES.PROTOCOL_ERROR, err.code)
     end)
   end)
 
@@ -471,6 +595,7 @@ describe("ACPClient sessions", function()
       client:list_all_sessions("/p", function(s, e)
         sessions, err = s, e
       end)
+      flush()
 
       assert.is_nil(err)
       assert.same({ "a", "b" }, vim.tbl_map(function(s) return s.sessionId end, sessions))
@@ -478,37 +603,21 @@ describe("ACPClient sessions", function()
       assert.equals("page-2", requests[2].params.cursor)
     end)
 
-    it("stops when the agent repeats a cursor", function()
-      local client, requests = new_client(
-        LIST_CAPABILITIES,
-        function(request, c) reply(c, request.id, { sessions = {}, nextCursor = "same" }) end
-      )
-
-      local done, err = false, nil
-      client:list_all_sessions("/p", function(_, e)
-        done, err = true, e
-      end)
-
-      assert.is_true(done)
-      assert.equals(2, #requests)
-      assert.truthy(err.message:find("incomplete", 1, true))
-    end)
-
-    it("stops after a page limit when cursors never end", function()
-      local page = 0
+    it("passes an empty opaque cursor unchanged", function()
       local client, requests = new_client(LIST_CAPABILITIES, function(request, c)
-        page = page + 1
-        reply(c, request.id, { sessions = {}, nextCursor = "page-" .. page })
+        if request.params.cursor == nil then
+          reply(c, request.id, { sessions = {}, nextCursor = "" })
+        else
+          reply(c, request.id, { sessions = { { sessionId = "a", cwd = "/p" } } })
+        end
       end)
-
-      local done, err = false, nil
-      client:list_all_sessions("/p", function(_, e)
-        done, err = true, e
+      client:list_all_sessions(nil, function(sessions, err)
+        assert.is_nil(err)
+        assert.equals(1, #sessions)
       end)
-
-      assert.is_true(done)
-      assert.equals(50, #requests)
-      assert.truthy(err.message:find("50 pages", 1, true))
+      flush()
+      assert.equals(2, #requests)
+      assert.equals("", requests[2].params.cursor)
     end)
 
     it("returns the sessions collected so far with a later page's error", function()
@@ -524,10 +633,97 @@ describe("ACPClient sessions", function()
       client:list_all_sessions("/p", function(s, e)
         sessions, err = s, e
       end)
+      flush()
 
       assert.equals(1, #sessions)
       assert.equals("boom", err.message)
     end)
+
+    it("detects a multi-page cursor cycle without parsing the tokens", function()
+      local tokens = { "opaque/+==", "", "opaque/+==" }
+      local page = 0
+      local client, requests = new_client(LIST_CAPABILITIES, function(request, c)
+        page = page + 1
+        reply(c, request.id, { sessions = {}, nextCursor = tokens[page] })
+      end)
+      local calls = 0
+      client:list_all_sessions(nil, function(_, err)
+        calls = calls + 1
+        assert.equals(ACPClient.ERROR_CODES.PROTOCOL_ERROR, err.code)
+      end)
+      flush()
+      assert.equals(1, calls)
+      assert.equals(3, #requests)
+      assert.equals("opaque/+==", requests[2].params.cursor)
+      assert.equals("", requests[3].params.cursor)
+    end)
+
+    it("stops after 50 pages when opaque cursors never end", function()
+      local page = 0
+      local client, requests = new_client(LIST_CAPABILITIES, function(request, c)
+        page = page + 1
+        reply(c, request.id, { sessions = {}, nextCursor = page < 51 and ("page-" .. page) or nil })
+      end)
+      local err
+      client:list_all_sessions(nil, function(_, e) err = e end)
+      assert.equals(50, #requests)
+      assert.equals(ACPClient.ERROR_CODES.PROTOCOL_ERROR, err.code)
+    end)
+  end)
+
+  it("drops malformed metadata fields while delivering the valid patch", function()
+    local client = new_client(LIST_CAPABILITIES)
+    local warning = stub(vim, "notify")
+    finally(function() warning:revert() end)
+    notify(client, "s1", {
+      sessionUpdate = "session_info_update",
+      title = "kept",
+      updatedAt = false,
+      _meta = "invalid",
+    })
+    flush()
+    assert.same({ { sessionUpdate = "session_info_update", title = "kept" } }, handled)
+    assert.stub(warning).was_called(1)
+  end)
+
+  it("preserves explicit nulls and opaque metadata in valid notifications", function()
+    local client = new_client(LIST_CAPABILITIES)
+    local update = vim.json.decode([=[{
+      "sessionUpdate":"session_info_update","title":null,"updatedAt":null,
+      "_meta":{"vendor/data":[null,{},[]]}
+    }]=])
+    notify(client, "s1", update)
+    flush()
+    assert.same({ update }, handled)
+  end)
+
+  it("treats null update metadata as omitted", function()
+    local client = new_client(LIST_CAPABILITIES)
+    notify(client, "s1", vim.json.decode('{"sessionUpdate":"session_info_update","_meta":null}'))
+    flush()
+    assert.same({ { sessionUpdate = "session_info_update" } }, handled)
+  end)
+
+  it("delivers metadata patches with their session ID, including during replay", function()
+    local client = new_client(LIST_CAPABILITIES)
+    local received = {}
+    client.config.handlers.on_session_update = function(update, id)
+      table.insert(received, { id = id, update = update })
+    end
+    client.is_loading_session = true
+    notify(client, "other", { sessionUpdate = "session_info_update", title = vim.NIL, _meta = { count = 1 } })
+    flush()
+    assert.same({
+      {
+        id = "other",
+        update = {
+          sessionUpdate = "session_info_update",
+          title = vim.NIL,
+          _meta = { count = 1 },
+          _replayed = true,
+        },
+      },
+    }, received)
   end)
 
   describe("load_session replay", function()

@@ -117,6 +117,18 @@ describe("llm._load_acp_session_and_continue", function()
     assert.same(mcp_servers, client.loads[1].mcp_servers)
   end)
 
+  it("passes listed roots verbatim, including an empty list, to session/load", function()
+    for _, directories in ipairs({ {}, { "/z", "/a" } }) do
+      local client = fake_client({})
+      llm._load_acp_session_and_continue(
+        { just_connect_acp_client = true, acp_session_additional_directories = directories },
+        client,
+        "s1"
+      )
+      assert.same(directories, client.loads[1].opts.additional_directories)
+    end
+  end)
+
   it("continues the stream after loading when this is not just a preconnect", function()
     local client = fake_client({})
     local opts = { on_acp_session_replay = function() end }

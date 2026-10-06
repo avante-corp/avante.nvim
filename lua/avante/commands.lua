@@ -23,8 +23,8 @@
 --- :Avante acp sessions
 ---         List the current ACP agent's sessions for this project, including
 ---         ones started outside avante (e.g. in the agent's CLI), and resume
----         the selected one in the sidebar. Requires an ACP provider that
----         supports `session/list` and `session/load`.
+---         the selected one in the sidebar. Listing requires `session/list`;
+---         importing the selected session's history also requires `session/load`.
 ---
 ---         Use :Avante --help, :Avante rag --help or :Avante acp --help for
 ---         generated help.

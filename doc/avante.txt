@@ -726,8 +726,8 @@ Commands (:AvanteAsk,...)                                      *avante-commands*
  :Avante acp sessions
          List the current ACP agent's sessions for this project, including
          ones started outside avante (e.g. in the agent's CLI), and resume
-         the selected one in the sidebar. Requires an ACP provider that
-         supports `session/list` and `session/load`.
+         the selected one in the sidebar. Listing requires `session/list`;
+         importing the selected session's history also requires `session/load`.
 
          Use :Avante --help, :Avante rag --help or :Avante acp --help for
          generated help.
@@ -1285,6 +1285,16 @@ Sidebar:new_chat()                                     *avante-sidebar:new_chat*
 Sidebar:stop_acp_client()                       *avante-sidebar:stop_acp_client*
     Stop the ACP client so the next request starts a fresh agent process.
     A connection still in flight is discarded when it completes.
+
+
+                                        *avante-sidebar:update_acp_session_info*
+Sidebar:update_acp_session_info({chat_history}, {session_id}, {update})
+    Apply a metadata patch to its owning chat, including updates replayed during session/load.
+
+    Parameters: ~
+        {chat_history}  (avante.ChatHistory)
+        {session_id}    (string)
+        {update}        (avante.acp.SessionInfoUpdate)
 
 
                                 *avante-sidebar:switch_to_history_and_reconnect*
@@ -2867,6 +2877,7 @@ avante.acp.SessionCapabilities                  *avante.acp.SessionCapabilities*
 
     Fields: ~
         {list?}                   (avante.acp.SessionListCapability)
+        {delete?}                 (avante.acp.SessionCapability)
         {resume?}                 (avante.acp.SessionCapability)
         {close?}                  (avante.acp.SessionCapability)
         {additionalDirectories?}  (avante.acp.SessionCapability)
@@ -2882,10 +2893,12 @@ avante.acp.McpCapabilities                          *avante.acp.McpCapabilities*
 avante.acp.SessionInfo                                  *avante.acp.SessionInfo*
 
     Fields: ~
-        {sessionId}   (string)
-        {cwd}         (string)
-        {title?}      (string)
-        {updatedAt?}  (string)  ISO 8601 timestamp
+        {sessionId}               (string)
+        {cwd}                     (string)
+        {title?}                  (string)
+        {updatedAt?}              (string)             ISO 8601 timestamp
+        {additionalDirectories?}  (string[])           Complete ordered additional workspace roots
+        {_meta?}                  (table<string,any>)
 
 
 avante.acp.ListSessionsResult                    *avante.acp.ListSessionsResult*
@@ -2893,6 +2906,7 @@ avante.acp.ListSessionsResult                    *avante.acp.ListSessionsResult*
     Fields: ~
         {sessions}     (avante.acp.SessionInfo[])
         {nextCursor?}  (string)
+        {_meta?}       (table<string,any>)
 
 
 avante.acp.LoadSessionOpts                          *avante.acp.LoadSessionOpts*
@@ -3164,6 +3178,13 @@ avante.acp.AvailableCommandsUpdate : avante.acp.BaseSessionUpdate
         {sessionUpdate}  ()
 
 
+                                                  *avante.acp.SessionInfoUpdate*
+avante.acp.SessionInfoUpdate : avante.acp.BaseSessionUpdate
+
+    Fields: ~
+        {sessionUpdate}  ()
+
+
 avante.acp.PermissionOption                        *avante.acp.PermissionOption*
 
     Fields: ~
@@ -3219,7 +3240,7 @@ avante.acp.ACPClient                                      *avante.acp.ACPClient*
 ACPHandlers                                                        *ACPHandlers*
 
     Fields: ~
-        {on_session_update?}      (fun(update:avante.acp.UserMessageChunk|avante.acp.AgentMessageChunk|avante.acp.AgentThoughtChunk|avante.acp.ToolCallUpdate|avante.acp.PlanUpdate|avante.acp.AvailableCommandsUpdate))
+        {on_session_update?}      (fun(update:avante.acp.UserMessageChunk|avante.acp.AgentMessageChunk|avante.acp.AgentThoughtChunk|avante.acp.ToolCallUpdate|avante.acp.PlanUpdate|avante.acp.AvailableCommandsUpdate|avante.acp.SessionInfoUpdate,session_id:string))
         {on_request_permission?}  (fun(tool_call:table,options:table[],callback:fun(option_id:string|nil)):nil)
         {on_read_file?}           (fun(path:string,line:integer|nil,limit:integer|nil,callback:fun(content:string),error_callback:fun(message:string,code:integer|nil)):nil)
         {on_write_file?}          (fun(path:string,content:string,callback:fun(error:string|nil)):nil)
@@ -3458,6 +3479,16 @@ ACPClient:close_session({session_id}, {callback?})    *avante-acp:close_session*
         {callback?}   (fun(err:avante.acp.ACPError|nil))
 
 
+                                                     *avante-acp:delete_session*
+ACPClient:delete_session({session_id}, {callback?}, {meta?})
+    Delete a session from the agent's session history
+
+    Parameters: ~
+        {session_id}  (string)
+        {callback?}   (fun(result:table|nil,err:avante.acp.ACPError|nil))
+        {meta?}       (table<string,any>|vim.NIL)                          Request metadata; use vim.empty_dict() for an empty object
+
+
 ACPClient:supports_list_sessions()           *avante-acp:supports_list_sessions*
     Whether the agent supports session/list
 
@@ -3465,21 +3496,25 @@ ACPClient:supports_list_sessions()           *avante-acp:supports_list_sessions*
         (boolean)
 
 
-ACPClient:list_sessions({cwd}, {cursor}, {callback})  *avante-acp:list_sessions*
-    List one page of the agent's sessions for a working directory
+                                                      *avante-acp:list_sessions*
+ACPClient:list_sessions({cwd}, {cursor}, {callback}, {meta?})
+    List one page of the agent's sessions, optionally filtered by working directory
 
     Parameters: ~
-        {cwd}       (string)
-        {cursor}    (string|nil)
+        {cwd}       (string|vim.NIL|nil)
+        {cursor}    (string|vim.NIL|nil)
         {callback}  (fun(result:avante.acp.ListSessionsResult|nil,err:avante.acp.ACPError|nil))
+        {meta?}     (table<string,any>|vim.NIL)                                                  Request metadata; use vim.empty_dict() for an empty object
 
 
-ACPClient:list_all_sessions({cwd}, {callback})    *avante-acp:list_all_sessions*
+                                                  *avante-acp:list_all_sessions*
+ACPClient:list_all_sessions({cwd}, {callback}, {meta?})
     List all of the agent's sessions for a working directory, following pagination
 
     Parameters: ~
-        {cwd}       (string)
+        {cwd}       (string|vim.NIL|nil)
         {callback}  (fun(sessions:avante.acp.SessionInfo[],err:avante.acp.ACPError|nil))
+        {meta?}     (table<string,any>|vim.NIL)                                           Request metadata sent on every page
 
 
                                                   *avante-acp:set_config_option*

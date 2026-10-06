@@ -448,6 +448,8 @@ vim.g.avante_login = vim.g.avante_login
 ---@field just_connect_acp_client? boolean
 ---@field acp_session_id? string
 ---@field acp_session_cwd? string Directory the ACP session belongs to; defaults to the project root
+---@field acp_session_additional_directories? string[] Roots from a listed session; an empty list overrides provider defaults
+---@field on_acp_session_info_update? fun(session_id: string, update: avante.acp.SessionInfoUpdate): nil
 ---@field on_save_acp_session_id? fun(session_id: string): nil
 ---@field on_acp_session_replay? fun(session_id: string, messages: avante.HistoryMessage[]): nil Set to receive the conversation an agent replays on session/load; a failed load then calls on_acp_session_load_error instead of starting a new session
 ---@field on_acp_session_load_error? fun(session_id: string, err: avante.acp.ACPError): nil
@@ -542,6 +544,8 @@ vim.g.avante_login = vim.g.avante_login
 ---@field tokens_usage avante.LLMTokenUsage | nil
 ---@field acp_session_id string | nil
 ---@field acp_session_cwd string | nil Directory of an imported ACP session, used to load it
+---@field acp_session_info? avante.acp.SessionInfo Metadata reported by the ACP agent
+---@field acp_session_additional_directories? string[] Complete roots snapshot from session/list
 ---
 ---@class avante.ChatMemory
 ---@field content string

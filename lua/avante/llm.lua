@@ -1013,7 +1013,11 @@ function M._stream_acp(opts)
     local acp_config = vim.tbl_deep_extend("force", acp_provider, {
       ---@type ACPHandlers
       handlers = {
-        on_session_update = function(update)
+        on_session_update = function(update, updated_session_id)
+          if update.sessionUpdate == "session_info_update" then
+            if opts.on_acp_session_info_update then opts.on_acp_session_info_update(updated_session_id, update) end
+            return
+          end
           -- Replayed updates from session/load duplicate content already in
           -- the chat history; rendering them would re-append old messages and
           -- navigate the editor to files edited in the loaded session.
@@ -1448,6 +1452,11 @@ function M._load_acp_session_and_continue(opts, acp_client, session_id)
         return true
       end,
     }
+  end
+
+  if opts.acp_session_additional_directories ~= nil then
+    load_opts = load_opts or {}
+    load_opts.additional_directories = opts.acp_session_additional_directories
   end
 
   acp_client:load_session(session_id, project_root, mcp_servers, function(_, err)
