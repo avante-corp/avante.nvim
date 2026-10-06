@@ -708,6 +708,10 @@ Commands (:AvanteAsk,...)                                      *avante-commands*
  Commands
 
                                                      *:Avante*
+ :Avante chat [args]
+         Start a chat session. Equivalent to :AvanteChat.
+ :Avante chat new [args]
+         Start a new chat session. Equivalent to :AvanteChatNew.
  :Avante rag start
          Start the configured RAG service and index the current project.
  :Avante rag stop

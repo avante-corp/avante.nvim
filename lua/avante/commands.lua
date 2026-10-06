@@ -5,6 +5,10 @@
 --- Commands
 ---
 ---                                                     *:Avante*
+--- :Avante chat [args]
+---         Start a chat session. Equivalent to :AvanteChat.
+--- :Avante chat new [args]
+---         Start a new chat session. Equivalent to :AvanteChatNew.
 --- :Avante rag start
 ---         Start the configured RAG service and index the current project.
 --- :Avante rag stop
@@ -156,6 +160,22 @@ function M.setup()
   local cmdparse = require("mega.cmdparse")
   local parser = cmdparse.ParameterParser.new({ name = "Avante", help = "Avante commands" })
   local subparsers = parser:add_subparsers({ destination = "command" })
+  local chat = subparsers:add_parser({ name = "chat", help = "Chat with the codebase; use chat new for a new session" })
+  chat:add_parameter({
+    name = "args",
+    nargs = cmdparse.REMAINDER,
+    required = false,
+    help = "Chat options, optionally preceded by new",
+  })
+  chat:set_execute(function(data)
+    local args = vim.split(data.namespace.args or "", "%s+", { trimempty = true })
+    local command = "AvanteChat"
+    if args[1] == "new" then
+      command = "AvanteChatNew"
+      table.remove(args, 1)
+    end
+    vim.api.nvim_cmd({ cmd = command, args = args }, {})
+  end)
   local rag = subparsers:add_parser({ name = "rag", help = "Manage and query the RAG service" })
   local actions = rag:add_subparsers({ destination = "rag_command" })
 
@@ -196,6 +216,9 @@ function M.setup()
     -- cmdparse needs a separator for literal remainder text. Insert it internally
     -- so users can type questions containing quotes or flags without escaping.
     opts.args = opts.args:gsub("^(%s*rag%s+query)%s+(.*)$", "%1 -- %2", 1)
+    if not opts.args:match("^%s*chat%s+%-%-help%s*$") then
+      opts.args = opts.args:gsub("^(%s*chat)%s+(.*)$", "%1 -- %2", 1)
+    end
     execute(opts)
   end, {
     nargs = "*",
