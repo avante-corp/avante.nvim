@@ -140,6 +140,9 @@ local SIDEBAR_CONTAINERS = {
 ---@field permission_handler fun(id: string) | nil
 ---@field permission_button_options ({ id: string, icon: string|nil, name: string }[]) | nil
 ---@field expanded_message_uuids table<string, boolean>
+---@field container_geometry table<string, { height: integer, width: integer }> geometry avante built at render time
+---@field last_focused_container? string sidebar panel that last held focus
+---@field input_draft? string unsent user input kept across a layout rebuild
 ---@field tool_message_positions table<string, [integer, integer]>
 ---@field skip_line_count integer | nil
 ---@field current_tool_use_extmark_id integer | nil
@@ -205,7 +208,8 @@ function Sidebar:new(id)
     _history_cache_invalidated = true,
     post_render = nil,
     tool_message_positions = {},
-    expanded_message_ids = {},
+    expanded_message_uuids = {},
+    container_geometry = {},
     current_tool_use_extmark_id = nil,
     win_width_store = {},
     is_in_full_view = false,
@@ -863,6 +867,7 @@ function Sidebar:get_current_user_request_block(position)
 end
 
 function Sidebar:is_cursor_in_user_request_block()
+  if not Utils.is_valid_container(self.containers.result, true) then return false end
   local block = self:get_current_user_request_block()
   if block == nil then return false end
   local cursor_line = api.nvim_win_get_cursor(self.containers.result.winid)[1]
@@ -870,6 +875,7 @@ function Sidebar:is_cursor_in_user_request_block()
 end
 
 function Sidebar:get_current_tool_use_message_uuid()
+  if not Utils.is_valid_container(self.containers.result, true) then return nil end
   local skip_line_count = self.skip_line_count or 0
   local cursor_line = api.nvim_win_get_cursor(self.containers.result.winid)[1]
   for message_uuid, positions in pairs(self.tool_message_positions) do
@@ -1299,6 +1305,9 @@ function Sidebar:unbind_edit_user_request_key()
 end
 
 function Sidebar:render_tool_use_control_buttons()
+  -- may run from a scheduled callback after the sidebar was closed
+  if not Utils.is_valid_container(self.containers.result, true) then return end
+
   local function show_current_tool_use_control_buttons()
     if self.current_tool_use_extmark_id then
       api.nvim_buf_del_extmark(
@@ -1737,19 +1746,225 @@ function Sidebar:setup_window_navigation(container)
   )
 end
 
+---Closes extra windows that are showing a sidebar container's buffer.
+---
+---Another plugin's VimResized handler can rebalance splits while our containers are
+---open (`tabdo wincmd =` in LazyVim, FastFold, tmux/kitty pane resizes), which may
+---leave a second window bound to the same container buffer: a duplicated "Ask" panel
+---or a second copy of the conversation. Only surplus windows are closed; buffers are
+---left alone so focus and any unsent draft survive.
+---@private
+function Sidebar:close_duplicate_container_windows()
+  for _, name in ipairs(SIDEBAR_CONTAINERS) do
+    local container = self.containers[name]
+    if container and container.bufnr and api.nvim_buf_is_valid(container.bufnr) then
+      -- keep the window holding focus when there is one, otherwise the cursor jumps
+      local curwin = api.nvim_get_current_win()
+      local keep = nil
+      if api.nvim_win_is_valid(curwin) and api.nvim_win_get_buf(curwin) == container.bufnr then
+        keep = curwin
+      elseif container.winid ~= nil and api.nvim_win_is_valid(container.winid) then
+        keep = container.winid
+      end
+      for _, win in ipairs(api.nvim_list_wins()) do
+        if api.nvim_win_get_buf(win) == container.bufnr and win ~= keep then
+          if keep == nil then
+            keep = win
+          else
+            pcall(api.nvim_win_close, win, true)
+          end
+        end
+      end
+      container.winid = keep
+    end
+  end
+end
+
+---Records the geometry avante just built, so a later resize can restore exactly this
+---instead of re-deriving sizes that nvim may have clamped differently when mounting.
+---@private
+function Sidebar:record_container_geometry()
+  self.container_geometry = {}
+  for _, name in ipairs(SIDEBAR_CONTAINERS) do
+    local container = self.containers[name]
+    if Utils.is_valid_container(container, true) then
+      self.container_geometry[name] = {
+        height = api.nvim_win_get_height(container.winid),
+        width = api.nvim_win_get_width(container.winid),
+      }
+    end
+  end
+end
+
+---Which sidebar panel, if any, currently holds focus. Compares buffers rather than
+---window ids because a rebalance may hand focus to a duplicate of a panel.
+---@private
+---@return string | nil container name
+function Sidebar:focused_container_name()
+  local curwin = api.nvim_get_current_win()
+  if not api.nvim_win_is_valid(curwin) then return self.last_focused_container end
+  local curbuf = api.nvim_win_get_buf(curwin)
+  for _, name in ipairs(SIDEBAR_CONTAINERS) do
+    local container = self.containers[name]
+    if container and container.bufnr == curbuf then
+      self.last_focused_container = name
+      return name
+    end
+  end
+  return nil
+end
+
+---@param name string container name
+---@return { height: integer, width: integer } | nil
+function Sidebar:get_container_geometry(name) return self.container_geometry and self.container_geometry[name] or nil end
+
+---Whether the sidebar still differs from the geometry avante built.
+---@private
+---@return boolean
+function Sidebar:layout_is_broken()
+  if not self:is_open() then return false end
+
+  for _, name in ipairs(SIDEBAR_CONTAINERS) do
+    local container = self.containers[name]
+    if container and container.bufnr and api.nvim_buf_is_valid(container.bufnr) then
+      for _, win in ipairs(api.nvim_list_wins()) do
+        if api.nvim_win_get_buf(win) == container.bufnr and win ~= container.winid then return true end
+      end
+    end
+  end
+
+  if self.is_in_full_view then return false end
+
+  -- a one line difference is nvim rounding the layout, not a broken sidebar
+  local vertical = self:get_layout() == "vertical"
+  for _, name in ipairs(SIDEBAR_CONTAINERS) do
+    local container, want = self.containers[name], self:get_container_geometry(name)
+    if want and Utils.is_valid_container(container, true) then
+      local height, width = api.nvim_win_get_height(container.winid), api.nvim_win_get_width(container.winid)
+      if vertical then
+        if name ~= "result" and math.abs(height - want.height) > 1 then return true end
+      elseif math.abs(width - want.width) > 1 then
+        return true
+      end
+    end
+  end
+
+  return false
+end
+
+---Re-asserts the container geometry that nvim redistributed during a resize. Cheap,
+---in-place and non-destructive, so it is attempted before considering a rebuild.
+---@private
+function Sidebar:restore_container_layout()
+  if not self:is_open() or self.is_in_full_view then return end
+
+  local vertical = self:get_layout() == "vertical"
+
+  -- size the small panels first so the result container absorbs the remainder
+  for i = #SIDEBAR_CONTAINERS, 1, -1 do
+    local name = SIDEBAR_CONTAINERS[i]
+    if name ~= "result" then
+      local container, want = self.containers[name], self:get_container_geometry(name)
+      if want and Utils.is_valid_container(container, true) then
+        if vertical then
+          pcall(api.nvim_win_set_height, container.winid, want.height)
+        else
+          pcall(api.nvim_win_set_width, container.winid, want.width)
+        end
+      end
+    end
+  end
+end
+
+---Rebuilds the sidebar in place: rebalancing can leave the container column nested,
+---after which nvim silently ignores nvim_win_set_height() for the panels, so closing
+---and re-rendering is the only way back to the configured geometry. Focus and any
+---draft the user is still typing are preserved, and overlapping requests coalesce.
+---@private
+---@param restore_focus_to? string panel to hand focus back to even if nvim already moved it
+function Sidebar:rebuild_layout(restore_focus_to)
+  if not self:is_open() or self._rebuilding then return end
+  self._rebuilding = true
+
+  -- mirror the input verbatim, including an empty box, so a later rebuild cannot
+  -- resurrect a draft the user has since deleted
+  self.input_draft = self:get_input_value() or ""
+
+  local focus_on = restore_focus_to or self:focused_container_name()
+
+  -- the sidebar splits itself against the code window; when that is gone (closed,
+  -- or replaced by another plugin) fall back to any non-sidebar window
+  local code_win = self.code.winid
+  if not api.nvim_win_is_valid(code_win) then
+    code_win = nil
+    for _, win in ipairs(api.nvim_tabpage_list_wins(self.id)) do
+      if api.nvim_win_is_valid(win) and not self:is_sidebar_winid(win) then
+        code_win = win
+        break
+      end
+    end
+  end
+
+  if not code_win then
+    self._rebuilding = false
+    return
+  end
+
+  self:close({ goto_code_win = false })
+  if not api.nvim_win_is_valid(code_win) then
+    self._rebuilding = false
+    return
+  end
+
+  self.code.winid = code_win
+  if not api.nvim_buf_is_valid(self.code.bufnr) then self.code.bufnr = api.nvim_win_get_buf(code_win) end
+
+  self:render({ show_logo = self.show_logo })
+
+  if self.input_draft ~= "" then self:set_input_value(self.input_draft) end
+
+  local focus_container = focus_on and self.containers[focus_on] or nil
+  if focus_container and Utils.is_valid_container(focus_container, true) then
+    if self:focused_container_name() == nil then pcall(api.nvim_set_current_win, focus_container.winid) end
+  end
+
+  self._rebuilding = false
+end
+
 function Sidebar:resize()
+  local layout = self:get_layout()
+  -- a resize must not move the cursor: remember which panel the user was in, as
+  -- closing a container makes nvim park the cursor somewhere else
+  local focused_panel = self:focused_container_name()
+
   for _, container in pairs(self.containers) do
     if container.winid and api.nvim_win_is_valid(container.winid) then
       if self.is_in_full_view then
-        api.nvim_win_set_width(container.winid, vim.o.columns - 1)
-      else
+        if layout == "vertical" then
+          api.nvim_win_set_width(container.winid, vim.o.columns - 1)
+        else
+          api.nvim_win_set_height(container.winid, vim.o.lines - 1)
+        end
+      elseif layout == "vertical" then
         api.nvim_win_set_width(container.winid, Config.get_window_width())
       end
     end
   end
+
   self:render_result()
   self:render_input()
   self:render_selected_code()
+
+  -- Other plugins handle VimResized too and may run after us, reshaping the
+  -- container column into duplicated panels and redistributed heights. Repair in
+  -- place once the event has settled, and rebuild only if that did not help: a
+  -- rebuild is destructive, so it stays the last resort.
+  vim.defer_fn(function() self:restore_container_layout() end, 50)
+
+  vim.defer_fn(function()
+    if self:layout_is_broken() then self:rebuild_layout(focused_panel) end
+  end, 120)
+
   vim.defer_fn(function() vim.cmd("AvanteRefresh") end, 200)
 end
 
@@ -3418,6 +3633,8 @@ function Sidebar:render(opts)
   else
     self:update_content_with_history()
   end
+
+  self:record_container_geometry()
 
   api.nvim_create_autocmd("User", {
     group = self.augroup,

@@ -5,6 +5,7 @@
 ---@brief ]]
 local Config = require("avante.config")
 local Utils = require("avante.utils")
+local api = vim.api
 
 ---@class avante.ApiToggle
 ---@operator call(): boolean
@@ -230,10 +231,21 @@ function M.refresh(opts)
 
   local curwin = vim.api.nvim_get_current_win()
 
+  -- refreshing recreates every container, so the focused panel and whatever the
+  -- user has typed but not submitted yet have to be carried over by hand
+  local draft = sidebar:get_input_value()
+  local focus_on = sidebar:focused_container_name()
+
   sidebar:close()
   sidebar.code.winid = curwin
   sidebar.code.bufnr = curbuf
   sidebar:render(opts)
+
+  if draft ~= nil and draft ~= "" then sidebar:set_input_value(draft) end
+  local focus_container = focus_on and sidebar.containers[focus_on] or nil
+  if focus_container and Utils.is_valid_container(focus_container, true) then
+    api.nvim_set_current_win(focus_container.winid)
+  end
 end
 
 ---@param opts? AskOptions
