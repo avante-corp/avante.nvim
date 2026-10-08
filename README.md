@@ -1182,6 +1182,20 @@ source .venv/bin/activate
 uv pip install --editable py/rag-service
 ```
 
+### Nix Docker image
+
+On Linux, the flake provides a Docker image with Neovim, this checkout of Avante
+(including its native libraries and required plugins), and the RAG service:
+
+```sh
+nix build .#dockerImage
+docker load -i result
+docker run --rm -it \
+  -e MISTRAL_API_KEY \    # replace with the provider secret you intend to use
+  -v "$PWD:/workspace" \  # to keep editor state between runs
+  avante-nvim:latest
+```
+
 ### RAG configuration
 
 ```lua

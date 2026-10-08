@@ -157,10 +157,88 @@
               };
             }
           );
+          megaLogging = pkgs.vimUtils.buildVimPlugin {
+            pname = "mega.logging";
+            version = "194ad8c";
+            src = pkgs.fetchFromGitHub {
+              owner = "ColinKennedy";
+              repo = "mega.logging";
+              rev = "194ad8c300186e73c3eb1ebeb3ede42eb219be3b";
+              hash = "sha256-hV7uJyu0XszGLOvcRcDNDE9P6d8GTxBX+la1lQVxx2s=";
+            };
+          };
+          megaCmdparse = pkgs.vimUtils.buildVimPlugin {
+            pname = "mega.cmdparse";
+            version = "47ea5b1";
+            src = pkgs.fetchFromGitHub {
+              owner = "ColinKennedy";
+              repo = "mega.cmdparse";
+              rev = "47ea5b1b23059fbb79a8e262002f32e7cd8aed90";
+              hash = "sha256-RgRsHt1O6UQ/90JeAkHvdpgfjF+I25zg/oGV0cK7t6U=";
+            };
+            dependencies = [ megaLogging ];
+          };
+          avantePlugin = pkgs.vimUtils.buildVimPlugin {
+            pname = "avante.nvim";
+            version = (fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
+            src = lib.fileset.toSource {
+              root = ./.;
+              fileset = lib.fileset.unions [ ./lua ./plugin ./doc ./autoload ./ftplugin ];
+            };
+            dependencies = with pkgs.vimPlugins; [ plenary-nvim nui-nvim megaCmdparse ];
+            # Native modules are built separately by the Rust packages above.
+            postInstall = lib.concatMapStringsSep "\n" (name:
+              let moduleName = lib.replaceStrings [ "-" ] [ "_" ] name;
+              in ''
+                ln -s ${rustPackages.${name}}/lib/lib${moduleName}${pkgs.stdenv.hostPlatform.extensions.sharedLibrary} \
+                  "$out/lua/${moduleName}.so"
+              ''
+            ) rustLibraryNames;
+            doCheck = false;
+          };
+          avanteNeovim = pkgs.wrapNeovimUnstable pkgs.neovim-unwrapped {
+            plugins = [ avantePlugin ];
+            luaRcContent = ''
+              require("avante").setup({
+                rag_service = { enabled = false, runner = "native" },
+              })
+            '';
+          };
         in
         rustPackages // {
           inherit ragService;
           default = ragService;
+        } // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          dockerImage = pkgs.dockerTools.buildLayeredImage {
+            name = "avante-nvim";
+            tag = "latest";
+            contents = [
+              avanteNeovim
+              ragService
+              pkgs.bashInteractive
+              pkgs.coreutils
+              pkgs.curl
+              pkgs.git
+              pkgs.procps
+              pkgs.ripgrep
+              pkgs.cacert
+              pkgs.dockerTools.fakeNss
+            ];
+            extraCommands = ''
+              mkdir -p root workspace tmp
+              chmod 1777 tmp
+            '';
+            config = {
+              Cmd = [ "${lib.getExe pkgs.bashInteractive}" ];
+              WorkingDir = "/workspace";
+              Env = [
+                "HOME=/root"
+                "PATH=/bin"
+                "TERM=xterm-256color"
+                "SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt"
+              ];
+            };
+          };
         }
       );
 
