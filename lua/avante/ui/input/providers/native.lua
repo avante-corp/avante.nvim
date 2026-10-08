@@ -13,7 +13,7 @@ function M.show(input)
   -- For password input, users should use dressing or snacks providers
   if input.conceal then
     vim.notify_once(
-      "Native input provider doesn't support concealed input. Consider using 'dressing' or 'snacks' provider for password input.",
+      "Native input provider doesn't support concealed input. Consider using 'fzf-lua' or 'snacks' provider for password input.",
       vim.log.levels.WARN
     )
   end
