@@ -4039,6 +4039,9 @@ M.is_reasoning_model()              *avante-providers-openai.is_reasoning_model*
 M.set_allowed_params()              *avante-providers-openai.set_allowed_params*
 
 
+M.prepare_response_request()  *avante-providers-openai.prepare_response_request*
+
+
 M:parse_messages()                      *avante-providers-openai:parse_messages*
 
 
@@ -4065,6 +4068,9 @@ M.transform_openai_usage({usage})
 
     Returns: ~
         (avante.LLMTokenUsage|nil)
+
+
+M:parse_response_event()          *avante-providers-openai:parse_response_event*
 
 
 M:parse_response()                      *avante-providers-openai:parse_response*

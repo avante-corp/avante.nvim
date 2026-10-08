@@ -319,11 +319,12 @@ function M:parse_curl_args(prompt_opts)
   H.refresh_token(false, false)
 
   local provider_conf, request_body = Providers.parse_config(self)
+  if not provider_conf.support_previous_response_id then request_body = vim.deepcopy(request_body) end
   local use_response_api = Providers.resolve_use_response_api(provider_conf, prompt_opts)
   local disable_tools = provider_conf.disable_tools or false
 
   -- Apply OpenAI's set_allowed_params for Response API compatibility
-  OpenAI.set_allowed_params(provider_conf, request_body)
+  OpenAI.set_allowed_params(provider_conf, request_body, use_response_api)
 
   local use_ReAct_prompt = provider_conf.use_ReAct_prompt == true
 
@@ -334,13 +335,18 @@ function M:parse_curl_args(prompt_opts)
       local transformed_tool = OpenAI:transform_tool(tool)
       -- Response API uses flattened tool structure
       if use_response_api then
-        if transformed_tool.type == "function" and transformed_tool["function"] then
+        local tool_function = transformed_tool["function"]
+        if transformed_tool.type == "function" and tool_function then
           transformed_tool = {
             type = "function",
-            name = transformed_tool["function"].name,
-            description = transformed_tool["function"].description,
-            parameters = transformed_tool["function"].parameters,
+            name = tool_function.name,
+            description = tool_function.description,
+            parameters = tool_function.parameters,
           }
+          if not provider_conf.support_previous_response_id then
+            -- Keep non-strict tool schemas explicit; omission can trigger strict normalization.
+            transformed_tool.strict = tool_function.strict or false
+          end
         end
       end
       table.insert(tools, transformed_tool)
@@ -364,22 +370,18 @@ function M:parse_curl_args(prompt_opts)
     tools = tools,
   }
 
-  -- Response API uses 'input' instead of 'messages'
-  -- NOTE: Copilot doesn't support previous_response_id, always send full history
   if use_response_api then
     base_body.input = parsed_messages
-
-    -- Response API uses max_output_tokens instead of max_tokens/max_completion_tokens
-    if request_body.max_completion_tokens then
-      request_body.max_output_tokens = request_body.max_completion_tokens
-      request_body.max_completion_tokens = nil
+    if provider_conf.support_previous_response_id then
+      if request_body.max_completion_tokens then
+        request_body.max_output_tokens = request_body.max_completion_tokens
+        request_body.max_completion_tokens = nil
+      end
+      if request_body.max_tokens then
+        request_body.max_output_tokens = request_body.max_tokens
+        request_body.max_tokens = nil
+      end
     end
-    if request_body.max_tokens then
-      request_body.max_output_tokens = request_body.max_tokens
-      request_body.max_tokens = nil
-    end
-    -- Response API doesn't use stream_options
-    base_body.stream_options = nil
     base_body.include = { "reasoning.encrypted_content" }
     base_body.reasoning = {
       summary = "detailed",
@@ -392,6 +394,12 @@ function M:parse_curl_args(prompt_opts)
     }
   end
 
+  local body = vim.tbl_deep_extend("force", base_body, request_body)
+  if use_response_api and not provider_conf.support_previous_response_id then
+    OpenAI.prepare_response_request(body)
+    body.input = parsed_messages
+  end
+
   local base_url = M.state.github_token.endpoints.api or provider_conf.endpoint
   local build_url = use_response_api and H.response_url or H.chat_completion_url
 
@@ -401,7 +409,7 @@ function M:parse_curl_args(prompt_opts)
     proxy = provider_conf.proxy,
     insecure = provider_conf.allow_insecure,
     headers = Utils.tbl_override(headers, self.extra_headers),
-    body = vim.tbl_deep_extend("force", base_body, request_body),
+    body = body,
   }
 end
 

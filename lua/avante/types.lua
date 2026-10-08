@@ -87,6 +87,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field role "user" | "assistant"
 ---@field content AvanteLLMMessageContent
 ---@field phase? "commentary" | "final_answer"
+---@field response_item? AvanteOpenAIResponseItem
 
 ---@class avante.TODO
 ---@field id string
@@ -201,19 +202,34 @@ vim.g.avante_login = vim.g.avante_login
 ---@field function AvanteOpenAIMessageToolCallFunction
 ---
 ---@class AvanteOpenAIMessage
----@field role? "user" | "system" | "assistant"
+---@field role? "user" | "system" | "developer" | "assistant"
 ---@field content? string
 ---@field reasoning_content? string
 ---@field reasoning? string
 ---@field tool_calls? AvanteOpenAIMessageToolCall[]
----@field type? "reasoning" | "function_call" | "function_call_output"
+---@field type? "message" | "reasoning" | "function_call" | "function_call_output"
 ---@field id? string
 ---@field encrypted_content? string
----@field summary? string
+---@field summary? table[]
+---@field status? "in_progress" | "completed" | "incomplete"
+---@field phase? "commentary" | "final_answer"
 ---@field call_id? string
 ---@field name? string
 ---@field arguments? string
 ---@field output? string
+---
+---@class AvanteOpenAIResponseItem
+---@field type string
+---@field id string
+---@field role? "assistant"
+---@field content? table[]
+---@field phase? "commentary" | "final_answer"
+---@field status? "in_progress" | "completed" | "incomplete"
+---@field encrypted_content? string
+---@field summary? table[]
+---@field call_id? string
+---@field name? string
+---@field arguments? string
 ---
 ---@class AvanteOpenAITool
 ---@field type "function"
@@ -352,6 +368,8 @@ vim.g.avante_login = vim.g.avante_login
 ---@field _model_list_cache table
 ---@field extra_headers fun(table): table | table | nil
 ---@field support_prompt_caching boolean | nil
+---@field support_previous_response_id? boolean
+---@field extra_request_body? table<string, any>
 ---@field role_map table<"user" | "assistant", string>
 ---@field parse_messages AvanteMessagesParser
 ---@field parse_response AvanteResponseParser

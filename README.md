@@ -494,6 +494,13 @@ require("avante").setup({
 
 If both are used, options passed to `setup()` override values from `vim.g.avante`.
 
+With `use_response_api = true` and `support_previous_response_id = false`, the OpenAI
+and Copilot Responses API integrations are stateless: each request sends the full
+local history with `store = false`, including completed reasoning items, function
+calls, and their outputs. This mode does not support server-managed state
+(`previous_response_id` or `conversation`) or background requests. Setting
+`support_previous_response_id = true` retains the existing stateful implementation.
+
 <details>
 <summary>Default configuration</summary>
 

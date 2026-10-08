@@ -447,9 +447,10 @@ function M.generate_prompts(opts)
     table.insert(messages, message)
   end
 
+  -- Empty display text must not drop reasoning or other Responses output items from history.
   messages = vim
     .iter(messages)
-    :filter(function(msg) return type(msg.content) ~= "string" or msg.content ~= "" end)
+    :filter(function(msg) return msg.response_item ~= nil or type(msg.content) ~= "string" or msg.content ~= "" end)
     :totable()
 
   if opts.instructions ~= nil and opts.instructions ~= "" then
@@ -553,28 +554,53 @@ function M.curl(opts)
   turn_ctx.turn_id = Utils.uuid()
 
   local response_body = ""
+  local event_data = {}
+  local is_sse = false
+  local first_line = true
   ---@param line string
   local function parse_stream_data(line)
-    local event = line:match("^event:%s*(.+)$")
-    if event then
-      current_event_state = event
+    if first_line then
+      line = line:gsub("^\239\187\191", "")
+      first_line = false
+    end
+    line = line:gsub("\r$", "")
+    -- SSE joins data fields with LF and dispatches only at a blank line.
+    if line == "" then
+      local event = current_event_state
+      local data = #event_data > 0 and table.concat(event_data, "\n") or nil
+      current_event_state, event_data = nil, {}
+      if data ~= nil then provider:parse_response(turn_ctx, data, event, handler_opts) end
       return
     end
-    local data_match = line:match("^data:%s*(.+)$")
-    if data_match then
+    if line:sub(1, 1) == ":" then
+      is_sse = true
+      return
+    end
+    -- SSE removes at most one space after the colon, not arbitrary whitespace.
+    local field, value = line:match("^([^:]+): ?(.*)$")
+    if not field then
+      field, value = line, ""
+    end
+    if field == "data" or field == "event" or field == "id" or field == "retry" then
+      is_sse = true
       response_body = ""
-      provider:parse_response(turn_ctx, data_match, current_event_state, handler_opts)
-    else
-      response_body = response_body .. line
-      local ok, jsn = pcall(vim.json.decode, response_body)
-      if ok then
-        if jsn.error then
-          handler_opts.on_stop({ reason = "error", error = jsn.error })
-        else
-          provider:parse_response(turn_ctx, response_body, current_event_state, handler_opts)
-        end
-        response_body = ""
+      if field == "event" then
+        current_event_state = value ~= "" and value or nil
+      elseif field == "data" then
+        table.insert(event_data, value)
       end
+      return
+    end
+    if is_sse then return end
+    response_body = response_body .. line
+    local ok, jsn = pcall(vim.json.decode, response_body)
+    if ok then
+      if jsn.error then
+        handler_opts.on_stop({ reason = "error", error = jsn.error })
+      else
+        provider:parse_response(turn_ctx, response_body, current_event_state, handler_opts)
+      end
+      response_body = ""
     end
   end
 
@@ -733,6 +759,22 @@ function M.curl(opts)
           vim.schedule(function()
             completed = true
             parse_response_without_stream(result.body)
+          end)
+        elseif
+          result.status == 200
+          and type(spec.body) == "table"
+          and spec.body.input ~= nil
+          and not provider.support_previous_response_id
+        then
+          -- EOF is not a Responses terminal event; drain queued events before checking.
+          vim.schedule(function()
+            if not completed and not stopped then
+              completed = true
+              handler_opts.on_stop({
+                reason = "error",
+                error = "Responses stream ended without a terminal response event",
+              })
+            end
           end)
         end
 
