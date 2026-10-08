@@ -178,14 +178,13 @@
             };
             dependencies = [ megaLogging ];
           };
-          avantePlugin = pkgs.vimUtils.buildVimPlugin {
-            pname = "avante.nvim";
+          avantePlugin = pkgs.vimPlugins.avante-nvim.overrideAttrs (old: {
             version = (fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
             src = lib.fileset.toSource {
               root = ./.;
               fileset = lib.fileset.unions [ ./lua ./plugin ./doc ./autoload ./ftplugin ];
             };
-            dependencies = with pkgs.vimPlugins; [ plenary-nvim nui-nvim megaCmdparse ];
+            dependencies = old.dependencies ++ [ megaCmdparse ];
             # Native modules are built separately by the Rust packages above.
             postInstall = lib.concatMapStringsSep "\n" (name:
               let moduleName = lib.replaceStrings [ "-" ] [ "_" ] name;
@@ -195,7 +194,7 @@
               ''
             ) rustLibraryNames;
             doCheck = false;
-          };
+          });
           avanteNeovim = pkgs.wrapNeovimUnstable pkgs.neovim-unwrapped {
             plugins = [ avantePlugin ];
             luaRcContent = ''
@@ -207,6 +206,7 @@
         in
         rustPackages // {
           inherit ragService;
+          avante-nvim = avantePlugin;
           default = ragService;
         } // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           dockerImage = pkgs.dockerTools.buildLayeredImage {
