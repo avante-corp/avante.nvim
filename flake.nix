@@ -179,7 +179,7 @@
             dependencies = [ megaLogging ];
           };
           avantePlugin = pkgs.vimPlugins.avante-nvim.overrideAttrs (old: {
-            version = (fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
+            version = self.rev or self.dirtyRev or "unknown";
             src = lib.fileset.toSource {
               root = ./.;
               fileset = lib.fileset.unions [ ./lua ./plugin ./doc ./autoload ./ftplugin ];
