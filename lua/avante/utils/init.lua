@@ -1761,4 +1761,13 @@ function M.is_floating_window(win_id)
   return config.relative ~= ""
 end
 
+function M.get_user_agent_string()
+  local os_name = M.get_os_name()
+  local os_version = vim.uv.os_uname().release
+  local os_machine = vim.uv.os_uname().machine
+  local res = string.format("Avante/Neovim-%s (%s, %s, %s)", vim.version().build, os_name, os_version, os_machine)
+
+  return res
+end
+
 return M

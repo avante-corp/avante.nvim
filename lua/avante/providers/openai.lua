@@ -6,6 +6,10 @@ local HistoryMessage = require("avante.history.message")
 local JsonParser = require("avante.libs.jsonparser")
 local Prompts = require("avante.utils.prompts")
 local LlmTools = require("avante.llm_tools")
+local OpenAIAuth = require("avante.auth.providers.openai")
+
+---@class AvanteOpenAIProvider : AvanteDefaultBaseProvider
+---@field auth_type "api" | "chatgpt"
 
 ---@class AvanteProviderFunctor
 local M = {}
@@ -17,7 +21,44 @@ M.role_map = {
   assistant = "assistant",
 }
 
+local chatgpt_endpoint = "https://api.openai.com/v1/responses"
+local chatgpt_usage_limit_code = "subscription_sharing_usage_limit_exceeded"
+local chatgpt_usage_url = "https://chatgpt.com/settings/usage"
+local chatgpt_model_ids = {
+  "gpt-6.1-sol",
+  "gpt-6-astra",
+  "gpt-6-luna",
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
+  "gpt-5.5",
+  "gpt-5.3-codex",
+}
+
 function M:is_disable_stream() return false end
+
+---@return AvanteProviderModelList
+local function chatgpt_models()
+  return vim.tbl_map(
+    function(model_id) return { id = model_id, name = "chatgpt/" .. model_id, display_name = "chatgpt/" .. model_id } end,
+    chatgpt_model_ids
+  )
+end
+
+---@param provider_conf table
+local function resolve_chatgpt_model(provider_conf)
+  if provider_conf.auth_type ~= "chatgpt" then return provider_conf.model end
+  local model = provider_conf.model
+  if vim.tbl_contains(chatgpt_model_ids, model) then return model end
+  local fallback = chatgpt_model_ids[1]
+  if model and model ~= "" then
+    Utils.warn(
+      model .. " is not available with ChatGPT sign in; using " .. fallback,
+      { once = true, title = "Avante" }
+    )
+  end
+  return fallback
+end
 
 ---@param tool AvanteLLMTool
 ---@return AvanteOpenAITool
@@ -42,6 +83,20 @@ function M:transform_tool(tool)
   return res
 end
 
+-- Sign in with ChatGPT shares the subscription's usage limit with other apps. It
+-- resets after hours rather than seconds, so it is reported instead of retried.
+---@param err string|table|nil HTTP error body, or a decoded error object from the stream
+---@return string|nil
+function M:get_usage_limit_error(err)
+  if type(err) == "string" then
+    local ok, decoded = pcall(vim.json.decode, err)
+    err = ok and type(decoded) == "table" and decoded.error or nil
+  end
+  if type(err) ~= "table" or err.code ~= chatgpt_usage_limit_code then return nil end
+  local detail = type(err.message) == "string" and err.message or "Usage limit reached."
+  return string.format("%s: %s\nCheck your ChatGPT usage: %s", chatgpt_usage_limit_code, detail, chatgpt_usage_url)
+end
+
 ---Check if url belongs to openrouter
 ---@return boolean
 function M.is_openrouter(url) return url:match("^https://openrouter%.ai/") end
@@ -60,9 +115,12 @@ function M:list_models(timeout)
     if not ok or provider.list_models ~= M.list_models then provider = Providers.openai end
     self = provider
   end
+  local provider_conf = Providers.parse_config(self)
+  ---@cast provider_conf AvanteOpenAIProvider
+  if provider_conf.auth_type == "chatgpt" then return chatgpt_models() end
+
   if self._model_list_cache then return self._model_list_cache end
 
-  local provider_conf = Providers.parse_config(self)
   if not provider_conf.endpoint then
     Utils.error("OpenAI-compatible provider requires endpoint configuration")
     return {}
@@ -73,14 +131,10 @@ function M:list_models(timeout)
     ["Accept"] = "application/json",
   }
 
-  if Providers.env.require_api_key(provider_conf) then
-    local api_key = self.parse_api_key()
-    if api_key == nil then
-      Utils.error(Config.provider .. ": API key is not set, please set it in your environment variable or config file")
-      return {}
-    end
-    headers["Authorization"] = "Bearer " .. api_key
-  end
+  local auth_headers = OpenAIAuth.get_headers(provider_conf, self)
+  M.api_key_name = OpenAIAuth.api_key_name
+  if not auth_headers then return {} end
+  headers = Utils.tbl_override(headers, auth_headers)
 
   local curl = require("plenary.curl")
   local response = curl.get(Utils.url_join(provider_conf.endpoint, "/models"), {
@@ -145,7 +199,8 @@ function M.is_reasoning_model(model)
 end
 
 function M.set_allowed_params(provider_conf, request_body)
-  local use_response_api = Providers.resolve_use_response_api(provider_conf, nil)
+  local use_response_api = provider_conf.auth_type == "chatgpt"
+    or Providers.resolve_use_response_api(provider_conf, nil)
   local is_reasoning_model = M.is_reasoning_model(provider_conf.model)
   local reasoning_effort = request_body.reasoning_effort
   if reasoning_effort == nil and type(request_body.reasoning) == "table" then
@@ -192,11 +247,38 @@ function M.set_allowed_params(provider_conf, request_body)
   end
 end
 
+function M.setup()
+  OpenAIAuth.setup(M)
+  M.api_key_name = OpenAIAuth.api_key_name
+end
+
 function M:parse_messages(opts)
   local messages = {}
   local provider_conf, _ = Providers.parse_config(self)
+  ---@cast provider_conf AvanteOpenAIProvider
+  provider_conf.model = resolve_chatgpt_model(provider_conf)
   local use_response_api = Providers.resolve_use_response_api(provider_conf, opts)
   local pending_reasoning_content = nil
+  if provider_conf.auth_type == "chatgpt" then use_response_api = true end
+  local allow_reasoning_input = opts and opts.session_ctx and opts.session_ctx.allow_reasoning_input == true
+  local force_include_tool_calls = opts and opts.force_include_tool_calls == true
+
+  local function add_reasoning(item, allow_stored)
+    -- Encrypted reasoning is self-contained and can be replayed with store=false.
+    -- An ID without encrypted content requires a stored response.
+    local has_encrypted_content = type(item.encrypted_content) == "string" and item.encrypted_content ~= ""
+    if
+      not use_response_api or not (has_encrypted_content or (allow_stored and provider_conf.auth_type ~= "chatgpt"))
+    then
+      return
+    end
+    table.insert(messages, {
+      type = "reasoning",
+      id = item.id,
+      encrypted_content = item.encrypted_content,
+      summary = item.summary,
+    })
+  end
 
   local use_ReAct_prompt = provider_conf.use_ReAct_prompt == true
   local system_prompt = opts.system_prompt
@@ -221,13 +303,7 @@ function M:parse_messages(opts)
     elseif type(msg.content) == "table" then
       -- Check if this is a reasoning message (object with type "reasoning")
       if msg.content.type == "reasoning" then
-        -- Add reasoning message directly (for Response API)
-        table.insert(messages, {
-          type = "reasoning",
-          id = msg.content.id,
-          encrypted_content = msg.content.encrypted_content,
-          summary = msg.content.summary,
-        })
+        add_reasoning(msg.content, allow_reasoning_input)
         return
       end
 
@@ -247,13 +323,7 @@ function M:parse_messages(opts)
             },
           })
         elseif item.type == "reasoning" then
-          -- Add reasoning message directly (for Response API)
-          table.insert(messages, {
-            type = "reasoning",
-            id = item.id,
-            encrypted_content = item.encrypted_content,
-            summary = item.summary,
-          })
+          add_reasoning(item, true)
         elseif item.type == "thinking" then
           local thinking_content = item.thinking or ""
           if thinking_content ~= "" then
@@ -306,7 +376,10 @@ function M:parse_messages(opts)
         if #tool_calls > 0 then
           -- Only skip tool_calls if using Response API with previous_response_id support
           -- Copilot uses Response API format but doesn't support previous_response_id
-          local should_include_tool_calls = not use_response_api or not provider_conf.support_previous_response_id
+          local should_include_tool_calls = provider_conf.auth_type == "chatgpt"
+            or not use_response_api
+            or force_include_tool_calls
+            or not provider_conf.support_previous_response_id
 
           if should_include_tool_calls then
             -- For Response API without previous_response_id support (like Copilot),
@@ -690,7 +763,12 @@ function M:parse_response(ctx, data_stream, _, opts)
       -- Response completed - save response.id for future requests
       if jsn.response and jsn.response.id then
         ctx.last_response_id = jsn.response.id
-        -- Store in provider for next request
+        if opts.session_ctx then
+          opts.session_ctx.last_response_id = jsn.response.id
+          opts.session_ctx.last_response_model = opts.session_ctx.last_request_model
+          opts.session_ctx.last_response_auth_type = opts.session_ctx.last_request_auth_type
+        end
+        -- Store in provider for backward compatibility
         self.last_response_id = jsn.response.id
       end
       if
@@ -718,9 +796,9 @@ function M:parse_response(ctx, data_stream, _, opts)
       else
         opts.on_stop({ reason = "complete", usage = usage })
       end
-    elseif jsn.type == "error" then
-      -- Error event
-      local error_msg = jsn.error and vim.inspect(jsn.error) or "Unknown error"
+    elseif jsn.type == "error" or jsn.type == "response.failed" then
+      local err = jsn.error or (jsn.response and jsn.response.error) or (jsn.code and jsn)
+      local error_msg = self:get_usage_limit_error(err) or (err and vim.inspect(err)) or "Unknown error"
       opts.on_stop({ reason = "error", error = error_msg })
     end
     return
@@ -744,6 +822,7 @@ function M:parse_response(ctx, data_stream, _, opts)
   local delta = choice.delta
   if not delta then
     local provider_conf = Providers.parse_config(self)
+    ---@cast provider_conf AvanteOpenAIProvider
     if provider_conf.model:match("o1") then delta = choice.message end
   end
   if not delta then return end
@@ -843,20 +922,20 @@ end
 ---@return AvanteCurlOutput|nil
 function M:parse_curl_args(prompt_opts)
   local provider_conf, request_body = Providers.parse_config(self)
+  ---@cast provider_conf AvanteOpenAIProvider
+  provider_conf.model = resolve_chatgpt_model(provider_conf)
   local disable_tools = provider_conf.disable_tools or false
 
   local headers = {
     ["Content-Type"] = "application/json",
   }
 
-  if Providers.env.require_api_key(provider_conf) then
-    local api_key = self.parse_api_key()
-    if api_key == nil then
-      Utils.error(Config.provider .. ": API key is not set, please set it in your environment variable or config file")
-      return nil
-    end
-    headers["Authorization"] = "Bearer " .. api_key
-  end
+  local auth_type = provider_conf.auth_type
+
+  local auth_headers = OpenAIAuth.get_headers(provider_conf, self)
+  M.api_key_name = OpenAIAuth.api_key_name
+  if not auth_headers then return nil end
+  headers = Utils.tbl_override(headers, auth_headers)
 
   if M.is_openrouter(provider_conf.endpoint) then
     headers["HTTP-Referer"] = "https://github.com/avante-corp/avante.nvim"
@@ -864,10 +943,29 @@ function M:parse_curl_args(prompt_opts)
     request_body.include_reasoning = true
   end
 
-  self.set_allowed_params(provider_conf, request_body)
   local use_response_api = Providers.resolve_use_response_api(provider_conf, prompt_opts)
+  if auth_type == "chatgpt" then
+    provider_conf.use_response_api = true
+    use_response_api = true
+  end
+  self.set_allowed_params(provider_conf, request_body)
 
   local use_ReAct_prompt = provider_conf.use_ReAct_prompt == true
+  local session_ctx = prompt_opts.session_ctx
+  local supports_previous_response_id = provider_conf.support_previous_response_id == true
+  if auth_type == "chatgpt" then supports_previous_response_id = false end
+
+  if session_ctx and session_ctx.last_response_model then
+    if session_ctx.last_response_model ~= provider_conf.model or session_ctx.last_response_auth_type ~= auth_type then
+      session_ctx.last_response_id = nil
+      session_ctx.last_response_model = nil
+      session_ctx.last_response_auth_type = nil
+    end
+  end
+  if session_ctx then
+    session_ctx.last_request_model = provider_conf.model
+    session_ctx.last_request_auth_type = auth_type
+  end
 
   local tools = nil
   if not disable_tools and prompt_opts.tools and not use_ReAct_prompt then
@@ -897,6 +995,32 @@ function M:parse_curl_args(prompt_opts)
   -- Determine endpoint path based on use_response_api
   local endpoint_path = use_response_api and "/responses" or "/chat/completions"
 
+  local has_function_outputs = false
+  if use_response_api and prompt_opts.messages then
+    for _, msg in ipairs(prompt_opts.messages) do
+      local content = msg.content
+      if type(content) == "table" then
+        for _, item in ipairs(content) do
+          if type(item) == "table" and item.type == "tool_result" then
+            has_function_outputs = true
+            break
+          end
+        end
+      end
+      if has_function_outputs then break end
+    end
+  end
+
+  local should_use_previous_response_id = use_response_api
+    and supports_previous_response_id
+    and has_function_outputs
+    and session_ctx
+    and session_ctx.last_response_id
+    and session_ctx.last_response_model == provider_conf.model
+    and session_ctx.last_response_auth_type == auth_type
+  if use_response_api and has_function_outputs and not should_use_previous_response_id then
+    prompt_opts.force_include_tool_calls = true
+  end
   local parsed_messages = self:parse_messages(prompt_opts)
 
   -- Build base body
@@ -909,28 +1033,18 @@ function M:parse_curl_args(prompt_opts)
 
   -- Response API uses 'input' instead of 'messages'
   if use_response_api then
-    -- Check if we have tool results - if so, use previous_response_id
-    local has_function_outputs = false
-    for _, msg in ipairs(parsed_messages) do
-      if msg.type == "function_call_output" then
-        has_function_outputs = true
-        break
-      end
-    end
-
-    if has_function_outputs and self.last_response_id and provider_conf.support_previous_response_id then
+    if should_use_previous_response_id and session_ctx then
       -- When sending function outputs, use previous_response_id
-      base_body.previous_response_id = self.last_response_id
+      base_body.previous_response_id = session_ctx.last_response_id
       -- Only send the function outputs, not the full history
       local function_outputs = {}
       for _, msg in ipairs(parsed_messages) do
         if msg.type == "function_call_output" then table.insert(function_outputs, msg) end
       end
       base_body.input = function_outputs
-      -- Clear the stored response_id after using it
-      self.last_response_id = nil
+      if session_ctx then session_ctx.last_response_id = nil end
     else
-      -- Normal request without tool results
+      -- Include full history when the session cannot use a stored response.
       base_body.input = parsed_messages
     end
 
@@ -952,8 +1066,28 @@ function M:parse_curl_args(prompt_opts)
     } or nil
   end
 
+  -- Adjustments for ChatGPT subscription login
+  if auth_type == "chatgpt" then
+    -- HTTP subscription requests require full history; they cannot chain stored
+    -- responses. Ask for encrypted reasoning to preserve state between turns.
+    request_body.store = false
+    request_body.stream = true
+    request_body.include = request_body.include or {}
+    if not vim.tbl_contains(request_body.include, "reasoning.encrypted_content") then
+      table.insert(request_body.include, "reasoning.encrypted_content")
+    end
+    request_body.previous_response_id = nil
+    request_body.messages = nil
+    request_body.input = nil
+    -- Subscription tokens reject these request fields.
+    request_body.max_output_tokens = nil
+    request_body.temperature = nil
+    request_body.prompt_cache_retention = nil
+  end
+  local url = auth_type == "chatgpt" and chatgpt_endpoint or Utils.url_join(provider_conf.endpoint, endpoint_path)
+
   return {
-    url = Utils.url_join(provider_conf.endpoint, endpoint_path),
+    url = url,
     proxy = provider_conf.proxy,
     insecure = provider_conf.allow_insecure,
     headers = Utils.tbl_override(headers, self.extra_headers),

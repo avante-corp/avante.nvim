@@ -195,6 +195,7 @@
               ripgrep
               python314
               silver-searcher # for tests
+              openssl # OpenAI ID-token verification
               docker
               stylua
               mylua

@@ -342,6 +342,20 @@ end
 
 function M.stop() require("avante.llm").cancel_inflight_request() end
 
+function M.login()
+  local providers = require("avante.auth.providers").list_oauth_providers()
+  if #providers == 0 then
+    Utils.warn("No OAuth providers available")
+    return
+  end
+  vim.ui.select(providers, { prompt = "Select OAuth provider to log in: " }, function(choice)
+    if choice then
+      local mod = require("avante.auth.providers").get(choice)
+      if mod and mod.authenticate then mod.authenticate() end
+    end
+  end)
+end
+
 ---@export M
 return setmetatable(M, {
   __index = function(t, k)
