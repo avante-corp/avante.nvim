@@ -178,19 +178,24 @@
             };
             dependencies = [ megaLogging ];
           };
-          avantePlugin = pkgs.vimPlugins.avante-nvim.overrideAttrs (old: {
+          avantePlugin = pkgs.vimPlugins.avante-nvim.overrideAttrs (final: old: {
             version = self.rev or self.dirtyRev or "unknown";
+            name = "vimplugin-${final.pname}-${final.version}";
             src = lib.fileset.toSource {
               root = ./.;
-              fileset = lib.fileset.unions [ ./lua ./plugin ./doc ./autoload ./ftplugin ];
+              fileset = lib.fileset.unions [ ./lua ./plugin ./doc ./autoload ./ftplugin ./contrib];
             };
             dependencies = old.dependencies ++ [ megaCmdparse ];
             # Native modules are built separately by the Rust packages above.
+            # this overrides the nixpkgs postInstall step. Ideally we should be able to reuse nixpkgs code by
+            # just overriding the avante-nvim-lib
             postInstall = lib.concatMapStringsSep "\n" (name:
               let moduleName = lib.replaceStrings [ "-" ] [ "_" ] name;
               in ''
                 ln -s ${rustPackages.${name}}/lib/lib${moduleName}${pkgs.stdenv.hostPlatform.extensions.sharedLibrary} \
                   "$out/lua/${moduleName}.so"
+
+                install -D contrib/avante $out/bin/avante
               ''
             ) rustLibraryNames;
             doCheck = false;
@@ -211,11 +216,12 @@
             tag = "latest";
             contents = [
               avanteNeovim
+              avantePlugin # just to put "avante" in path ?
               ragService
               pkgs.bashInteractive
-              pkgs.coreutils
-              pkgs.curl
-              pkgs.git
+              pkgs.pkgsStatic.coreutils-full # inspect needs "timeout" executable
+              pkgs.pkgsStatic.curl
+              pkgs.git # fails in static
               pkgs.procps
               pkgs.ripgrep
               pkgs.cacert
