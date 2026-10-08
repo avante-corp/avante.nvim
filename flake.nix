@@ -196,11 +196,13 @@
             doCheck = false;
           });
           avanteNeovim = pkgs.wrapNeovimUnstable pkgs.neovim-unwrapped {
-            plugins = [ avantePlugin ];
+            plugins = [ avantePlugin pkgs.vimPlugins.fzf-lua ];
             luaRcContent = ''
-              require("avante").setup({
+              vim.g.avante = {
                 rag_service = { enabled = false, runner = "native" },
-              })
+                file_selector = { provider = "fzf_lua" },
+              }
+              require("avante").setup()
             '';
           };
         in
