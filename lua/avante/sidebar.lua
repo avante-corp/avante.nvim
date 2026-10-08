@@ -1640,7 +1640,13 @@ function Sidebar:on_mount(opts)
         if Utils.is_valid_container(self.containers.input, true) then
           api.nvim_set_current_win(self.containers.input.winid)
           vim.defer_fn(function()
-            if Config.windows.ask.start_insert then vim.cmd("noautocmd startinsert!") end
+            if
+              Config.windows.ask.start_insert
+              and Utils.is_valid_container(self.containers.input, true)
+              and api.nvim_get_current_win() == self.containers.input.winid
+            then
+              vim.cmd("noautocmd startinsert!")
+            end
           end, 300)
         end
       end
@@ -1759,7 +1765,7 @@ function Sidebar:render_logo()
   local max_width = 30
   --- get editor width
   local editor_width = vim.api.nvim_win_get_width(self.containers.result.winid)
-  local padding = math.floor((editor_width - max_width) / 2)
+  local padding = math.max(0, math.floor((editor_width - max_width) / 2))
   Utils.unlock_buf(self.containers.result.bufnr)
   for i, line in ipairs(logo_lines) do
     --- center logo

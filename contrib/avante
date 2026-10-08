@@ -1,3 +1,4 @@
 #!/bin/sh
 # launches neovim with avante to mimic a typical harness
-nvim -c 'lua vim.defer_fn(function()require("avante.api").zen_mode()end, 100)'
+# Arguments form the initial prompt, including words beginning with a dash.
+AVANTE_INITIAL_PROMPT="$*" exec nvim -c 'lua vim.defer_fn(function() local question = vim.env.AVANTE_INITIAL_PROMPT; vim.env.AVANTE_INITIAL_PROMPT = nil; require("avante.api").zen_mode({ question = question }) end, 100)'

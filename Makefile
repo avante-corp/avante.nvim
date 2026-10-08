@@ -155,6 +155,11 @@ build-image:
 push-image: build-image
 	docker push $(RAG_SERVICE_IMAGE)
 
+.PHONY: docker-run
+docker-run:
+	nix build .#dockerImage && docker load < result && docker run --rm -it avante-nvim:latest
+
+
 .PHONY: rag-venv
 rag-venv:
 	uv venv --python 3.13

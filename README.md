@@ -1181,6 +1181,27 @@ source .venv/bin/activate
 uv pip install --editable py/rag-service
 ```
 
+### Nix Docker image
+
+On Linux, the flake provides a Docker image with Neovim, this checkout of Avante
+(including its native libraries and required plugins), and the RAG service:
+
+```sh
+nix build .#dockerImage
+docker load -i result
+docker run --rm -it \
+  -e ANTHROPIC_API_KEY -e OPENAI_API_KEY \
+  -v "$PWD:/workspace" \
+  avante-nvim:latest
+```
+
+The image opens Neovim in `/workspace` with Avante configured to enable RAG using
+the native runner. Set the API keys in your host environment before running it:
+Avante defaults to Anthropic, while RAG defaults to OpenAI for its LLM and
+embeddings. Add `-v avante-home:/root` to keep editor state between runs.
+You can also run the installed service directly by overriding the command with
+`avante-rag-service --help`.
+
 ### RAG configuration
 
 ```lua
