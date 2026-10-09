@@ -28,7 +28,8 @@ function M.open(bufnr, cb)
   local histories = Path.history.list(bufnr)
 
   for _, history in ipairs(histories) do
-    table.insert(selector_items, to_selector_item(history))
+    -- new_chat() saves an empty history right away; hide the ones that never got a message
+    if #History.get_history_messages(history) > 0 then table.insert(selector_items, to_selector_item(history)) end
   end
 
   if #selector_items == 0 then
