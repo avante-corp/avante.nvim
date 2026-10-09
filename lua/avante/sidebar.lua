@@ -2403,7 +2403,8 @@ end
 
 function Sidebar:new_chat(args, cb)
   local history = Path.history.new(self.code.bufnr)
-  Path.history.save(self.code.bufnr, history)
+  -- Only point at the new file; it is written once the chat has something to save
+  Path.history.save_latest_filename(self.code.bufnr, history.filename)
   self:reload_chat_history()
   self.current_state = nil
   self.expanded_message_uuids = {}
