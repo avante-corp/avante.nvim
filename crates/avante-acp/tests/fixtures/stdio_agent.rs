@@ -203,6 +203,8 @@ fn main() {
                 r#"{"protocolVersion":1,"agentCapabilities":{"loadSession":true,"sessionCapabilities":{"close":{}}},"authMethods":[{"id":"test-auth","name":"Test auth"}]}"#
             } else if scenario == "list-pages" || scenario == "list-repeat" {
                 r#"{"protocolVersion":1,"agentCapabilities":{"loadSession":true,"sessionCapabilities":{"close":{},"list":{}}}}"#
+            } else if scenario == "session-methods" {
+                r#"{"protocolVersion":1,"agentCapabilities":{"loadSession":true,"sessionCapabilities":{"close":{},"delete":{},"resume":{}}}}"#
             } else {
                 r#"{"protocolVersion":1,"agentCapabilities":{"loadSession":true,"sessionCapabilities":{"close":{}}}}"#
             }
@@ -274,6 +276,18 @@ fn main() {
                     b"{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"replayed\"}}}}\n",
                 )
             .expect("replay update must be writable");
+            "{}"
+        } else if line.contains("\"method\":\"session/resume\"") {
+            assert_eq!(scenario, "session-methods");
+            "{}"
+        } else if line.contains("\"method\":\"session/delete\"") {
+            assert_eq!(scenario, "session-methods");
+            std::fs::write(
+                std::env::var_os("AVANTE_ACP_TEST_SCENARIO_MARKER")
+                    .expect("scenario marker path must be configured"),
+                "deleted",
+            )
+            .expect("scenario marker must be writable");
             "{}"
         } else if line.contains("\"method\":\"session/set_config_option\"") {
             assert!(line.contains("\"configId\":\"thinking\""));

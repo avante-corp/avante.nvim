@@ -23,6 +23,7 @@ BUILD_DIR := lua
 TARGET_LIBRARY ?= all
 
 export AVANTE_RUNTIME_TEST_DIR ?= $(CURDIR)/target/tests
+ACP_INTEGRATION_DIR := $(AVANTE_RUNTIME_TEST_DIR)/acp-integration
 
 RAG_SERVICE_VERSION ?= 0.0.11
 RAG_SERVICE_IMAGE := quay.io/yetoneful/avante-rag-service:$(RAG_SERVICE_VERSION)
@@ -129,6 +130,18 @@ rusttest:
 .PHONY: luatest
 luatest:
 	./scripts/run-luatest.sh
+
+.PHONY: acp-integration-test
+acp-integration-test:
+	cargo build --release --no-default-features --features=luajit -p avante-acp $(if $(CARGO_TARGET),--target $(CARGO_TARGET))
+	mkdir -p "$(ACP_INTEGRATION_DIR)"
+	cp "$(TARGET_DIR)/libavante_acp.$(CARGO_EXT)" "$(ACP_INTEGRATION_DIR)/avante_acp.$(EXT)"
+	rustc --edition=2024 \
+		-o "$(ACP_INTEGRATION_DIR)/stdio-agent" \
+		crates/avante-acp/tests/fixtures/stdio_agent.rs
+	AVANTE_ACP_TEST_AGENT="$(ACP_INTEGRATION_DIR)/stdio-agent" \
+		AVANTE_ACP_TEST_NATIVE_DIR="$(ACP_INTEGRATION_DIR)" \
+		./scripts/run-luatest.sh tests/integration/acp_native_spec.lua
 
 # upgrade / pin CI actions
 .PHONY: upgrade-actions
