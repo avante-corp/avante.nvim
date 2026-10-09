@@ -226,9 +226,20 @@
               pkgs.ripgrep
               pkgs.cacert
               pkgs.dockerTools.fakeNss
+
+              # inspect-ai tries to inject or access those
+              pkgs.gnutar
+              pkgs.gzip
+              pkgs.restic
+              # inspect needs a /etc/os-release else it expects kali and fails because of shenaningans
+              (pkgs.writeTextDir "etc/os-release" ''
+                ID=nixos
+                VERSION=${lib.trivial.release}
+                '')
+
             ];
             extraCommands = ''
-              mkdir -p root workspace tmp
+              mkdir -p root workspace tmp var/tmp
               chmod 1777 tmp
             '';
             config = {
