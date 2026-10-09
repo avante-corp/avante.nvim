@@ -1,10 +1,11 @@
 local stub = require("luassert.stub")
+local Config = require("avante.config")
 local Path = require("avante.path")
 local Utils = require("avante.utils")
 local Sidebar = require("avante.sidebar")
 
 describe("Sidebar ACP import", function()
-  local stubs, saved, deleted, latest, stored
+  local stubs, saved, deleted, latest, stored, saved_provider, saved_acp_providers
 
   ---@return table
   local function fake_sidebar(opts)
@@ -28,6 +29,7 @@ describe("Sidebar ACP import", function()
 
   before_each(function()
     saved, deleted, latest = nil, {}, nil
+    saved_provider, saved_acp_providers = Config.provider, Config.acp_providers
     -- Chats on disk, by filename, for discard_acp_import_chat to check
     stored = {}
     stubs = {
@@ -41,6 +43,7 @@ describe("Sidebar ACP import", function()
   end)
 
   after_each(function()
+    Config.provider, Config.acp_providers = saved_provider, saved_acp_providers
     for _, s in ipairs(stubs) do
       s:revert()
     end
@@ -65,11 +68,64 @@ describe("Sidebar ACP import", function()
     end)
   end)
 
+  describe("resume_pending_acp_import", function()
+    it("reloads a session whose import was interrupted", function()
+      local client = { stop = stub() }
+      local chat = {
+        acp_session_id = "s1",
+        acp_session_import_pending = true,
+        filename = "3.json",
+        timestamp = "2026-07-01 20:00:00",
+        messages = {},
+      }
+      local sidebar = fake_sidebar({ chat_history = chat, client = client })
+
+      sidebar:resume_pending_acp_import()
+
+      assert.stub(client.stop).was_called(1)
+      assert.is_nil(sidebar.acp_client)
+      assert.same(
+        { session_id = "s1", filename = "3.json", created = false, timestamp = "2026-07-01 20:00:00" },
+        sidebar.pending_acp_import
+      )
+    end)
+
+    it("does not reload a normal empty session", function()
+      local client = { stop = stub() }
+      local chat = { acp_session_id = "s1", filename = "3.json", messages = {} }
+      local sidebar = fake_sidebar({ chat_history = chat, client = client })
+
+      sidebar:resume_pending_acp_import()
+
+      assert.stub(client.stop).was_not_called()
+      assert.equals(client, sidebar.acp_client)
+      assert.is_nil(sidebar.pending_acp_import)
+    end)
+
+    it("does not replace an explicit session import", function()
+      local import = { session_id = "s2", filename = "4.json", created = true }
+      local sidebar = fake_sidebar({
+        chat_history = {
+          acp_session_id = "s1",
+          acp_session_import_pending = true,
+          filename = "3.json",
+          messages = {},
+        },
+        import = import,
+      })
+
+      sidebar:resume_pending_acp_import()
+
+      assert.equals(import, sidebar.pending_acp_import)
+    end)
+  end)
+
   describe("finish_acp_import", function()
     it("replaces the chat with the replayed conversation", function()
       local import = { session_id = "s1", filename = "3.json", created = false }
       local chat = {
         acp_session_id = "s1",
+        acp_session_import_pending = true,
         filename = "3.json",
         messages = { "stale" },
         entries = { "legacy" },
@@ -86,20 +142,64 @@ describe("Sidebar ACP import", function()
       assert.same({}, chat.todos)
       assert.is_nil(chat.memory)
       assert.is_nil(chat.tokens_usage)
+      assert.is_nil(chat.acp_session_import_pending)
       assert.equals(chat, saved)
       assert.is_nil(sidebar.pending_acp_import)
       assert.equals(1, sidebar.rendered)
     end)
 
+    it("attributes replayed requests to the loaded ACP session", function()
+      Config.provider = "test-acp"
+      Config.acp_providers = { ["test-acp"] = { command = "agent", args = {} } }
+      local import = {
+        session_id = "s1",
+        filename = "3.json",
+        created = false,
+        timestamp = "2026-07-01 20:00:00",
+      }
+      local chat = { acp_session_id = "s1", filename = "3.json", messages = {} }
+      local client = {
+        config = { command = "agent", args = {} },
+        config_options = {
+          { id = "model", category = "model", currentValue = "gpt-5.6-sol" },
+          { id = "mode", category = "mode", currentValue = "agent" },
+        },
+      }
+      local request = { is_user_submission = true, timestamp = "now" }
+      local response = { is_user_submission = false, timestamp = "now" }
+      local sidebar = fake_sidebar({ chat_history = chat, import = import, client = client })
+
+      sidebar:finish_acp_import(import, "s1", { request, response })
+
+      assert.same({
+        provider = "test-acp",
+        model = "gpt-5.6-sol",
+        mode = "agent",
+        timestamp = "2026-07-01 20:00:00",
+      }, {
+        provider = request.provider,
+        model = request.model,
+        mode = request.mode,
+        timestamp = request.timestamp,
+      })
+      assert.equals("now", response.timestamp)
+    end)
+
     it("keeps an existing chat when the agent replays nothing", function()
       local import = { session_id = "s1", filename = "3.json", created = false }
-      local chat = { acp_session_id = "s1", filename = "3.json", messages = { "kept" } }
+      local chat = {
+        acp_session_id = "s1",
+        acp_session_import_pending = true,
+        filename = "3.json",
+        messages = { "kept" },
+      }
       local sidebar = fake_sidebar({ chat_history = chat, import = import })
 
       sidebar:finish_acp_import(import, "s1", {})
 
       assert.same({ "kept" }, chat.messages)
-      assert.is_nil(saved)
+      assert.is_nil(chat.acp_session_import_pending)
+      assert.equals(chat, saved)
       assert.stub(Utils.warn).was_called(1)
     end)
 
@@ -161,7 +261,12 @@ describe("Sidebar ACP import", function()
 
     it("keeps an existing chat and its messages", function()
       local import = { session_id = "s1", filename = "3.json", created = false }
-      local chat = { acp_session_id = "s1", messages = { "kept" }, filename = "3.json" }
+      local chat = {
+        acp_session_id = "s1",
+        acp_session_import_pending = true,
+        messages = { "kept" },
+        filename = "3.json",
+      }
       local sidebar = fake_sidebar({ chat_history = chat, import = import })
 
       sidebar:fail_acp_import(import, { message = "Session not found" })
@@ -169,6 +274,8 @@ describe("Sidebar ACP import", function()
       assert.stub(Utils.error).was_called(1)
       assert.same({}, deleted)
       assert.same({ "kept" }, chat.messages)
+      assert.is_nil(chat.acp_session_import_pending)
+      assert.equals(chat, saved)
       assert.equals(0, sidebar.reconnected)
     end)
 

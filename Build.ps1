@@ -23,15 +23,17 @@ function Build-FromSource($feature) {
         New-Item -ItemType Directory -Path $BuildDir | Out-Null
     }
 
-    cargo build --release --no-default-features --features=$feature -p avante-tokenizers -p avante-templates -p avante-repo-map -p avante-html2md
+    cargo build --release --no-default-features --features=$feature -p avante-tokenizers -p avante-templates -p avante-repo-map -p avante-html2md -p avante-acp
 
     $SCRIPT_DIR = $PSScriptRoot
     $targetTokenizerFile = "avante_tokenizers.dll"
     $targetTemplatesFile = "avante_templates.dll"
     $targetRepoMapFile = "avante_repo_map.dll"
+    $targetAcpFile = "avante_acp.dll"
     Copy-Item (Join-Path $SCRIPT_DIR "target\release\avante_tokenizers.dll") (Join-Path $BuildDir $targetTokenizerFile)
     Copy-Item (Join-Path $SCRIPT_DIR "target\release\avante_templates.dll") (Join-Path $BuildDir $targetTemplatesFile)
     Copy-Item (Join-Path $SCRIPT_DIR "target\release\avante_repo_map.dll") (Join-Path $BuildDir $targetRepoMapFile)
+    Copy-Item (Join-Path $SCRIPT_DIR "target\release\avante_acp.dll") (Join-Path $BuildDir $targetAcpFile)
 
     Remove-Item -Recurse -Force "target"
 }

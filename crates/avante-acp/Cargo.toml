@@ -1,0 +1,28 @@
+[lib]
+crate-type = ["cdylib"]
+
+[package]
+name = "avante-acp"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+agent-client-protocol.workspace = true
+futures.workspace = true
+mlua.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = ["luajit"]
+lua51 = ["mlua/lua51"]
+lua52 = ["mlua/lua52"]
+lua53 = ["mlua/lua53"]
+lua54 = ["mlua/lua54"]
+luajit = ["mlua/luajit"]

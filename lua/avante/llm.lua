@@ -804,136 +804,12 @@ local function stop_retry_timer()
   end
 end
 
--- Intelligently truncate chat history for session recovery to avoid token limits
----@param history_messages table[]
----@return table[]
-local function truncate_history_for_recovery(history_messages)
-  if not history_messages or #history_messages == 0 then return {} end
-
-  -- Get configuration parameters with validation and sensible defaults
-  local recovery_config = Config.session_recovery or {}
-  local MAX_RECOVERY_MESSAGES = math.max(1, math.min(recovery_config.max_history_messages or 20, 50)) -- Increased from 10 to 20
-  local MAX_MESSAGE_LENGTH = math.max(100, math.min(recovery_config.max_message_length or 1000, 10000))
-
-  -- Keep recent messages starting from the newest
-  local truncated = {}
-  local count = 0
-
-  -- CRITICAL: For session recovery, prioritize keeping conversation pairs (user+assistant)
-  -- This preserves the full context of recent interactions
-  local conversation_pairs = {}
-  local last_user_message = nil
-
-  for i = #history_messages, 1, -1 do
-    local message = history_messages[i]
-    if message and message.message and message.message.content then
-      local role = message.message.role
-
-      -- Build conversation pairs for better context preservation
-      if role == "user" then
-        last_user_message = message
-      elseif role == "assistant" and last_user_message then
-        -- Found a complete conversation pair
-        table.insert(conversation_pairs, 1, { user = last_user_message, assistant = message })
-        last_user_message = nil
-      end
-    end
-  end
-
-  -- Add complete conversation pairs first (better context preservation)
-  for _, pair in ipairs(conversation_pairs) do
-    if count >= MAX_RECOVERY_MESSAGES then break end
-
-    -- Add user message
-    table.insert(truncated, 1, pair.user)
-    count = count + 1
-
-    if count < MAX_RECOVERY_MESSAGES then
-      -- Add assistant response
-      table.insert(truncated, 1, pair.assistant)
-      count = count + 1
-    end
-  end
-
-  -- Add remaining individual messages if space allows
-  for i = #history_messages, 1, -1 do
-    if count >= MAX_RECOVERY_MESSAGES then break end
-
-    local message = history_messages[i]
-    if message and message.message and message.message.content then
-      -- Skip if already added as part of conversation pair
-      local already_added = false
-      for _, added_msg in ipairs(truncated) do
-        if added_msg.uuid == message.uuid then
-          already_added = true
-          break
-        end
-      end
-
-      if not already_added then
-        -- Prioritize user messages and important assistant replies, skip verbose tool call results
-        local content = message.message.content
-        local role = message.message.role
-
-        -- Skip overly verbose tool call results with multiple code blocks
-        if
-          role == "assistant"
-          and type(content) == "string"
-          and content:match("```.*```.*```")
-          and #content > MAX_MESSAGE_LENGTH * 2
-        then
-          goto continue
-        end
-
-        -- Handle string content
-        if type(content) == "string" then
-          if #content > MAX_MESSAGE_LENGTH then
-            -- Truncate overly long messages
-            local truncated_message = vim.deepcopy(message)
-            truncated_message.message.content = content:sub(1, MAX_MESSAGE_LENGTH) .. "...[truncated]"
-            table.insert(truncated, 1, truncated_message)
-          else
-            table.insert(truncated, 1, message)
-          end
-        -- Handle table content (multimodal messages)
-        elseif type(content) == "table" then
-          local truncated_message = vim.deepcopy(message)
-          -- Safely handle table content
-          if truncated_message.message.content and type(truncated_message.message.content) == "table" then
-            for j, item in ipairs(truncated_message.message.content) do
-              -- Handle various content item types
-              if type(item) == "string" and #item > MAX_MESSAGE_LENGTH then
-                truncated_message.message.content[j] = item:sub(1, MAX_MESSAGE_LENGTH) .. "...[truncated]"
-              elseif
-                type(item) == "table"
-                and item.text
-                and type(item.text) == "string"
-                and #item.text > MAX_MESSAGE_LENGTH
-              then
-                -- Handle {type="text", text="..."} format
-                item.text = item.text:sub(1, MAX_MESSAGE_LENGTH) .. "...[truncated]"
-              end
-            end
-          end
-          table.insert(truncated, 1, truncated_message)
-        else
-          table.insert(truncated, 1, message)
-        end
-
-        count = count + 1
-      end
-    end
-
-    ::continue::
-  end
-
-  return truncated
-end
 ---@param opts AvanteLLMStreamOptions
 function M._stream_acp(opts)
   Utils.debug("use ACP", Config.provider)
   ---@type table<string, avante.HistoryMessage>
   local tool_call_messages = {}
+  local resolved_tool_calls = {}
   ---@type avante.HistoryMessage?
   local last_tool_call_message = nil
   local acp_provider = Config.acp_providers[Config.provider]
@@ -972,28 +848,15 @@ function M._stream_acp(opts)
       end
     end
   end
-  local function add_tool_call_message(update)
-    local message = History.Message:new("assistant", {
-      type = "tool_use",
-      id = update.toolCallId,
-      name = update.kind or update.title,
-      input = update.rawInput or {},
-    }, {
-      uuid = update.toolCallId,
-    })
-    last_tool_call_message = message
-    message.acp_tool_call = update
-    if update.status == "pending" or update.status == "in_progress" then message.is_calling = true end
-    tool_call_messages[update.toolCallId] = message
-    if update.rawInput then
-      local description = update.rawInput.description
-      if description then
-        message.tool_use_logs = message.tool_use_logs or {}
-        table.insert(message.tool_use_logs, description)
-      end
-    end
-    on_messages_add({ message })
-    return message
+  local function apply_conversation_update(update)
+    local changed, tool_call = AcpReplay.apply_update({
+      messages = get_history_messages(),
+      tool_calls = tool_call_messages,
+      resolved_tool_calls = resolved_tool_calls,
+    }, update)
+    if tool_call then last_tool_call_message = tool_call end
+    if #changed > 0 then on_messages_add(changed) end
+    return tool_call
   end
   local acp_client = opts.acp_client
   local session_id = opts.acp_session_id
@@ -1013,16 +876,14 @@ function M._stream_acp(opts)
     local acp_config = vim.tbl_deep_extend("force", acp_provider, {
       ---@type ACPHandlers
       handlers = {
+        on_config_change = function()
+          if opts.on_acp_config_change then opts.on_acp_config_change() end
+        end,
         on_session_update = function(update)
           -- Replayed updates from session/load duplicate content already in
           -- the chat history; rendering them would re-append old messages and
           -- navigate the editor to files edited in the loaded session.
           if update._replayed then return end
-
-          if update.sessionUpdate == "config_option_update" or update.sessionUpdate == "current_mode_update" then
-            if opts.on_acp_config_change then opts.on_acp_config_change() end
-            return
-          end
 
           if update.sessionUpdate == "plan" then
             local todos = {}
@@ -1043,66 +904,6 @@ function M._stream_acp(opts)
               if opts.update_todos then opts.update_todos(todos) end
             end)
             return
-          end
-
-          if update.sessionUpdate == "agent_message_chunk" then
-            if update.content.type == "text" then
-              local messages = get_history_messages()
-              local last_message = messages[#messages]
-              if last_message and last_message.message.role == "assistant" then
-                local has_text = false
-                local content = last_message.message.content
-                if type(content) == "string" then
-                  last_message.message.content = last_message.message.content .. update.content.text
-                  has_text = true
-                elseif type(content) == "table" then
-                  for idx, item in ipairs(content) do
-                    if type(item) == "string" then
-                      content[idx] = item .. update.content.text
-                      has_text = true
-                    end
-                    if type(item) == "table" and item.type == "text" then
-                      item.text = item.text .. update.content.text
-                      has_text = true
-                    end
-                  end
-                end
-                if has_text then
-                  on_messages_add({ last_message })
-                  return
-                end
-              end
-              local message = History.Message:new("assistant", update.content.text)
-              on_messages_add({ message })
-            end
-          end
-
-          if update.sessionUpdate == "agent_thought_chunk" then
-            if update.content.type == "text" then
-              local messages = get_history_messages()
-              local last_message = messages[#messages]
-              if last_message and last_message.message.role == "assistant" then
-                local is_thinking = false
-                local content = last_message.message.content
-                if type(content) == "table" then
-                  for idx, item in ipairs(content) do
-                    if type(item) == "table" and item.type == "thinking" then
-                      is_thinking = true
-                      content[idx].thinking = content[idx].thinking .. update.content.text
-                    end
-                  end
-                end
-                if is_thinking then
-                  on_messages_add({ last_message })
-                  return
-                end
-              end
-              local message = History.Message:new("assistant", {
-                type = "thinking",
-                thinking = update.content.text,
-              })
-              on_messages_add({ message })
-            end
           end
 
           -- Follow agent edit locations: navigate to the file being edited.
@@ -1172,55 +973,11 @@ function M._stream_acp(opts)
             end)
           end
 
-          if update.sessionUpdate == "tool_call" then
-            add_tool_call_message(update)
-            try_follow_agent_location(update)
-          end
-
-          if update.sessionUpdate == "tool_call_update" then
-            -- Also try follow here: some ACP adapters (e.g. claude-agent-acp)
-            -- send locations in tool_call_update rather than the initial tool_call
-            local merged = tool_call_messages[update.toolCallId]
-              and tool_call_messages[update.toolCallId].acp_tool_call
-            if merged then
-              try_follow_agent_location(vim.tbl_deep_extend("force", merged, update))
-            else
-              try_follow_agent_location(update)
-            end
-            local tool_call_message = tool_call_messages[update.toolCallId]
-            if not tool_call_message then
-              tool_call_message = History.Message:new("assistant", {
-                type = "tool_use",
-                id = update.toolCallId,
-                name = "",
-              })
-              tool_call_messages[update.toolCallId] = tool_call_message
-              tool_call_message.acp_tool_call = update
-            end
-            if tool_call_message.acp_tool_call then
-              if update.content and next(update.content) == nil then update.content = nil end
-              tool_call_message.acp_tool_call = vim.tbl_deep_extend("force", tool_call_message.acp_tool_call, update)
-            end
+          local tool_call_message = apply_conversation_update(update)
+          if tool_call_message then
             tool_call_message.tool_use_logs = tool_call_message.tool_use_logs or {}
             tool_call_message.tool_use_log_lines = tool_call_message.tool_use_log_lines or {}
-            local tool_result_message
-            if update.status == "pending" or update.status == "in_progress" then
-              tool_call_message.is_calling = true
-              tool_call_message.state = "generating"
-            elseif update.status == "completed" or update.status == "failed" then
-              tool_call_message.is_calling = false
-              tool_call_message.state = "generated"
-              tool_result_message = History.Message:new("assistant", {
-                type = "tool_result",
-                tool_use_id = update.toolCallId,
-                content = nil,
-                is_error = update.status == "failed",
-                is_user_declined = update.status == "cancelled",
-              })
-            end
-            local messages = { tool_call_message }
-            if tool_result_message then table.insert(messages, tool_result_message) end
-            on_messages_add(messages)
+            try_follow_agent_location(tool_call_message.acp_tool_call)
           end
 
           if update.sessionUpdate == "available_commands_update" then
@@ -1255,27 +1012,23 @@ function M._stream_acp(opts)
           local sidebar = require("avante").get()
           if not sidebar then
             Utils.error("Avante sidebar not found")
+            callback(nil)
             return
           end
 
           ---@cast tool_call avante.acp.ToolCall
 
-          local message = tool_call_messages[tool_call.toolCallId]
+          local update_type = tool_call_messages[tool_call.toolCallId] and "tool_call_update" or "tool_call"
+          local message =
+            apply_conversation_update(vim.tbl_extend("force", { sessionUpdate = update_type }, tool_call))
           if not message then
-            message = add_tool_call_message(tool_call)
-          else
-            if message.acp_tool_call then
-              if tool_call.content and next(tool_call.content) == nil then tool_call.content = nil end
-              message.acp_tool_call = vim.tbl_deep_extend("force", message.acp_tool_call, tool_call)
-            end
+            callback(nil)
+            return
           end
 
-          on_messages_add({ message })
-
           local description = HistoryRender.get_tool_display_name(message)
+          local acp_mapped_options = ACPConfirmAdapter.map_acp_options(options)
           LLMToolHelpers.confirm(description, function(ok)
-            local acp_mapped_options = ACPConfirmAdapter.map_acp_options(options)
-
             if ok and opts.session_ctx and opts.session_ctx.always_yes then
               callback(acp_mapped_options.all)
             elseif ok then
@@ -1298,14 +1051,14 @@ function M._stream_acp(opts)
           local lines, err, errname = Utils.read_file_from_buf_or_disk(abs_path)
           if err then
             if error_callback then
-              local code = errname == "ENOENT" and ACPClient.ERROR_CODES.RESOURCE_NOT_FOUND or nil
-              error_callback(err, code)
+              local kind = errname == "ENOENT" and "not_found" or nil
+              error_callback(err, kind)
             end
             return
           end
           ---@type string[]
           local file_lines = lines or {}
-          if line ~= nil and limit ~= nil then file_lines = vim.list_slice(file_lines, line, line + limit) end
+          if line ~= nil or limit ~= nil then file_lines = ACPClient._slice_lines(file_lines, line, limit) end
           local content = table.concat(file_lines, "\n")
           if
             last_tool_call_message
@@ -1376,13 +1129,13 @@ function M._stream_acp(opts)
 
       -- If we create a new client and it does not support sesion loading,
       -- remove the old session
-      if not acp_client.agent_capabilities.loadSession then
+      if not acp_client:supports_load_session() then
         if import_session_id then
           pcall(acp_client.stop, acp_client)
-          opts.on_acp_session_load_error(
-            import_session_id,
-            acp_client:_create_error(ACPClient.ERROR_CODES.METHOD_NOT_FOUND, "Agent does not support loading sessions")
-          )
+          opts.on_acp_session_load_error(import_session_id, {
+            kind = "unsupported",
+            message = "Agent does not support loading sessions",
+          })
           return
         end
         opts.acp_session_id = nil
@@ -1484,6 +1237,10 @@ function M._load_acp_session_and_continue(opts, acp_client, session_id)
   end, load_opts)
 end
 
+local function is_missing_acp_session(err)
+  return type(err) == "table" and (err.kind == "not_found" or err.kind == "session_not_found")
+end
+
 ---@param opts AvanteLLMStreamOptions
 ---@param acp_client avante.acp.ACPClient
 ---@param session_id string
@@ -1495,8 +1252,7 @@ function M._continue_stream_acp(opts, acp_client, session_id)
       for _, filepath in ipairs(opts.selected_filepaths) do
         local abs_path = Utils.to_absolute_path(filepath)
         local file_name = vim.fn.fnamemodify(abs_path, ":t")
-        local prompt_item = acp_client:create_resource_link_content("file://" .. abs_path, file_name)
-        table.insert(prompt, prompt_item)
+        table.insert(prompt, { type = "resource_link", uri = "file://" .. abs_path, name = file_name })
       end
     end
     if opts.selected_code then
@@ -1512,214 +1268,39 @@ function M._continue_stream_acp(opts, acp_client, session_id)
     end
   end
   local history_messages = opts.history_messages or {}
-
-  -- DEBUG: Log history message details
-  Utils.debug("ACP history messages count: " .. #history_messages)
-  for i, msg in ipairs(history_messages) do
-    if msg and msg.message then
-      Utils.debug(
-        "History msg "
-          .. i
-          .. ": role="
-          .. (msg.message.role or "unknown")
-          .. ", has_content="
-          .. tostring(msg.message.content ~= nil)
-      )
-      if msg.message.role == "assistant" then
-        Utils.debug("Found assistant message " .. i .. ": " .. tostring(msg.message.content):sub(1, 100))
-      end
+  local current_message
+  for i = #history_messages, 1, -1 do
+    if history_messages[i].is_user_submission then
+      current_message = history_messages[i].message
+      break
     end
   end
 
-  -- DEBUG: Log session recovery state
-  Utils.debug(
-    "Session recovery state: _is_session_recovery="
-      .. tostring(rawget(opts, "_is_session_recovery"))
-      .. ", acp_session_id="
-      .. tostring(opts.acp_session_id)
-  )
-
-  -- CRITICAL: Enhanced session recovery with full context preservation
-  if rawget(opts, "_is_session_recovery") and opts.acp_session_id then
-    -- For session recovery, preserve full conversation context
-    Utils.info("ACP session recovery: preserving full conversation context")
-
-    -- Add all recent messages (both user and assistant) for better context
-    local recent_messages = {}
-    local recovery_config = Config.session_recovery or {}
-    local include_history_count = recovery_config.include_history_count or 15 -- Default to 15 for better context
-
-    -- Get recent messages from truncated history
-    local start_idx = math.max(1, #history_messages - include_history_count + 1)
-    Utils.debug("Including history from index " .. start_idx .. " to " .. #history_messages)
-
-    for i = start_idx, #history_messages do
-      local message = history_messages[i]
-      if message and message.message then
-        table.insert(recent_messages, message)
-        Utils.debug("Adding message " .. i .. " to recent_messages: role=" .. (message.message.role or "unknown"))
+  if not current_message then
+    -- Some internal flows submit through `instructions` without adding a history message.
+    local prompt_opts = M.generate_prompts(opts)
+    for i = #prompt_opts.messages, 1, -1 do
+      local message = prompt_opts.messages[i]
+      if message.role == "user" then
+        current_message = message
+        break
       end
     end
+    if not current_message and #prompt == 0 then current_message = { content = prompt_opts.system_prompt } end
+  end
 
-    Utils.info("ACP recovery: including " .. #recent_messages .. " recent messages")
-
-    -- DEBUG: Log what we're about to add to prompt
-    for i, msg in ipairs(recent_messages) do
-      if msg and msg.message then
-        Utils.debug("Adding to prompt: " .. i .. " role=" .. (msg.message.role or "unknown"))
-      end
-    end
-
-    -- CRITICAL: Add all recent messages to prompt for complete context
-    for _, message in ipairs(recent_messages) do
-      local role = message.message.role
-      local content = message.message.content
-
-      Utils.debug("Processing message: role=" .. (role or "unknown") .. ", content_type=" .. type(content))
-
-      -- Format based on role
-      local role_tag = role == "user" and "previous_user_message" or "previous_assistant_message"
-
-      if type(content) == "table" then
-        for _, item in ipairs(content) do
-          if type(item) == "string" then
-            table.insert(prompt, {
-              type = "text",
-              text = "<" .. role_tag .. ">" .. item .. "</" .. role_tag .. ">",
-            })
-            Utils.debug("Added assistant table content: " .. item:sub(1, 50) .. "...")
-          elseif type(item) == "table" and item.type == "text" then
-            table.insert(prompt, {
-              type = "text",
-              text = "<" .. role_tag .. ">" .. item.text .. "</" .. role_tag .. ">",
-            })
-            Utils.debug("Added assistant text content: " .. item.text:sub(1, 50) .. "...")
-          end
-        end
-      else
-        table.insert(prompt, {
-          type = "text",
-          text = "<" .. role_tag .. ">" .. content .. "</" .. role_tag .. ">",
-        })
-        if role == "assistant" then
-          Utils.debug("Added assistant content: " .. tostring(content):sub(1, 50) .. "...")
+  if current_message then
+    local content = current_message.content
+    if type(content) == "table" then
+      for _, item in ipairs(content) do
+        if type(item) == "string" then
+          table.insert(prompt, { type = "text", text = item })
+        elseif type(item) == "table" and item.type == "text" then
+          table.insert(prompt, { type = "text", text = item.text })
         end
       end
-    end
-
-    -- Add context about session recovery with more detail
-    if #recent_messages > 0 then
-      table.insert(prompt, {
-        type = "text",
-        text = "<system_context>Continuing from previous ACP session with "
-          .. #recent_messages
-          .. " recent messages preserved for context</system_context>",
-      })
-    end
-  elseif opts.acp_session_id then
-    -- Original logic for non-recovery session continuation
-    local recovery_config = Config.session_recovery or {}
-    local include_history_count = recovery_config.include_history_count or 5
-    local user_messages_added = 0
-
-    for i = #history_messages, 1, -1 do
-      local message = history_messages[i]
-      if message.message.role == "user" and user_messages_added < include_history_count then
-        local content = message.message.content
-        if type(content) == "table" then
-          for _, item in ipairs(content) do
-            if type(item) == "string" then
-              table.insert(prompt, {
-                type = "text",
-                text = "<previous_user_message>" .. item .. "</previous_user_message>",
-              })
-            elseif type(item) == "table" and item.type == "text" then
-              table.insert(prompt, {
-                type = "text",
-                text = "<previous_user_message>" .. item.text .. "</previous_user_message>",
-              })
-            end
-          end
-        elseif type(content) == "string" then
-          table.insert(prompt, {
-            type = "text",
-            text = "<previous_user_message>" .. content .. "</previous_user_message>",
-          })
-        end
-        user_messages_added = user_messages_added + 1
-      end
-    end
-
-    -- Add context about session recovery
-    if user_messages_added > 0 then
-      table.insert(prompt, {
-        type = "text",
-        text = "<system_context>Continuing from previous session with "
-          .. user_messages_added
-          .. " recent user messages</system_context>",
-      })
-    elseif #prompt == 0 then
-      -- Session continuation without any history user messages (e.g. the edit
-      -- flow, which submits only `instructions`): fall back to the freshly
-      -- generated prompts, same as the branch below. Without this, an empty
-      -- prompt array is sent, which ACP agents reject (opencode/GLM: "The
-      -- messages parameter is illegal").
-      local prompt_opts = M.generate_prompts(opts)
-      table.insert(prompt, {
-        type = "text",
-        text = prompt_opts.system_prompt,
-      })
-      for _, message in ipairs(prompt_opts.messages) do
-        if message.role == "user" then
-          table.insert(prompt, {
-            type = "text",
-            text = message.content,
-          })
-        end
-      end
-    end
-  else
-    if donot_use_builtin_system_prompt then
-      -- Include all user messages for better context preservation
-      for _, message in ipairs(history_messages) do
-        if message.message.role == "user" then
-          local content = message.message.content
-          if type(content) == "table" then
-            for _, item in ipairs(content) do
-              if type(item) == "string" then
-                table.insert(prompt, {
-                  type = "text",
-                  text = item,
-                })
-              elseif type(item) == "table" and item.type == "text" then
-                table.insert(prompt, {
-                  type = "text",
-                  text = item.text,
-                })
-              end
-            end
-          else
-            table.insert(prompt, {
-              type = "text",
-              text = content,
-            })
-          end
-        end
-      end
-    else
-      local prompt_opts = M.generate_prompts(opts)
-      table.insert(prompt, {
-        type = "text",
-        text = prompt_opts.system_prompt,
-      })
-      for _, message in ipairs(prompt_opts.messages) do
-        if message.role == "user" then
-          table.insert(prompt, {
-            type = "text",
-            text = message.content,
-          })
-        end
-      end
+    elseif type(content) == "string" then
+      table.insert(prompt, { type = "text", text = content })
     end
   end
   local cancelled = false
@@ -1745,131 +1326,17 @@ function M._continue_stream_acp(opts, acp_client, session_id)
     if cancelled then return end
     vim.schedule(function() api.nvim_del_autocmd(stop_cmd_id) end)
     if err_ then
-      -- ACP-specific session recovery: Check for session not found error
-      -- Check for session recovery conditions
-      local recovery_config = Config.session_recovery or {}
-      local recovery_enabled = recovery_config.enabled ~= false -- Default enabled unless explicitly disabled
-
-      local is_session_not_found = false
-      if err_.code == -32603 and err_.data and err_.data.details then
-        local details = err_.data.details
-        -- Support both Claude format ("Session not found") and Gemini-CLI format ("Session not found: session-id")
-        is_session_not_found = details == "Session not found" or details:match("^Session not found:")
-      end
-
-      if recovery_enabled and is_session_not_found and not rawget(opts, "_session_recovery_attempted") then
-        -- Mark recovery attempt to prevent infinite loops
-        rawset(opts, "_session_recovery_attempted", true)
-
-        -- DEBUG: Log recovery attempt
-        Utils.debug("Session recovery attempt detected, setting _session_recovery_attempted flag")
-
-        -- Clear invalid session ID
-        if opts.on_save_acp_session_id then
-          opts.on_save_acp_session_id("") -- Use empty string instead of nil
-        end
-
-        -- Clear invalid session for recovery - let global cleanup handle ACP processes
-        vim.schedule(function()
-          opts.acp_client = nil
-          opts.acp_session_id = nil
-        end)
-
-        -- CRITICAL: Preserve full history for better context retention
-        -- Only truncate if explicitly configured to do so, otherwise keep full history
-        local original_history = opts.history_messages or {}
-        local truncated_history
-
-        -- Check if history truncation is explicitly enabled
-        local should_truncate = recovery_config.truncate_history ~= false -- Default to true for backward compatibility
-
-        -- DEBUG: Log original history details
-        Utils.debug("Original history for recovery: " .. #original_history .. " messages")
-        for i, msg in ipairs(original_history) do
-          if msg and msg.message then
-            Utils.debug("Original history " .. i .. ": role=" .. (msg.message.role or "unknown"))
-          end
-        end
-
-        if should_truncate and #original_history > 20 then -- Only truncate if history is long enough (20条)
-          -- Safely call truncation function
-          local ok, result = pcall(truncate_history_for_recovery, original_history)
-          if ok then
-            truncated_history = result
-            Utils.info(
-              "History truncated from "
-                .. #original_history
-                .. " to "
-                .. #truncated_history
-                .. " messages for recovery"
-            )
-          else
-            Utils.warn("Failed to truncate history for recovery: " .. tostring(result))
-            truncated_history = original_history -- Use full history as fallback
-          end
-        else
-          -- Use full history for better context retention
-          truncated_history = original_history
-          Utils.debug("Using full history for session recovery: " .. #truncated_history .. " messages")
-        end
-
-        -- DEBUG: Log truncated history details
-        Utils.debug("Truncated history for recovery: " .. #truncated_history .. " messages")
-        for i, msg in ipairs(truncated_history) do
-          if msg and msg.message then
-            Utils.debug("Truncated history " .. i .. ": role=" .. (msg.message.role or "unknown"))
-          end
-        end
-
-        opts.history_messages = truncated_history
-
-        Utils.info(
-          string.format(
-            "Session expired, recovering with %d recent messages (from %d total)...",
-            #truncated_history,
-            #original_history
-          )
-        )
-
-        -- CRITICAL: Use vim.schedule to move recovery out of fast event context
-        -- This prevents E5560 errors by avoiding vim.fn calls in fast event context
-        vim.schedule(function()
-          Utils.debug("Session recovery: clearing old session ID and retrying...")
-
-          -- Clean up recovery flags for fresh session state management
-          rawset(opts, "_session_recovery_attempted", nil)
-
-          -- Mark this as a recovery attempt to preserve history context
-          rawset(opts, "_is_session_recovery", true)
-
-          -- Update UI state if available
-          if opts.on_state_change then opts.on_state_change("generating") end
-
-          -- CRITICAL: Ensure history messages are preserved in recovery
-          Utils.info("Session recovery retry with " .. #(opts.history_messages or {}) .. " history messages")
-
-          -- DEBUG: Log recovery history details
-          local recovery_history = opts.history_messages or {}
-          Utils.debug("Recovery history messages: " .. #recovery_history)
-          for i, msg in ipairs(recovery_history) do
-            if msg and msg.message then
-              Utils.debug("Recovery msg " .. i .. ": role=" .. (msg.message.role or "unknown"))
-              if msg.message.role == "assistant" then
-                Utils.debug("Recovery assistant content: " .. tostring(msg.message.content):sub(1, 100))
-              end
-            end
-          end
-
-          -- Retry with truncated history to rebuild context in new session
-          M._stream_acp(opts)
-        end)
-
-        -- CRITICAL: Return immediately to prevent further processing in fast event context
+      if is_missing_acp_session(err_) and not rawget(opts, "_acp_session_recreated") then
+        rawset(opts, "_acp_session_recreated", true)
+        if opts.on_save_acp_session_id then opts.on_save_acp_session_id("") end
+        opts.acp_session_id = nil
+        M._create_acp_session_and_continue(opts, acp_client)
         return
       end
       opts.on_stop({ reason = "error", error = err_ })
       return
     end
+    rawset(opts, "_acp_session_recreated", nil)
     opts.on_stop({ reason = "complete" })
   end)
 end

@@ -31,7 +31,7 @@ all: luajit
 
 define make_definitions
 ifeq ($(TARGET_LIBRARY), all)
-$1: $(BUILD_DIR)/libAvanteTokenizers-$1.$(EXT) $(BUILD_DIR)/libAvanteTemplates-$1.$(EXT) $(BUILD_DIR)/libAvanteRepoMap-$1.$(EXT) $(BUILD_DIR)/libAvanteHtml2md-$1.$(EXT)
+$1: $(BUILD_DIR)/libAvanteTokenizers-$1.$(EXT) $(BUILD_DIR)/libAvanteTemplates-$1.$(EXT) $(BUILD_DIR)/libAvanteRepoMap-$1.$(EXT) $(BUILD_DIR)/libAvanteHtml2md-$1.$(EXT) $(BUILD_DIR)/libAvanteAcp-$1.$(EXT)
 else ifeq ($(TARGET_LIBRARY), tokenizers)
 $1: $(BUILD_DIR)/libAvanteTokenizers-$1.$(EXT)
 else ifeq ($(TARGET_LIBRARY), templates)
@@ -40,8 +40,10 @@ else ifeq ($(TARGET_LIBRARY), repo-map)
 $1: $(BUILD_DIR)/libAvanteRepoMap-$1.$(EXT)
 else ifeq ($(TARGET_LIBRARY), html2md)
 $1: $(BUILD_DIR)/libAvanteHtml2md-$1.$(EXT)
+else ifeq ($(TARGET_LIBRARY), acp)
+$1: $(BUILD_DIR)/libAvanteAcp-$1.$(EXT)
 else
-	$$(error TARGET_LIBRARY must be one of all, tokenizers, templates, repo-map, html2md)
+	$$(error TARGET_LIBRARY must be one of all, tokenizers, templates, repo-map, html2md, acp)
 endif
 endef
 
@@ -58,12 +60,14 @@ $(BUILD_DIR)/libAvanteTokenizers-$1.$(EXT): $(BUILD_DIR) $1-tokenizers
 $(BUILD_DIR)/libAvanteTemplates-$1.$(EXT): $(BUILD_DIR) $1-templates
 $(BUILD_DIR)/libAvanteRepoMap-$1.$(EXT): $(BUILD_DIR) $1-repo-map
 $(BUILD_DIR)/libAvanteHtml2md-$1.$(EXT): $(BUILD_DIR) $1-html2md
+$(BUILD_DIR)/libAvanteAcp-$1.$(EXT): $(BUILD_DIR) $1-acp
 endef
 
 $(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),tokenizers)))
 $(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),templates)))
 $(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),repo-map)))
 $(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),html2md)))
+$(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),acp)))
 $(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_targets,$(lua_version))))
 
 $(BUILD_DIR):

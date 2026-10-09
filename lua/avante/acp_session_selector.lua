@@ -131,8 +131,13 @@ function M.resume(bufnr, session)
     history = Path.history.new(bufnr)
     history.acp_session_id = session.sessionId
   end
+  history.acp_session_import_pending = true
   if session.title and session.title ~= "" then history.title = session.title end
   if session.cwd and session.cwd ~= "" then history.acp_session_cwd = session.cwd end
+  local updated_at = M.parse_timestamp(session.updatedAt)
+  if updated_at then
+    history.timestamp = os.date("%Y-%m-%d %H:%M:%S", updated_at) --[[@as string]]
+  end
   Path.history.save(bufnr, history)
 
   if not sidebar then
@@ -151,6 +156,7 @@ function M.resume(bufnr, session)
     filename = history.filename,
     created = created,
     previous_filename = created and previous_filename or nil,
+    timestamp = updated_at and history.timestamp or nil,
   }
 
   if sidebar:is_open() then
@@ -174,8 +180,7 @@ function M.open()
   local cwd = Utils.root.get({ buf = bufnr })
 
   with_client(sidebar, acp_provider, function(client, release)
-    local capabilities = client.agent_capabilities
-    if not (capabilities and capabilities.loadSession == true and client:supports_list_sessions()) then
+    if not (client:supports_load_session() and client:supports_list_sessions()) then
       release()
       Utils.warn(Config.provider .. " does not support listing and resuming sessions")
       return
@@ -184,12 +189,9 @@ function M.open()
     client:list_all_sessions(cwd, function(sessions, err)
       release()
       vim.schedule(function()
-        if err and #sessions == 0 then
+        if err then
           Utils.error("Failed to list sessions: " .. (err.message or tostring(err)))
           return
-        end
-        if err then
-          Utils.warn("Showing the first " .. #sessions .. " sessions: " .. (err.message or tostring(err)))
         end
         if #sessions == 0 then
           Utils.info("No " .. Config.provider .. " sessions found for this project")

@@ -153,6 +153,7 @@ Sidebar.__index = Sidebar
 ---@field filename string The chat the session is imported into
 ---@field created boolean Whether the chat was created for this import
 ---@field previous_filename? string Chat to return to if a newly created chat's session can't be loaded
+---@field timestamp? string Last activity time reported by session/list
 
 ---@param acp_client avante.acp.ACPClient | nil
 ---@param provider avante.ProviderName
@@ -163,6 +164,24 @@ local function get_acp_config_options(acp_client, provider)
   if not acp_client.config or acp_client.config.command ~= acp_provider.command then return {} end
   if not vim.deep_equal(acp_client.config.args, acp_provider.args) then return {} end
   return acp_client.config_options
+end
+
+---@param sidebar avante.Sidebar
+---@param message avante.HistoryMessage
+---@param timestamp? string
+local function set_user_message_metadata(sidebar, message, timestamp)
+  if not message.is_user_submission then return end
+  message.provider = Config.provider
+  if timestamp then message.timestamp = timestamp end
+  if Config.acp_providers[Config.provider] then
+    for _, opt in ipairs(get_acp_config_options(sidebar.acp_client, Config.provider)) do
+      local current_value = opt.currentValue
+      if opt.category == "model" and type(current_value) == "string" then message.model = current_value end
+      if opt.category == "mode" and type(current_value) == "string" then message.mode = current_value end
+    end
+  else
+    message.model = Config.get_provider_config(Config.provider).model
+  end
 end
 
 ---@class avante.CodeState
@@ -295,6 +314,7 @@ function Sidebar:open(opts)
     -- preconnecting, otherwise session/load replays the old conversation into
     -- the new chat (new_chat() only runs after open() returns).
     if opts.new_chat and self.chat_history then self.chat_history.acp_session_id = nil end
+    self:resume_pending_acp_import()
     self:handle_submit("")
   end
 
@@ -2427,6 +2447,28 @@ function Sidebar:stop_acp_client()
   if client then pcall(client.stop, client) end
 end
 
+---Reload an ACP session whose imported replay was interrupted before being saved.
+function Sidebar:resume_pending_acp_import()
+  local history = self.chat_history
+  if
+    self.pending_acp_import
+    or not history
+    or history.acp_session_import_pending ~= true
+    or not history.acp_session_id
+    or history.acp_session_id == ""
+  then
+    return
+  end
+
+  self:stop_acp_client()
+  self.pending_acp_import = {
+    session_id = history.acp_session_id,
+    filename = history.filename,
+    created = false,
+    timestamp = history.timestamp,
+  }
+end
+
 ---Show the latest chat history and reconnect the ACP agent for it
 function Sidebar:switch_to_history_and_reconnect()
   self.current_state = nil
@@ -2454,7 +2496,9 @@ function Sidebar:finish_acp_import(import, session_id, messages)
     return
   end
 
+  chat_history.acp_session_import_pending = nil
   if #messages == 0 then
+    Path.history.save(self.code.bufnr, chat_history)
     if not import.created then
       Utils.warn("The agent returned no conversation for this session; kept the chat as it was")
     end
@@ -2463,6 +2507,9 @@ function Sidebar:finish_acp_import(import, session_id, messages)
 
   -- The agent's copy of the session is the source of truth, so re-importing picks up
   -- anything added outside avante
+  for _, message in ipairs(messages) do
+    set_user_message_metadata(self, message, import.timestamp)
+  end
   chat_history.messages = messages
   chat_history.entries = {}
   chat_history.todos = {}
@@ -2483,6 +2530,15 @@ function Sidebar:fail_acp_import(import, err)
   self.pending_acp_import = nil
   Utils.error("Couldn't resume the ACP session: " .. ((err and err.message) or "unknown error"))
   self:stop_acp_client()
+  local chat_history = self.chat_history
+  if
+    chat_history
+    and chat_history.filename == import.filename
+    and chat_history.acp_session_id == import.session_id
+  then
+    chat_history.acp_session_import_pending = nil
+    Path.history.save(self.code.bufnr, chat_history)
+  end
   if not import.created then return end
 
   local showing_import = self.chat_history ~= nil and self.chat_history.filename == import.filename
@@ -2533,17 +2589,7 @@ function Sidebar:add_history_messages(messages, opts)
   local history_messages = History.get_history_messages(self.chat_history)
   messages = vim.islist(messages) and messages or { messages }
   for _, message in ipairs(messages) do
-    if message.is_user_submission then
-      message.provider = Config.provider
-      if Config.acp_providers[Config.provider] then
-        for _, opt in ipairs(get_acp_config_options(self.acp_client, Config.provider)) do
-          if opt.category == "model" then message.model = opt.currentValue end
-          if opt.category == "mode" then message.mode = opt.currentValue end
-        end
-      else
-        message.model = Config.get_provider_config(Config.provider).model
-      end
-    end
+    set_user_message_metadata(self, message)
     local idx = nil
     for idx_, message_ in ipairs(history_messages) do
       if message_.uuid == message.uuid then

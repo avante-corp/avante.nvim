@@ -9,58 +9,7 @@ local function summarize(messages)
   return vim.tbl_map(function(m) return { role = m.message.role, content = m.message.content } end, messages)
 end
 
-local function wrap(role, body) return "<" .. role .. ">" .. body .. "</" .. role .. ">" end
-
 describe("acp_replay", function()
-  describe("unwrap_avante_prompt", function()
-    it("returns the newest user message from a session continuation prompt", function()
-      local prompt = "[@main.py](file:///p/main.py)"
-        .. wrap("previous_user_message", "What was the code word?")
-        .. wrap("previous_user_message", "Remember pineapple")
-        .. "<system_context>Continuing from previous session with 2 recent user messages</system_context>"
-
-      assert.equals("What was the code word?", AcpReplay.unwrap_avante_prompt(prompt))
-    end)
-
-    it("returns the last user message from a session recovery prompt", function()
-      local prompt = wrap("previous_user_message", "Remember pineapple")
-        .. wrap("previous_assistant_message", "OK")
-        .. wrap("previous_user_message", "What was the code word?")
-        .. "<system_context>Continuing from previous ACP session with 3 recent messages preserved for context</system_context>"
-
-      assert.equals("What was the code word?", AcpReplay.unwrap_avante_prompt(prompt))
-    end)
-
-    it("recovers the request from a prompt that already contained nested wrappers", function()
-      local earlier = wrap("previous_user_message", "Remember pineapple")
-        .. "<system_context>Continuing from previous session with 1 recent user messages</system_context>"
-      local prompt = wrap("previous_user_message", "What was the code word?")
-        .. wrap("previous_user_message", earlier)
-        .. "<system_context>Continuing from previous session with 2 recent user messages</system_context>"
-
-      assert.equals("What was the code word?", AcpReplay.unwrap_avante_prompt(prompt))
-    end)
-
-    it("leaves other text alone, even with similar tags", function()
-      local text = "Explain " .. wrap("previous_user_message", "this") .. " please"
-      assert.equals(text, AcpReplay.unwrap_avante_prompt(text))
-      assert.equals("plain question", AcpReplay.unwrap_avante_prompt("plain question"))
-    end)
-
-    it("is applied to replayed user messages", function()
-      local prompt = wrap("previous_user_message", "What was it?")
-        .. "<system_context>Continuing from previous session with 1 recent user messages</system_context>"
-      local messages = AcpReplay.to_messages({
-        { sessionUpdate = "user_message_chunk", content = text(prompt:sub(1, 20)) },
-        { sessionUpdate = "user_message_chunk", content = text(prompt:sub(21)) },
-        { sessionUpdate = "agent_message_chunk", content = text(prompt) },
-      })
-
-      assert.equals("What was it?", messages[1].message.content)
-      assert.equals(prompt, messages[2].message.content)
-    end)
-  end)
-
   describe("is_conversation_update", function()
     it("accepts message, thought and tool call updates", function()
       for _, kind in ipairs({
@@ -159,6 +108,21 @@ describe("acp_replay", function()
 
       assert.same({ type = "tool_result", tool_use_id = "t1", is_error = false }, messages[3].message.content[1])
       assert.same({ role = "assistant", content = "Done" }, summarize({ messages[4] })[1])
+    end)
+
+    it("imports SDK tool updates without deep-copying the update", function()
+      local update = { sessionUpdate = "tool_call", toolCallId = "t1", title = "Run", status = "completed" }
+      local deepcopy = vim.deepcopy
+      vim.deepcopy = function(value, ...)
+        if value == update then error("bad argument #2 to 'deepcopy' (nil or table expected)") end
+        return deepcopy(value, ...)
+      end
+
+      local ok, messages = pcall(AcpReplay.to_messages, { update })
+      vim.deepcopy = deepcopy
+
+      assert.is_true(ok)
+      assert.equals("t1", messages[1].uuid)
     end)
 
     it("marks failed tool calls as errors", function()

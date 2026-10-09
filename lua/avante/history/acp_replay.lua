@@ -30,49 +30,126 @@ local function content_text(content)
 end
 
 ---@param message avante.HistoryMessage|nil
----@param role "user" | "assistant"
----@return boolean
-local function is_text_message(message, role)
-  return message ~= nil and message.message.role == role and type(message.message.content) == "string"
-end
-
--- When continuing an ACP session, llm.lua sends the recent user messages wrapped in
--- <previous_user_message> tags, followed by one of these markers. The agent stores that whole
--- prompt as the user's turn, so imports unwrap it back to the message the user typed.
-local CONTINUATION_MARKER =
-  "<system_context>Continuing from previous session with %d+ recent user messages</system_context>"
-local RECOVERY_MARKER =
-  "<system_context>Continuing from previous ACP session with %d+ recent messages preserved for context</system_context>"
-
----Recovers the user's own message from a prompt avante built when continuing an ACP session.
----Text that isn't such a prompt is returned unchanged.
----@param text string
----@return string
-function M.unwrap_avante_prompt(text)
-  local newest_first
-  if text:find(CONTINUATION_MARKER) then
-    newest_first = true -- the continuation lists user messages newest first
-  elseif text:find(RECOVERY_MARKER) then
-    newest_first = false -- recovery lists the conversation oldest first
-  else
-    return text
-  end
-
-  local user_messages = {}
-  for message in text:gmatch("<previous_user_message>(.-)</previous_user_message>") do
-    table.insert(user_messages, message)
-  end
-  if #user_messages == 0 then return text end
-  return newest_first and user_messages[1] or user_messages[#user_messages]
-end
-
----@param message avante.HistoryMessage|nil
 ---@return table|nil
 local function thinking_item(message)
   if not message or message.message.role ~= "assistant" or type(message.message.content) ~= "table" then return nil end
   local item = message.message.content[1]
   if type(item) == "table" and item.type == "thinking" then return item end
   return nil
+end
+
+---@class avante.acp.UpdateState
+---@field messages avante.HistoryMessage[]
+---@field tool_calls table<string, avante.HistoryMessage>
+---@field resolved_tool_calls table<string, boolean>
+---@field include_user? boolean
+
+---@param state avante.acp.UpdateState
+---@param role "user"|"assistant"
+---@param text string
+---@return avante.HistoryMessage
+local function append_text(state, role, text)
+  local last_message = state.messages[#state.messages]
+  if last_message and last_message.message.role == role then
+    local content = last_message.message.content
+    if type(content) == "string" then
+      last_message.message.content = content .. text
+      return last_message
+    end
+    if type(content) == "table" then
+      local appended = false
+      for index, item in ipairs(content) do
+        if type(item) == "string" then
+          content[index] = item .. text
+          appended = true
+        elseif type(item) == "table" and item.type == "text" then
+          item.text = item.text .. text
+          appended = true
+        end
+      end
+      if appended then return last_message end
+    end
+  end
+  local message = Message:new(role, text, { is_user_submission = role == "user" })
+  table.insert(state.messages, message)
+  return message
+end
+
+---@param state avante.acp.UpdateState
+---@param update table
+---@return avante.HistoryMessage[] changed
+---@return avante.HistoryMessage|nil tool_call
+function M.apply_update(state, update)
+  local kind = update.sessionUpdate
+  if kind == "user_message_chunk" or kind == "agent_message_chunk" then
+    if kind == "user_message_chunk" and not state.include_user then return {}, nil end
+    local text = content_text(update.content)
+    if not text then return {}, nil end
+    local role = kind == "user_message_chunk" and "user" or "assistant"
+    return { append_text(state, role, text) }, nil
+  end
+
+  if kind == "agent_thought_chunk" then
+    local text = content_text(update.content)
+    if not text then return {}, nil end
+    local last_message = state.messages[#state.messages]
+    local item = thinking_item(last_message)
+    if item then
+      item.thinking = item.thinking .. text
+      return { last_message }, nil
+    end
+    local message = Message:new("assistant", { type = "thinking", thinking = text })
+    table.insert(state.messages, message)
+    return { message }, nil
+  end
+
+  if (kind ~= "tool_call" and kind ~= "tool_call_update") or type(update.toolCallId) ~= "string" then
+    return {}, nil
+  end
+
+  local id = update.toolCallId
+  local patch = vim.tbl_extend("force", {}, update)
+  if type(patch.content) == "table" and next(patch.content) == nil then patch.content = nil end
+  local changed = {}
+  local message = state.tool_calls[id]
+  if message then
+    message.acp_tool_call = vim.tbl_deep_extend("force", message.acp_tool_call or {}, patch)
+  else
+    message = Message:new("assistant", {
+      type = "tool_use",
+      id = id,
+      name = update.kind or update.title or "",
+      input = update.rawInput or {},
+    }, { uuid = id })
+    message.acp_tool_call = patch
+    if type(update.rawInput) == "table" and update.rawInput.description then
+      message.tool_use_logs = { update.rawInput.description }
+    end
+    state.tool_calls[id] = message
+    table.insert(state.messages, message)
+  end
+  table.insert(changed, message)
+
+  local status = message.acp_tool_call.status
+  if status == "pending" or status == "in_progress" then
+    message.is_calling = true
+    message.state = "generating"
+  elseif status == "completed" or status == "failed" then
+    message.is_calling = false
+    message.state = "generated"
+    if not state.resolved_tool_calls[id] then
+      state.resolved_tool_calls[id] = true
+      local result = Message:new("assistant", {
+        type = "tool_result",
+        tool_use_id = id,
+        content = nil,
+        is_error = status == "failed",
+      })
+      table.insert(state.messages, result)
+      table.insert(changed, result)
+    end
+  end
+  return changed, message
 end
 
 ---Converts the session updates an agent replays during session/load into history messages,
@@ -87,80 +164,20 @@ function M.to_messages(updates)
   ---@type table<string, boolean>
   local resolved_tool_calls = {}
 
+  local state = {
+    messages = messages,
+    tool_calls = tool_calls,
+    resolved_tool_calls = resolved_tool_calls,
+    include_user = true,
+  }
   for _, update in ipairs(updates) do
-    local kind = update.sessionUpdate
-    local last_message = messages[#messages]
-
-    if kind == "user_message_chunk" or kind == "agent_message_chunk" then
-      local text = content_text(update.content)
-      if text then
-        local role = kind == "user_message_chunk" and "user" or "assistant"
-        if is_text_message(last_message, role) then
-          last_message.message.content = last_message.message.content .. text
-        else
-          table.insert(messages, Message:new(role, text, { is_user_submission = role == "user" }))
-        end
-      end
-    elseif kind == "agent_thought_chunk" then
-      local text = content_text(update.content)
-      if text then
-        local item = thinking_item(last_message)
-        if item then
-          item.thinking = item.thinking .. text
-        else
-          table.insert(messages, Message:new("assistant", { type = "thinking", thinking = text }))
-        end
-      end
-    elseif (kind == "tool_call" or kind == "tool_call_update") and type(update.toolCallId) == "string" then
-      local id = update.toolCallId
-      local patch = vim.deepcopy(update)
-      if type(patch.content) == "table" and next(patch.content) == nil then patch.content = nil end
-
-      local message = tool_calls[id]
-      if message then
-        message.acp_tool_call = vim.tbl_deep_extend("force", message.acp_tool_call or {}, patch)
-      else
-        message = Message:new("assistant", {
-          type = "tool_use",
-          id = id,
-          name = update.kind or update.title or "",
-          input = update.rawInput or {},
-        }, { uuid = id })
-        message.acp_tool_call = patch
-        if type(update.rawInput) == "table" and update.rawInput.description then
-          message.tool_use_logs = { update.rawInput.description }
-        end
-        tool_calls[id] = message
-        table.insert(messages, message)
-      end
-
-      local status = message.acp_tool_call.status
-      if (status == "completed" or status == "failed") and not resolved_tool_calls[id] then
-        resolved_tool_calls[id] = true
-        table.insert(
-          messages,
-          Message:new("assistant", {
-            type = "tool_result",
-            tool_use_id = id,
-            content = nil,
-            is_error = status == "failed",
-          })
-        )
-      end
-    end
+    M.apply_update(state, update)
   end
 
   -- The replay is history: no tool call is still running, whatever its last status was.
   for _, message in pairs(tool_calls) do
     message.is_calling = false
     message.state = "generated"
-  end
-
-  for _, message in ipairs(messages) do
-    local content = message.message.content
-    if message.message.role == "user" and type(content) == "string" then
-      message.message.content = M.unwrap_avante_prompt(content)
-    end
   end
 
   return messages

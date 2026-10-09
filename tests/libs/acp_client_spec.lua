@@ -1,445 +1,304 @@
 local ACPClient = require("avante.libs.acp_client")
 local stub = require("luassert.stub")
 
-describe("ACPClient", function()
+describe("ACPClient native adapter", function()
   local schedule_stub
-  local setup_transport_stub
 
   before_each(function()
-    schedule_stub = stub(vim, "schedule")
-    schedule_stub.invokes(function(fn) fn() end)
-    setup_transport_stub = stub(ACPClient, "_setup_transport")
+    schedule_stub = stub(vim, "schedule").invokes(function(fn) fn() end)
   end)
 
-  after_each(function()
-    schedule_stub:revert()
-    setup_transport_stub:revert()
+  after_each(function() schedule_stub:revert() end)
+
+  local function ready_client(handlers)
+    local client = ACPClient:new({ command = "agent", args = {}, handlers = handlers or {} })
+    local native = { calls = {}, next_id = 0 }
+    local function operation(name)
+      native[name] = function(self, ...)
+        self.next_id = self.next_id + 1
+        table.insert(self.calls, { method = name, args = { ... }, operation_id = self.next_id })
+        return { operationId = self.next_id }
+      end
+    end
+    for _, name in ipairs({
+      "new_session",
+      "load_session",
+      "resume_session",
+      "list_sessions",
+      "close_session",
+      "delete_session",
+      "set_session_option",
+      "prompt",
+    }) do
+      operation(name)
+    end
+    for _, name in ipairs({
+      "respond_permission",
+      "respond_read_text_file",
+      "respond_write_text_file",
+      "respond_error",
+      "cancel",
+      "stop",
+    }) do
+      native[name] = function(self, ...) table.insert(self.calls, { method = name, args = { ... } }) end
+    end
+    client.native = native
+    client.state = "ready"
+    return client, native
+  end
+
+  it("calls concrete native methods instead of sending protocol command tables", function()
+    local client, native = ready_client()
+
+    client:send_prompt("s1", { { type = "text", text = "hello" } }, function() end)
+
+    assert.equals("prompt", native.calls[1].method)
+    assert.same({ "s1", { { type = "text", text = "hello" } } }, native.calls[1].args)
+    assert.equals(1, native.calls[1].operation_id)
   end)
 
-  describe("_handle_read_text_file", function()
-    it("should call error_callback when file read fails", function()
-      local sent_error = nil
-      local handler_called = false
-      local mock_config = {
-        transport_type = "stdio",
-        handlers = {
-          on_read_file = function(path, line, limit, success_callback, err_callback)
-            handler_called = true
-            err_callback("File not found", ACPClient.ERROR_CODES.RESOURCE_NOT_FOUND)
-          end,
-        },
-      }
+  it("routes operation completion to the callback", function()
+    local client = ready_client()
+    local result
+    client:send_prompt("s1", { { type = "text", text = "hello" } }, function(value) result = value end)
 
-      local client = ACPClient:new(mock_config)
-      client._send_error = stub().invokes(
-        function(self, id, message, code) sent_error = { id = id, message = message, code = code } end
-      )
+    client:_handle_event({ type = "operation_completed", operationId = 1, result = { stopReason = "end_turn" } })
 
-      client:_handle_read_text_file(123, { sessionId = "test-session", path = "/nonexistent/file.txt" })
-
-      assert.is_true(handler_called)
-      assert.is_not_nil(sent_error)
-      assert.equals(123, sent_error.id)
-      assert.equals("File not found", sent_error.message)
-      assert.equals(ACPClient.ERROR_CODES.RESOURCE_NOT_FOUND, sent_error.code)
-    end)
-
-    it("should use default error message when error_callback called with nil", function()
-      local sent_error = nil
-      local mock_config = {
-        transport_type = "stdio",
-        handlers = {
-          on_read_file = function(path, line, limit, success_callback, err_callback) err_callback(nil, nil) end,
-        },
-      }
-
-      local client = ACPClient:new(mock_config)
-      client._send_error = stub().invokes(
-        function(self, id, message, code) sent_error = { id = id, message = message, code = code } end
-      )
-
-      client:_handle_read_text_file(456, { sessionId = "test-session", path = "/bad/file.txt" })
-
-      assert.is_not_nil(sent_error)
-      assert.equals(456, sent_error.id)
-      assert.equals("Failed to read file", sent_error.message)
-      assert.is_nil(sent_error.code)
-    end)
-
-    it("should call success_callback when file read succeeds", function()
-      local sent_result = nil
-      local mock_config = {
-        transport_type = "stdio",
-        handlers = {
-          on_read_file = function(path, line, limit, success_callback, err_callback) success_callback("file contents") end,
-        },
-      }
-
-      local client = ACPClient:new(mock_config)
-      client._send_result = stub().invokes(function(self, id, result) sent_result = { id = id, result = result } end)
-
-      client:_handle_read_text_file(789, { sessionId = "test-session", path = "/existing/file.txt" })
-
-      assert.is_not_nil(sent_result)
-      assert.equals(789, sent_result.id)
-      assert.equals("file contents", sent_result.result.content)
-    end)
-
-    it("should send error when params are invalid (missing sessionId)", function()
-      local sent_error = nil
-      local mock_config = {
-        transport_type = "stdio",
-        handlers = {
-          on_read_file = function() end,
-        },
-      }
-
-      local client = ACPClient:new(mock_config)
-      client._send_error = stub().invokes(
-        function(self, id, message, code) sent_error = { id = id, message = message, code = code } end
-      )
-
-      client:_handle_read_text_file(100, { path = "/file.txt" })
-
-      assert.is_not_nil(sent_error)
-      assert.equals(100, sent_error.id)
-      assert.equals("Invalid fs/read_text_file params", sent_error.message)
-      assert.equals(ACPClient.ERROR_CODES.INVALID_PARAMS, sent_error.code)
-    end)
-
-    it("should send error when params are invalid (missing path)", function()
-      local sent_error = nil
-      local mock_config = {
-        transport_type = "stdio",
-        handlers = {
-          on_read_file = function() end,
-        },
-      }
-
-      local client = ACPClient:new(mock_config)
-      client._send_error = stub().invokes(
-        function(self, id, message, code) sent_error = { id = id, message = message, code = code } end
-      )
-
-      client:_handle_read_text_file(200, { sessionId = "test-session" })
-
-      assert.is_not_nil(sent_error)
-      assert.equals(200, sent_error.id)
-      assert.equals("Invalid fs/read_text_file params", sent_error.message)
-      assert.equals(ACPClient.ERROR_CODES.INVALID_PARAMS, sent_error.code)
-    end)
-
-    it("should send error when handler is not configured", function()
-      local sent_error = nil
-      local mock_config = {
-        transport_type = "stdio",
-        handlers = {},
-      }
-
-      local client = ACPClient:new(mock_config)
-      client._send_error = stub().invokes(
-        function(self, id, message, code) sent_error = { id = id, message = message, code = code } end
-      )
-
-      client:_handle_read_text_file(300, { sessionId = "test-session", path = "/file.txt" })
-
-      assert.is_not_nil(sent_error)
-      assert.equals(300, sent_error.id)
-      assert.equals("fs/read_text_file handler not configured", sent_error.message)
-      assert.equals(ACPClient.ERROR_CODES.METHOD_NOT_FOUND, sent_error.code)
-    end)
+    assert.equals("end_turn", result.stopReason)
+    assert.same({}, client.callbacks)
   end)
 
-  describe("_handle_write_text_file", function()
-    it("should send error when params are invalid (missing sessionId)", function()
-      local sent_error = nil
-      local mock_config = {
-        transport_type = "stdio",
-        handlers = {
-          on_write_file = function() end,
-        },
-      }
+  it("returns structured native validation errors without string parsing", function()
+    local client = ready_client()
+    local expected = { kind = "invalid_input", code = -32602, message = "Invalid params", data = "bad prompt" }
+    client.native.prompt = function() return { error = expected } end
+    local actual
 
-      local client = ACPClient:new(mock_config)
-      client._send_error = stub().invokes(
-        function(self, id, message, code) sent_error = { id = id, message = message, code = code } end
-      )
+    client:send_prompt("s1", {}, function(_, err) actual = err end)
 
-      client:_handle_write_text_file(400, { path = "/file.txt", content = "data" })
-
-      assert.is_not_nil(sent_error)
-      assert.equals(400, sent_error.id)
-      assert.equals("Invalid fs/write_text_file params", sent_error.message)
-      assert.equals(ACPClient.ERROR_CODES.INVALID_PARAMS, sent_error.code)
-    end)
-
-    it("should send error when params are invalid (missing path)", function()
-      local sent_error = nil
-      local mock_config = {
-        transport_type = "stdio",
-        handlers = {
-          on_write_file = function() end,
-        },
-      }
-
-      local client = ACPClient:new(mock_config)
-      client._send_error = stub().invokes(
-        function(self, id, message, code) sent_error = { id = id, message = message, code = code } end
-      )
-
-      client:_handle_write_text_file(500, { sessionId = "test-session", content = "data" })
-
-      assert.is_not_nil(sent_error)
-      assert.equals(500, sent_error.id)
-      assert.equals("Invalid fs/write_text_file params", sent_error.message)
-      assert.equals(ACPClient.ERROR_CODES.INVALID_PARAMS, sent_error.code)
-    end)
-
-    it("should send error when params are invalid (missing content)", function()
-      local sent_error = nil
-      local mock_config = {
-        transport_type = "stdio",
-        handlers = {
-          on_write_file = function() end,
-        },
-      }
-
-      local client = ACPClient:new(mock_config)
-      client._send_error = stub().invokes(
-        function(self, id, message, code) sent_error = { id = id, message = message, code = code } end
-      )
-
-      client:_handle_write_text_file(600, { sessionId = "test-session", path = "/file.txt" })
-
-      assert.is_not_nil(sent_error)
-      assert.equals(600, sent_error.id)
-      assert.equals("Invalid fs/write_text_file params", sent_error.message)
-      assert.equals(ACPClient.ERROR_CODES.INVALID_PARAMS, sent_error.code)
-    end)
-
-    it("should send error when handler is not configured", function()
-      local sent_error = nil
-      local mock_config = {
-        transport_type = "stdio",
-        handlers = {},
-      }
-
-      local client = ACPClient:new(mock_config)
-      client._send_error = stub().invokes(
-        function(self, id, message, code) sent_error = { id = id, message = message, code = code } end
-      )
-
-      client:_handle_write_text_file(700, { sessionId = "test-session", path = "/file.txt", content = "data" })
-
-      assert.is_not_nil(sent_error)
-      assert.equals(700, sent_error.id)
-      assert.equals("fs/write_text_file handler not configured", sent_error.message)
-      assert.equals(ACPClient.ERROR_CODES.METHOD_NOT_FOUND, sent_error.code)
-    end)
+    assert.same(expected, actual)
+    assert.same({}, client.callbacks)
   end)
 
-  describe("MCP tool flow", function()
-    local MCP_TOOL_UUID = "mcp-test-uuid-12345-67890"
+  it("fails pending operations after a fatal worker error", function()
+    local client = ready_client()
+    local request_error
+    client:send_prompt("s1", { { type = "text", text = "hello" } }, function(_, err) request_error = err end)
+    local fatal = { code = -32603, message = "agent exited" }
 
-    it("receives MCP tool result via session/update when mcp_servers configured", function()
-      local sent_request = nil
-      local session_updates = {}
-      local client
+    client:_handle_event({ type = "fatal_error", error = fatal })
 
-      local mock_transport = {
-        send = function(self, data)
-          local decoded = vim.json.decode(data)
-
-          if decoded.method == "session/new" then
-            sent_request = decoded.params
-
-            vim.schedule(
-              function()
-                client:_handle_message({
-                  jsonrpc = "2.0",
-                  id = decoded.id,
-                  result = { sessionId = "test-session-mcp" },
-                })
-              end
-            )
-          elseif decoded.method == "session/prompt" then
-            vim.schedule(
-              function()
-                client:_handle_message({
-                  jsonrpc = "2.0",
-                  method = "session/update",
-                  params = {
-                    sessionId = "test-session-mcp",
-                    update = {
-                      sessionUpdate = "tool_call",
-                      toolCallId = "mcp-tool-1",
-                      title = "lookup__get_code",
-                      kind = "other",
-                      status = "completed",
-                      content = {
-                        {
-                          type = "content",
-                          content = { type = "text", text = MCP_TOOL_UUID },
-                        },
-                      },
-                    },
-                  },
-                })
-              end
-            )
-
-            vim.schedule(
-              function()
-                client:_handle_message({
-                  jsonrpc = "2.0",
-                  id = decoded.id,
-                  result = { stopReason = "end_turn" },
-                })
-              end
-            )
-          end
-        end,
-        start = function(self, on_message) end,
-        stop = function(self) end,
-      }
-
-      local mock_config = {
-        transport_type = "stdio",
-        handlers = {
-          on_session_update = function(update) table.insert(session_updates, update) end,
-        },
-      }
-
-      client = ACPClient:new(mock_config)
-      client.transport = mock_transport
-      client.state = "ready"
-      client.agent_capabilities = { mcpCapabilities = { http = true, sse = false } }
-
-      local mcp_servers = {
-        { type = "http", name = "lookup", url = "http://localhost:8080/mcp", headers = {} },
-      }
-      local session_id = nil
-      client:create_session("/tmp/test", mcp_servers, function(sid, _err) session_id = sid end)
-
-      assert.is_not_nil(sent_request)
-      assert.equals("/tmp/test", sent_request.cwd)
-      assert.same(mcp_servers, sent_request.mcpServers)
-      assert.equals("test-session-mcp", session_id)
-
-      client:send_prompt("test-session-mcp", { { type = "text", text = "Use the get_code tool" } }, function() end)
-
-      assert.equals(1, #session_updates)
-      assert.equals("tool_call", session_updates[1].sessionUpdate)
-      assert.equals("lookup__get_code", session_updates[1].title)
-      assert.equals("completed", session_updates[1].status)
-
-      local tool_content = session_updates[1].content[1].content.text
-      assert.equals(MCP_TOOL_UUID, tool_content)
-    end)
-
-    it("should default mcp_servers to empty array", function()
-      local sent_params = nil
-      local client
-
-      local mock_transport = {
-        send = function(self, data)
-          local decoded = vim.json.decode(data)
-          if decoded.method == "session/new" then
-            sent_params = decoded.params
-            vim.schedule(
-              function()
-                client:_handle_message({
-                  jsonrpc = "2.0",
-                  id = decoded.id,
-                  result = { sessionId = "test-session" },
-                })
-              end
-            )
-          end
-        end,
-        start = function(_self, _on_message) end,
-        stop = function(_self) end,
-      }
-
-      client = ACPClient:new({ transport_type = "stdio", handlers = {} })
-      client.transport = mock_transport
-      client.state = "ready"
-
-      client:create_session("/tmp/test", nil, function() end)
-
-      assert.is_not_nil(sent_params)
-      assert.same({}, sent_params.mcpServers)
-    end)
+    assert.same(fatal, request_error)
+    assert.same({}, client.callbacks)
+    assert.equals("error", client.state)
   end)
 
-  describe("session/load replay", function()
-    it("stamps session updates replayed during session/load as _replayed", function()
-      local session_updates = {}
-      local client
+  it("routes SDK session notifications to the existing UI handler", function()
+    local updates = {}
+    local client = ready_client({ on_session_update = function(update) table.insert(updates, update) end })
 
-      local mock_transport = {
-        send = function(self, data)
-          local decoded = vim.json.decode(data)
-          if decoded.method == "session/load" then
-            -- Agents replay the loaded conversation before answering the request
-            vim.schedule(
-              function()
-                client:_handle_message({
-                  jsonrpc = "2.0",
-                  method = "session/update",
-                  params = {
-                    sessionId = "test-session-load",
-                    update = {
-                      sessionUpdate = "agent_message_chunk",
-                      content = { type = "text", text = "replayed message" },
-                    },
-                  },
-                })
-              end
-            )
-            vim.schedule(
-              function() client:_handle_message({ jsonrpc = "2.0", id = decoded.id, result = vim.empty_dict() }) end
-            )
-          end
-        end,
-        start = function(_self, _on_message) end,
-        stop = function(_self) end,
-      }
+    client:_handle_event({
+      type = "session_update",
+      replayed = false,
+      notification = {
+        sessionId = "s1",
+        update = { sessionUpdate = "agent_message_chunk", content = { type = "text", text = "hi" } },
+      },
+    })
 
-      client = ACPClient:new({
-        transport_type = "stdio",
-        handlers = {
-          on_session_update = function(update) table.insert(session_updates, update) end,
-        },
-      })
-      client.transport = mock_transport
-      client.state = "ready"
-      client.agent_capabilities = { loadSession = true }
+    assert.equals("hi", updates[1].content.text)
+  end)
 
-      local loaded = false
-      client:load_session("test-session-load", "/tmp/test", nil, function(_result, err)
-        assert.is_nil(err)
-        loaded = true
-      end)
+  it("answers permission and file requests through typed native responder methods", function()
+    local client, native = ready_client({
+      on_request_permission = function(_, _, done) done("allow") end,
+      on_read_file = function(_, _, _, done) done("contents") end,
+      on_write_file = function(_, _, done) done(nil) end,
+    })
 
-      assert.is_true(loaded)
-      assert.equals(1, #session_updates)
-      assert.is_true(session_updates[1]._replayed)
+    client:_handle_event({
+      type = "permission_request",
+      requestId = 10,
+      request = { toolCall = {}, options = {} },
+    })
+    client:_handle_event({
+      type = "read_text_file_request",
+      requestId = 11,
+      request = { sessionId = "s1", path = "/tmp/a" },
+    })
+    client:_handle_event({
+      type = "write_text_file_request",
+      requestId = 12,
+      request = { sessionId = "s1", path = "/tmp/a", content = "new" },
+    })
 
-      client:_handle_message({
-        jsonrpc = "2.0",
-        method = "session/update",
-        params = {
-          sessionId = "test-session-load",
-          update = {
-            sessionUpdate = "agent_message_chunk",
-            content = { type = "text", text = "live message" },
-          },
-        },
-      })
+    assert.same({ method = "respond_permission", args = { 10, "allow" } }, native.calls[1])
+    assert.same({ method = "respond_read_text_file", args = { 11, "contents" } }, native.calls[2])
+    assert.same({ method = "respond_write_text_file", args = { 12 } }, native.calls[3])
+  end)
 
-      assert.equals(2, #session_updates)
-      assert.is_nil(session_updates[2]._replayed)
+  it("sends semantic responder errors for Rust to map to ACP errors", function()
+    local client, native = ready_client()
+
+    client:_handle_event({
+      type = "permission_request",
+      requestId = 10,
+      request = { toolCall = {}, options = {} },
+    })
+
+    assert.same({
+      method = "respond_error",
+      args = { 10, "unsupported", "Permission handler not configured" },
+    }, native.calls[1])
+  end)
+
+  it("turns a permission handler exception into a responder error", function()
+    local client, native = ready_client({ on_request_permission = function() error("permission failed") end })
+
+    assert.has_no_error(
+      function()
+        client:_handle_event({
+          type = "permission_request",
+          requestId = 10,
+          request = { toolCall = {}, options = {} },
+        })
+      end
+    )
+
+    assert.equals("respond_error", native.calls[1].method)
+    assert.same({ 10, "internal", "permission failed" }, native.calls[1].args)
+  end)
+
+  it("turns a read handler exception into a responder error", function()
+    local client, native = ready_client({ on_read_file = function() error("read failed") end })
+
+    assert.has_no_error(
+      function()
+        client:_handle_event({
+          type = "read_text_file_request",
+          requestId = 11,
+          request = { sessionId = "s1", path = "/tmp/a" },
+        })
+      end
+    )
+
+    assert.equals("respond_error", native.calls[1].method)
+    assert.same({ 11, "internal", "read failed" }, native.calls[1].args)
+  end)
+
+  it("turns a write handler exception into a responder error", function()
+    local client, native = ready_client({ on_write_file = function() error("write failed") end })
+
+    assert.has_no_error(
+      function()
+        client:_handle_event({
+          type = "write_text_file_request",
+          requestId = 12,
+          request = { sessionId = "s1", path = "/tmp/a", content = "new" },
+        })
+      end
+    )
+
+    assert.equals("respond_error", native.calls[1].method)
+    assert.same({ 12, "internal", "write failed" }, native.calls[1].args)
+  end)
+
+  it("sends cancellation to Rust where pending permissions are owned", function()
+    local client, native = ready_client()
+
+    client:cancel_session("s1")
+
+    assert.same({ method = "cancel", args = { "s1" } }, native.calls[1])
+  end)
+
+  it("applies ACP line and limit semantics independently", function()
+    local lines = { "one", "two", "three", "four" }
+
+    assert.same({ "two", "three" }, ACPClient._slice_lines(lines, 2, 2))
+    assert.same({ "three", "four" }, ACPClient._slice_lines(lines, 3, nil))
+    assert.same({ "one", "two" }, ACPClient._slice_lines(lines, nil, 2))
+    assert.same({}, ACPClient._slice_lines(lines, 2, 0))
+  end)
+
+  it("ignores a responder callback after the client has stopped", function()
+    local respond
+    local client = ready_client({ on_request_permission = function(_, _, done) respond = done end })
+    client:_handle_event({
+      type = "permission_request",
+      requestId = 10,
+      request = { sessionId = "s1", toolCall = {}, options = {} },
+    })
+
+    client:stop()
+    client:_handle_event({ type = "state_changed", state = "disconnected" })
+    assert.has_no_error(function() respond("allow") end)
+  end)
+
+  it("keeps the UI watchdog beyond Rust's session shutdown deadline", function()
+    local client = ready_client()
+    client.config.session_close_timeout = 500
+    local watchdog_delay
+    local defer_stub = stub(vim, "defer_fn").invokes(function(_, delay) watchdog_delay = delay end)
+
+    client:stop()
+
+    defer_stub:revert()
+    assert.equals(1500, watchdog_delay)
+  end)
+
+  it("does not send a stale responder callback to a replacement client", function()
+    local respond
+    local client = ready_client({ on_request_permission = function(_, _, done) respond = done end })
+    client:_handle_event({
+      type = "permission_request",
+      requestId = 10,
+      request = { sessionId = "s1", toolCall = {}, options = {} },
+    })
+    local replacement = { calls = {}, respond_permission = function(self, ...) table.insert(self.calls, { ... }) end }
+    client.native_generation = client.native_generation + 1
+    client.native = replacement
+
+    respond("allow")
+
+    assert.same({}, replacement.calls)
+  end)
+
+  it("starts the native SDK client and completes connect on ready", function()
+    local started, connected = false, false
+    local native_client = {}
+    function native_client:start() started = true end
+    local client = ACPClient:new({ command = "agent", args = {}, handlers = {} })
+    client._native_module = { api_version = 2, new = function() return native_client end }
+    client._start_polling = function() end
+
+    client:connect(function(err)
+      assert.is_nil(err)
+      connected = true
     end)
+    client:_handle_event({ type = "initialized", supportsLoadSession = true, supportsListSessions = true })
+    client:_handle_event({ type = "state_changed", state = "ready" })
+
+    assert.is_true(started)
+    assert.is_true(connected)
+    assert.is_true(client:supports_load_session())
+    assert.is_true(client:supports_list_sessions())
+  end)
+
+  it("rejects an incompatible native module before starting it", function()
+    local client = ACPClient:new({ command = "agent", args = {}, handlers = {} })
+    client._native_module = { api_version = 1, new = function() error("must not start") end }
+    client._start_polling = function() end
+    local actual
+
+    client:connect(function(err) actual = err end)
+
+    assert.equals("error", client.state)
+    assert.equals("internal", actual.kind)
+    assert.matches("Incompatible avante_acp native module", actual.message)
+    assert.matches("rebuild or reinstall", actual.message)
+  end)
+
+  it("rejects transports not supported by the official process adapter", function()
+    assert.has_error(function() ACPClient:new({ transport_type = "tcp" }) end)
   end)
 end)

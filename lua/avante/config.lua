@@ -249,7 +249,6 @@ M.instructions_file = "avante.md"
 ---@field debug boolean
 --- will keep requests and responses on the filesystem. Check the logs to find their paths
 ---@field log_level vim.log.levels
----@field public session_recovery any TODO
 ---@field memory_summary_provider any TODO
 --- Avante.nvim provides two interaction modes:
 --- - *agentic* (default): Uses AI tools to automatically generate and apply code changes
