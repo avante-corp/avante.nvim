@@ -23,6 +23,7 @@ BUILD_DIR := lua
 TARGET_LIBRARY ?= all
 
 export AVANTE_RUNTIME_TEST_DIR ?= $(CURDIR)/target/tests
+ACP_INTEGRATION_DIR := $(AVANTE_RUNTIME_TEST_DIR)/acp-integration
 
 RAG_SERVICE_VERSION ?= 0.0.11
 RAG_SERVICE_IMAGE := quay.io/yetoneful/avante-rag-service:$(RAG_SERVICE_VERSION)
@@ -31,7 +32,7 @@ all: luajit
 
 define make_definitions
 ifeq ($(TARGET_LIBRARY), all)
-$1: $(BUILD_DIR)/libAvanteTokenizers-$1.$(EXT) $(BUILD_DIR)/libAvanteTemplates-$1.$(EXT) $(BUILD_DIR)/libAvanteRepoMap-$1.$(EXT) $(BUILD_DIR)/libAvanteHtml2md-$1.$(EXT)
+$1: $(BUILD_DIR)/libAvanteTokenizers-$1.$(EXT) $(BUILD_DIR)/libAvanteTemplates-$1.$(EXT) $(BUILD_DIR)/libAvanteRepoMap-$1.$(EXT) $(BUILD_DIR)/libAvanteHtml2md-$1.$(EXT) $(BUILD_DIR)/libAvanteAcp-$1.$(EXT)
 else ifeq ($(TARGET_LIBRARY), tokenizers)
 $1: $(BUILD_DIR)/libAvanteTokenizers-$1.$(EXT)
 else ifeq ($(TARGET_LIBRARY), templates)
@@ -40,8 +41,10 @@ else ifeq ($(TARGET_LIBRARY), repo-map)
 $1: $(BUILD_DIR)/libAvanteRepoMap-$1.$(EXT)
 else ifeq ($(TARGET_LIBRARY), html2md)
 $1: $(BUILD_DIR)/libAvanteHtml2md-$1.$(EXT)
+else ifeq ($(TARGET_LIBRARY), acp)
+$1: $(BUILD_DIR)/libAvanteAcp-$1.$(EXT)
 else
-	$$(error TARGET_LIBRARY must be one of all, tokenizers, templates, repo-map, html2md)
+	$$(error TARGET_LIBRARY must be one of all, tokenizers, templates, repo-map, html2md, acp)
 endif
 endef
 
@@ -58,12 +61,14 @@ $(BUILD_DIR)/libAvanteTokenizers-$1.$(EXT): $(BUILD_DIR) $1-tokenizers
 $(BUILD_DIR)/libAvanteTemplates-$1.$(EXT): $(BUILD_DIR) $1-templates
 $(BUILD_DIR)/libAvanteRepoMap-$1.$(EXT): $(BUILD_DIR) $1-repo-map
 $(BUILD_DIR)/libAvanteHtml2md-$1.$(EXT): $(BUILD_DIR) $1-html2md
+$(BUILD_DIR)/libAvanteAcp-$1.$(EXT): $(BUILD_DIR) $1-acp
 endef
 
 $(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),tokenizers)))
 $(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),templates)))
 $(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),repo-map)))
 $(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),html2md)))
+$(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),acp)))
 $(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_targets,$(lua_version))))
 
 $(BUILD_DIR):
@@ -125,6 +130,18 @@ rusttest:
 .PHONY: luatest
 luatest:
 	./scripts/run-luatest.sh
+
+.PHONY: acp-integration-test
+acp-integration-test:
+	cargo build --release --no-default-features --features=luajit -p avante-acp $(if $(CARGO_TARGET),--target $(CARGO_TARGET))
+	mkdir -p "$(ACP_INTEGRATION_DIR)"
+	cp "$(TARGET_DIR)/libavante_acp.$(CARGO_EXT)" "$(ACP_INTEGRATION_DIR)/avante_acp.$(EXT)"
+	rustc --edition=2024 \
+		-o "$(ACP_INTEGRATION_DIR)/stdio-agent" \
+		crates/avante-acp/tests/fixtures/stdio_agent.rs
+	AVANTE_ACP_TEST_AGENT="$(ACP_INTEGRATION_DIR)/stdio-agent" \
+		AVANTE_ACP_TEST_NATIVE_DIR="$(ACP_INTEGRATION_DIR)" \
+		./scripts/run-luatest.sh tests/integration/acp_native_spec.lua
 
 # upgrade / pin CI actions
 .PHONY: upgrade-actions

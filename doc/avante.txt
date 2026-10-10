@@ -425,7 +425,6 @@ avante.Config                                                    *avante.Config*
     Fields: ~
         {debug}                       (boolean)
         {log_level}                   (vim.log.levels)                  will keep requests and responses on the filesystem. Check the logs to find their paths
-        {session_recovery}            (any)                            TODO
         {memory_summary_provider}     (any)                            TODO
         {mode}                        (avante.Mode)                     Avante.nvim provides two interaction modes:
                                                                         - *agentic* (default): Uses AI tools to automatically generate and apply code changes
@@ -925,6 +924,7 @@ avante.PendingAcpImport                                *avante.PendingAcpImport*
         {filename}            (string)   The chat the session is imported into
         {created}             (boolean)  Whether the chat was created for this import
         {previous_filename?}  (string)   Chat to return to if a newly created chat's session can't be loaded
+        {timestamp?}          (string)   Last activity time reported by session/list
 
 
 avante.CodeState                                              *avante.CodeState*
@@ -1285,6 +1285,10 @@ Sidebar:new_chat()                                     *avante-sidebar:new_chat*
 Sidebar:stop_acp_client()                       *avante-sidebar:stop_acp_client*
     Stop the ACP client so the next request starts a fresh agent process.
     A connection still in flight is discarded when it completes.
+
+
+Sidebar:resume_pending_acp_import()   *avante-sidebar:resume_pending_acp_import*
+    Reload an ACP session whose imported replay was interrupted before being saved.
 
 
                                 *avante-sidebar:switch_to_history_and_reconnect*
@@ -2801,130 +2805,6 @@ M.is_floating_window()                         *avante-utils.is_floating_window*
 ==============================================================================
 Agent Client Protocol support                                       *avante-acp*
 
-
-Avante.nvim now supports the Agent Client Protocol (ACP) (https://agentclientprotocol.com/overview/introduction), enabling seamless integration with AI agents that follow this standardized communication protocol.
-
-What is ACP?
-
-(ACP) is a standardized protocol that enables AI agents to communicate with development tools and environments. It provides:
-
-- **Standardized Communication**: A unified JSON-RPC based protocol for agent-client interactions
-- **Tool Integration**: Support for various development tools like file operations, code execution, and search
-- **Session Management**: Persistent sessions that maintain context across interactions
-- **Permission System**: Granular control over what agents can access and modify
-
- Supported ACP agents include:
-
- - Gemini CLI
- - Claude Code
- - Goose
- - Codex
- - Kimi CLI
-Before using ACP agents, ensure you have the required tools installed:
-
-- **For Gemini CLI**: Install the `gemini` CLI tool and set your `GEMINI_API_KEY`
-- **For Claude Code**: Install the `acp-claude-code` package via npm and set your `ANTHROPIC_API_KEY`
-
-ACP vs Traditional Providers
-
-ACP providers offer several advantages over traditional API-based providers:
-
-- **Enhanced Tool Access**: Agents can directly interact with your file system, run commands, and access development tools
-- **Persistent Context**: Sessions maintain state across multiple interactions
-- **Fine-grained Permissions**: Control exactly what agents can access and modify
-- **Standardized Protocol**: Compatible with any ACP-compliant agent
-
-avante.acp.ClientCapabilities                    *avante.acp.ClientCapabilities*
-
-    Fields: ~
-        {fs}        (avante.acp.FileSystemCapability)
-        {terminal}  (boolean)
-
-
-avante.acp.FileSystemCapability                *avante.acp.FileSystemCapability*
-
-    Fields: ~
-        {readTextFile}   (boolean)
-        {writeTextFile}  (boolean)
-
-
-avante.acp.AgentCapabilities                      *avante.acp.AgentCapabilities*
-
-    Fields: ~
-        {loadSession}           (boolean)
-        {promptCapabilities}    (avante.acp.PromptCapabilities)
-        {mcpCapabilities?}      (avante.acp.McpCapabilities)
-        {sessionCapabilities?}  (avante.acp.SessionCapabilities)
-
-
-avante.acp.SessionListCapability              *avante.acp.SessionListCapability*
-
-
-avante.acp.SessionCapability                      *avante.acp.SessionCapability*
-
-
-avante.acp.SessionCapabilities                  *avante.acp.SessionCapabilities*
-
-    Fields: ~
-        {list?}                   (avante.acp.SessionListCapability)
-        {resume?}                 (avante.acp.SessionCapability)
-        {close?}                  (avante.acp.SessionCapability)
-        {additionalDirectories?}  (avante.acp.SessionCapability)
-
-
-avante.acp.McpCapabilities                          *avante.acp.McpCapabilities*
-
-    Fields: ~
-        {http}  (boolean)
-        {sse}   (boolean)
-
-
-avante.acp.SessionInfo                                  *avante.acp.SessionInfo*
-
-    Fields: ~
-        {sessionId}   (string)
-        {cwd}         (string)
-        {title?}      (string)
-        {updatedAt?}  (string)  ISO 8601 timestamp
-
-
-avante.acp.ListSessionsResult                    *avante.acp.ListSessionsResult*
-
-    Fields: ~
-        {sessions}     (avante.acp.SessionInfo[])
-        {nextCursor?}  (string)
-
-
-avante.acp.LoadSessionOpts                          *avante.acp.LoadSessionOpts*
-
-    Fields: ~
-        {on_replay?}               (fun(update:table):boolean)  Receives updates replayed while the load is in flight; return true to consume one instead of passing it to the session update handler
-        {additional_directories?}  (string[])                   Additional absolute workspace roots
-
-
-avante.acp.PromptCapabilities                    *avante.acp.PromptCapabilities*
-
-    Fields: ~
-        {image}            (boolean)
-        {audio}            (boolean)
-        {embeddedContext}  (boolean)
-
-
-avante.acp.AuthMethod                                    *avante.acp.AuthMethod*
-
-    Fields: ~
-        {id}           (string)
-        {name}         (string)
-        {description}  (string|nil)
-        {type?}        ()
-
-
-avante.acp.McpServer                                      *avante.acp.McpServer*
-
-    Fields: ~
-        {type?}  ()
-
-
 avante.acp.EnvVariable                                  *avante.acp.EnvVariable*
 
     Fields: ~
@@ -2932,236 +2812,10 @@ avante.acp.EnvVariable                                  *avante.acp.EnvVariable*
         {value}  (string)
 
 
-ACPStopReason                                                    *ACPStopReason*
-
-    Type: ~
-        
-
-
-ACPToolKind                                                        *ACPToolKind*
-
-    Type: ~
-        
-
-
-ACPToolCallStatus                                            *ACPToolCallStatus*
-
-    Type: ~
-        
-
-
-ACPPlanEntryStatus                                          *ACPPlanEntryStatus*
-
-    Type: ~
-        
-
-
-ACPPlanEntryPriority                                      *ACPPlanEntryPriority*
-
-    Type: ~
-        
-
-
-avante.acp.BaseContent                                  *avante.acp.BaseContent*
+avante.acp.McpServer                                      *avante.acp.McpServer*
 
     Fields: ~
-        {type}  ()
-
-
-avante.acp.TextContent : avante.acp.BaseContent         *avante.acp.TextContent*
-
-    Fields: ~
-        {type}  ()
-
-
-avante.acp.ImageContent : avante.acp.BaseContent       *avante.acp.ImageContent*
-
-    Fields: ~
-        {type}  ()
-
-
-avante.acp.AudioContent : avante.acp.BaseContent       *avante.acp.AudioContent*
-
-    Fields: ~
-        {type}  ()
-
-
-                                                *avante.acp.ResourceLinkContent*
-avante.acp.ResourceLinkContent : avante.acp.BaseContent
-
-    Fields: ~
-        {type}  ()
-
-
-avante.acp.ResourceContent : avante.acp.BaseContent *avante.acp.ResourceContent*
-
-    Fields: ~
-        {type}  ()
-
-
-avante.acp.EmbeddedResource                        *avante.acp.EmbeddedResource*
-
-    Fields: ~
-        {uri}       (string)
-        {text}      (string|nil)
-        {blob}      (string|nil)
-        {mimeType}  (string|nil)
-
-
-avante.acp.Annotations                                  *avante.acp.Annotations*
-
-    Fields: ~
-        {audience}      (any[]|nil)
-        {lastModified}  (string|nil)
-        {priority}      (number|nil)
-
-
-ACPContent                                                          *ACPContent*
-
-    Type: ~
-        avante.acp.TextContent|avante.acp.ImageContent|avante.acp.AudioContent|avante.acp.ResourceLinkContent|avante.acp.ResourceContent
-
-
-avante.acp.ToolCall                                        *avante.acp.ToolCall*
-
-    Fields: ~
-        {toolCallId}  (string)
-        {title}       (string)
-        {kind}        (ACPToolKind)
-        {status}      (ACPToolCallStatus)
-        {content}     (ACPToolCallContent[])
-        {locations}   (avante.acp.ToolCallLocation[])
-        {rawInput}    (table)
-        {rawOutput}   (table)
-
-
-avante.acp.BaseToolCallContent                  *avante.acp.BaseToolCallContent*
-
-    Fields: ~
-        {type}  ()
-
-
-                                             *avante.acp.ToolCallRegularContent*
-avante.acp.ToolCallRegularContent : avante.acp.BaseToolCallContent
-
-    Fields: ~
-        {type}  ()
-
-
-                                                *avante.acp.ToolCallDiffContent*
-avante.acp.ToolCallDiffContent : avante.acp.BaseToolCallContent
-
-    Fields: ~
-        {type}  ()
-
-
-ACPToolCallContent                                          *ACPToolCallContent*
-
-    Type: ~
-        avante.acp.ToolCallRegularContent|avante.acp.ToolCallDiffContent
-
-
-avante.acp.ToolCallLocation                        *avante.acp.ToolCallLocation*
-
-    Fields: ~
-        {path}  (string)
-        {line}  (number|nil)
-
-
-avante.acp.PlanEntry                                      *avante.acp.PlanEntry*
-
-    Fields: ~
-        {content}   (string)
-        {priority}  (ACPPlanEntryPriority)
-        {status}    (ACPPlanEntryStatus)
-
-
-avante.acp.Plan                                                *avante.acp.Plan*
-
-    Fields: ~
-        {entries}  (avante.acp.PlanEntry[])
-
-
-avante.acp.ConfigOptionValue                      *avante.acp.ConfigOptionValue*
-
-    Fields: ~
-        {value}        (string)
-        {name}         (string)
-        {description}  (string|nil)
-
-
-avante.acp.ConfigOption                                *avante.acp.ConfigOption*
-
-    Fields: ~
-        {id}            (string)
-        {name}          (string)
-        {description}   (string|nil)
-        {category}      (string|nil)
-        {type}          (string)
-        {currentValue}  (string)
-        {options}       (avante.acp.ConfigOptionValue[])
-
-
-                                                 *avante.acp.ConfigOptionUpdate*
-avante.acp.ConfigOptionUpdate : avante.acp.BaseSessionUpdate
-
-    Fields: ~
-        {sessionUpdate}  ()
-
-
-avante.acp.AvailableCommand                        *avante.acp.AvailableCommand*
-
-    Fields: ~
-        {name}         (string)
-        {description}  (string)
-        {input?}       (table<string,any>)
-
-
-avante.acp.BaseSessionUpdate                      *avante.acp.BaseSessionUpdate*
-
-    Fields: ~
-        {sessionUpdate}  ()
-
-
-                                                   *avante.acp.UserMessageChunk*
-avante.acp.UserMessageChunk : avante.acp.BaseSessionUpdate
-
-    Fields: ~
-        {sessionUpdate}  ()
-
-
-                                                  *avante.acp.AgentMessageChunk*
-avante.acp.AgentMessageChunk : avante.acp.BaseSessionUpdate
-
-    Fields: ~
-        {sessionUpdate}  ()
-
-
-                                                  *avante.acp.AgentThoughtChunk*
-avante.acp.AgentThoughtChunk : avante.acp.BaseSessionUpdate
-
-    Fields: ~
-        {sessionUpdate}  ()
-
-
-                                                     *avante.acp.ToolCallUpdate*
-avante.acp.ToolCallUpdate : avante.acp.BaseSessionUpdate
-
-    Fields: ~
-        {sessionUpdate}  ()
-
-
-avante.acp.PlanUpdate : avante.acp.BaseSessionUpdate     *avante.acp.PlanUpdate*
-
-    Fields: ~
-        {sessionUpdate}  ()
-
-
-                                            *avante.acp.AvailableCommandsUpdate*
-avante.acp.AvailableCommandsUpdate : avante.acp.BaseSessionUpdate
-
-    Fields: ~
-        {sessionUpdate}  ()
+        {type?}  ()
 
 
 avante.acp.PermissionOption                        *avante.acp.PermissionOption*
@@ -3172,449 +2826,162 @@ avante.acp.PermissionOption                        *avante.acp.PermissionOption*
         {kind}      ()
 
 
-avante.acp.RequestPermissionOutcome        *avante.acp.RequestPermissionOutcome*
+avante.acp.ToolCall                                        *avante.acp.ToolCall*
 
     Fields: ~
-        {outcome}  ()
+        {toolCallId}  (string)
+        {title}       (string)
+        {kind}        (string)
+        {status}      (string)
+        {content?}    (table[])
+        {locations?}  (table[])
+        {rawInput?}   (table)
+        {rawOutput?}  (table)
 
 
-avante.acp.ACPTransport                                *avante.acp.ACPTransport*
+avante.acp.ToolCallUpdate                            *avante.acp.ToolCallUpdate*
 
     Fields: ~
-        {send}   (function)
-        {start}  (function)
-        {stop}   (function)
+        {sessionUpdate}  ()
 
 
-ACPConnectionState                                          *ACPConnectionState*
+avante.acp.ConfigOptionValue                      *avante.acp.ConfigOptionValue*
 
-    Type: ~
-        
+    Fields: ~
+        {value}         (string)
+        {name}          (string)
+        {description?}  (string)
+
+
+avante.acp.ConfigOption                                *avante.acp.ConfigOption*
+
+    Fields: ~
+        {id}            (string)
+        {name}          (string)
+        {description?}  (string)
+        {category?}     (string)
+        {type}          (string)
+        {currentValue}  (string|boolean)
+        {options?}      (avante.acp.ConfigOptionValue[])
 
 
 avante.acp.ACPError                                        *avante.acp.ACPError*
 
     Fields: ~
-        {code}     (number)
-        {message}  (string)
-        {data}     (any|nil)
+        {kind}  ()
 
 
-avante.acp.ACPClient                                      *avante.acp.ACPClient*
+avante.acp.SessionInfo                                  *avante.acp.SessionInfo*
 
     Fields: ~
-        {protocol_version}         (number)
-        {capabilities}             (avante.acp.ClientCapabilities)
-        {agent_capabilities}       (avante.acp.AgentCapabilities|nil)
-        {config_options}           (avante.acp.ConfigOption[]|nil)
-        {_legacy_api}              (boolean|nil)                                                      Whether agent uses old modes/models API instead of configOptions
-        {config}                   (ACPConfig)
-        {callbacks}                (table<number,fun(result:table|nil,err:avante.acp.ACPError|nil)>)
-        {session_replay_handlers}  (table<string,fun(update:table):boolean>)                          Replay handlers keyed by session id, set while a session/load is in flight
-        {active_session_ids}       (table<string,boolean>)                                            Sessions successfully created, loaded, or resumed on this connection
-        {stop_callbacks}           (fun(err:avante.acp.ACPError|nil)[])
-        {debug_log_file}           (file)
+        {sessionId}   (string)
+        {cwd}         (string)
+        {title?}      (string)
+        {updatedAt?}  (string)
+
+
+avante.acp.LoadSessionOpts                          *avante.acp.LoadSessionOpts*
+
+    Fields: ~
+        {on_replay?}               (fun(update:table):boolean)
+        {additional_directories?}  (string[])
 
 
 ACPHandlers                                                        *ACPHandlers*
 
     Fields: ~
-        {on_session_update?}      (fun(update:avante.acp.UserMessageChunk|avante.acp.AgentMessageChunk|avante.acp.AgentThoughtChunk|avante.acp.ToolCallUpdate|avante.acp.PlanUpdate|avante.acp.AvailableCommandsUpdate))
-        {on_request_permission?}  (fun(tool_call:table,options:table[],callback:fun(option_id:string|nil)):nil)
-        {on_read_file?}           (fun(path:string,line:integer|nil,limit:integer|nil,callback:fun(content:string),error_callback:fun(message:string,code:integer|nil)):nil)
-        {on_write_file?}          (fun(path:string,content:string,callback:fun(error:string|nil)):nil)
+        {on_session_update?}      (fun(update:table))
+        {on_config_change?}       (fun())
+        {on_request_permission?}  (fun(tool_call:table,options:table[],callback:fun(option_id:string|nil)))
+        {on_read_file?}           (fun(path:string,line:integer|nil,limit:integer|nil,callback:fun(content:string),error_callback:fun(message:string,kind?:string)))
+        {on_write_file?}          (fun(path:string,content:string,callback:fun(error_message?:string)))
         {on_error?}               (fun(error:table))
+        {on_state_change?}        (fun(state:string))
 
 
-ACPConfig                                                            *ACPConfig*
+avante.acp.ACPClient                                      *avante.acp.ACPClient*
 
     Fields: ~
-        {transport_type}  ()
+        {config}                   (table)
+        {state}                    (string)
+        {native}                   (userdata|table|nil)
+        {native_generation}        (integer)
+        {callbacks}                (table<integer,fun(result:table|nil,err:avante.acp.ACPError|nil)>)
+        {connect_callbacks}        (fun(err:avante.acp.ACPError|nil)[])
+        {stop_callbacks}           (fun(err:avante.acp.ACPError|nil)[])
+        {session_replay_handlers}  (table<string,fun(update:table):boolean>)
+        {poll_timer}               (any)
+        {reconnect_count}          (integer)
+        {stop_requested}           (boolean)
+        {is_stopping}              (boolean)
+        {supports_load}            (boolean)
+        {supports_list}            (boolean)
+        {active_session_id}        (string|nil)
+        {config_options}           (avante.acp.ConfigOption[]|nil)
+        {_native_module?}          (table)
 
 
-ACPClient:new({config})                                         *avante-acp:new*
-    Create a new ACP client instance
-
-    Parameters: ~
-        {config}  (ACPConfig)
+ACPClient:new()                                                 *avante-acp:new*
 
     Returns: ~
         (avante.acp.ACPClient)
 
 
-ACPClient:_debug_log({message})                          *avante-acp:_debug_log*
-    Write debug log message
+ACPClient._slice_lines()                               *avante-acp._slice_lines*
 
-    Parameters: ~
-        {message}  (string)
 
+ACPClient:_start_polling()                           *avante-acp:_start_polling*
 
-ACPClient:_close_debug_log()                       *avante-acp:_close_debug_log*
-    Close debug log file
 
+ACPClient:_stop_polling()                             *avante-acp:_stop_polling*
 
-ACPClient:_setup_transport()                       *avante-acp:_setup_transport*
-    Setup transport layer
 
+ACPClient:_handle_event()                             *avante-acp:_handle_event*
 
-ACPClient:_set_state({state})                            *avante-acp:_set_state*
-    Set connection state
 
-    Parameters: ~
-        {state}  (ACPConnectionState)
+ACPClient:connect()                                         *avante-acp:connect*
 
 
-ACPClient:_create_error()                             *avante-acp:_create_error*
+ACPClient:initialize()                                   *avante-acp:initialize*
 
-    Returns: ~
-        (avante.acp.ACPError)
 
+ACPClient:stop()                                               *avante-acp:stop*
 
-ACPClient:_create_stdio_transport()         *avante-acp:_create_stdio_transport*
-    Create stdio transport layer
 
+ACPClient:create_session()                           *avante-acp:create_session*
 
-ACPClient:_create_websocket_transport() *avante-acp:_create_websocket_transport*
-    Create WebSocket transport layer (placeholder)
 
+ACPClient:load_session()                               *avante-acp:load_session*
 
-ACPClient:_create_tcp_transport()             *avante-acp:_create_tcp_transport*
-    Create TCP transport layer (placeholder)
 
+ACPClient:resume_session()                           *avante-acp:resume_session*
 
-ACPClient:_next_id()                                       *avante-acp:_next_id*
-    Generate next request ID
 
-    Returns: ~
-        (number)
+ACPClient:close_session()                             *avante-acp:close_session*
 
 
-ACPClient:_send_request({callback})                   *avante-acp:_send_request*
+ACPClient:delete_session()                           *avante-acp:delete_session*
 
-    Parameters: ~
-        {callback}  (fun(result:table|nil,err:avante.acp.ACPError|nil))
 
-
-ACPClient:_send_notification()                   *avante-acp:_send_notification*
-
-
-ACPClient:_send_result({id}, {result})                 *avante-acp:_send_result*
-    Send JSON-RPC result
-
-    Parameters: ~
-        {id}      (number)
-        {result}  (table|string|vim.NIL|nil)
-
-    Returns: ~
-        (nil)
-
-
-ACPClient:_send_error({id}, {message}, {code?})         *avante-acp:_send_error*
-    Send JSON-RPC error
-
-    Parameters: ~
-        {id}       (number)
-        {message}  (string)
-        {code?}    (number)
-
-    Returns: ~
-        (nil)
-
-
-ACPClient:_handle_message({message})                *avante-acp:_handle_message*
-    Handle received message
-
-    Parameters: ~
-        {message}  (table)
-
-
-                                               *avante-acp:_handle_notification*
-ACPClient:_handle_notification({method}, {params})
-    Handle notification
-
-    Parameters: ~
-        {method}  (string)
-        {params}  (table)
-
-
-ACPClient:_handle_session_update({params})   *avante-acp:_handle_session_update*
-    Handle session update notification
-
-    Parameters: ~
-        {params}  (table)
-
-
-                                         *avante-acp:_handle_request_permission*
-ACPClient:_handle_request_permission({message_id}, {params})
-    Handle permission request notification
-
-    Parameters: ~
-        {message_id}  (number)
-        {params}      (table)
-
-
-                                             *avante-acp:_handle_read_text_file*
-ACPClient:_handle_read_text_file({message_id}, {params})
-    Handle fs/read_text_file requests
-
-    Parameters: ~
-        {message_id}  (number)
-        {params}      (table)
-
-
-                                            *avante-acp:_handle_write_text_file*
-ACPClient:_handle_write_text_file({message_id}, {params})
-    Handle fs/write_text_file requests
-
-    Parameters: ~
-        {message_id}  (number)
-        {params}      (table)
-
-
-ACPClient:connect({callback})                               *avante-acp:connect*
-    Start client
-
-    Parameters: ~
-        {callback}  (fun(err:avante.acp.ACPError|nil))
-
-
-ACPClient:_complete_stop({err})                      *avante-acp:_complete_stop*
-
-    Parameters: ~
-        {err}  (avante.acp.ACPError|nil)
-
-
-ACPClient:stop({callback?})                                    *avante-acp:stop*
-    Stop the client after closing every active session advertised by this connection.
-
-    Parameters: ~
-        {callback?}  (fun(err:avante.acp.ACPError|nil))
-
-
-ACPClient:force_stop()                                   *avante-acp:force_stop*
-    Immediately stop the transport, bypassing graceful session closure.
-
-
-ACPClient:initialize({callback})                         *avante-acp:initialize*
-    Initialize protocol connection
-
-    Parameters: ~
-        {callback}  (fun(err:avante.acp.ACPError|nil))
-
-
-ACPClient:authenticate({method_id}, {callback})        *avante-acp:authenticate*
-    Authentication (if required)
-
-    Parameters: ~
-        {method_id}  (string)
-        {callback}   (fun(err:avante.acp.ACPError|nil))
-
-
-                                       *avante-acp:_supports_session_capability*
-ACPClient:_supports_session_capability({capability})
-
-    Parameters: ~
-        {capability}  (string)
-
-    Returns: ~
-        (boolean)
-
-
-ACPClient:_session_setup_params()             *avante-acp:_session_setup_params*
-
-    Returns: ~
-        (table|nil)                params
-        (avante.acp.ACPError|nil)  err
-
-
-                                                     *avante-acp:create_session*
-ACPClient:create_session({callback}, {additional_directories?})
-
-    Parameters: ~
-        {callback}                 (fun(session_id:string|nil,err:avante.acp.ACPError|nil))
-        {additional_directories?}  (string[])
-
-
-ACPClient:load_session({callback}, {opts?})            *avante-acp:load_session*
-
-    Parameters: ~
-        {callback}  (fun(result:table|nil,err:avante.acp.ACPError|nil))
-        {opts?}     (avante.acp.LoadSessionOpts)
-
-
-                                                     *avante-acp:resume_session*
-ACPClient:resume_session({callback}, {additional_directories?})
-
-    Parameters: ~
-        {callback}                 (fun(result:table|nil,err:avante.acp.ACPError|nil))
-        {additional_directories?}  (string[])
-
-
-ACPClient:close_session({session_id}, {callback?})    *avante-acp:close_session*
-    Close an active session
-
-    Parameters: ~
-        {session_id}  (string)
-        {callback?}   (fun(err:avante.acp.ACPError|nil))
+ACPClient:supports_load_session()             *avante-acp:supports_load_session*
 
 
 ACPClient:supports_list_sessions()           *avante-acp:supports_list_sessions*
-    Whether the agent supports session/list
-
-    Returns: ~
-        (boolean)
 
 
-ACPClient:list_sessions({cwd}, {cursor}, {callback})  *avante-acp:list_sessions*
-    List one page of the agent's sessions for a working directory
-
-    Parameters: ~
-        {cwd}       (string)
-        {cursor}    (string|nil)
-        {callback}  (fun(result:avante.acp.ListSessionsResult|nil,err:avante.acp.ACPError|nil))
+ACPClient:list_all_sessions()                     *avante-acp:list_all_sessions*
 
 
-ACPClient:list_all_sessions({cwd}, {callback})    *avante-acp:list_all_sessions*
-    List all of the agent's sessions for a working directory, following pagination
-
-    Parameters: ~
-        {cwd}       (string)
-        {callback}  (fun(sessions:avante.acp.SessionInfo[],err:avante.acp.ACPError|nil))
+ACPClient:set_session_option()                   *avante-acp:set_session_option*
 
 
-                                                  *avante-acp:set_config_option*
-ACPClient:set_config_option({session_id}, {config_id}, {value}, {callback})
-    Set a session config option (model, mode, etc.)
-
-    Parameters: ~
-        {session_id}  (string)
-        {config_id}   (string)
-        {value}       (string)
-        {callback}    (fun(config_options:avante.acp.ConfigOption[]|nil,err:avante.acp.ACPError|nil))
+ACPClient:send_prompt()                                 *avante-acp:send_prompt*
 
 
-ACPClient:set_mode({session_id}, {mode_id}, {callback})    *avante-acp:set_mode*
-    Set session mode via legacy session/set_mode API
-
-    Parameters: ~
-        {session_id}  (string)
-        {mode_id}     (string)
-        {callback}    (fun(config_options:avante.acp.ConfigOption[]|nil,err:avante.acp.ACPError|nil))
-
-
-ACPClient:set_model({session_id}, {model_id}, {callback}) *avante-acp:set_model*
-    Set session model via non-standard session/set_model API.
-    Some agents (e.g. OpenCode) support this even without configOptions.
-    Agents that don't support it will return -32601 (Method not found).
-
-    Parameters: ~
-        {session_id}  (string)
-        {model_id}    (string)
-        {callback}    (fun(config_options:avante.acp.ConfigOption[]|nil,err:avante.acp.ACPError|nil))
-
-
-                                     *avante-acp:_convert_legacy_session_fields*
-ACPClient:_convert_legacy_session_fields({result})
-    Convert legacy session fields (modes/models) to synthetic config_options.
-    If result.configOptions exists, use it directly and clear _legacy_api flag.
-    Otherwise, build synthetic ConfigOption[] from result.modes and result.models.
-
-    Parameters: ~
-        {result}  (table)  The session/new, session/load, or session/resume result
-
-
-                                                        *avante-acp:send_prompt*
-ACPClient:send_prompt({session_id}, {prompt}, {callback})
-    Send prompt
-
-    Parameters: ~
-        {session_id}  (string)
-        {prompt}      (table[])
-        {callback}    (fun(result:table|nil,err:avante.acp.ACPError|nil))
-
-
-ACPClient:cancel_session({session_id})               *avante-acp:cancel_session*
-    Cancel session
-
-    Parameters: ~
-        {session_id}  (string)
-
-
-ACPClient:create_text_content()                 *avante-acp:create_text_content*
-
-    Returns: ~
-        (table)
-
-
-ACPClient:create_image_content()               *avante-acp:create_image_content*
-
-    Returns: ~
-        (table)
-
-
-ACPClient:create_audio_content()               *avante-acp:create_audio_content*
-
-    Returns: ~
-        (table)
-
-
-                                       *avante-acp:create_resource_link_content*
-ACPClient:create_resource_link_content()
-
-    Returns: ~
-        (table)
-
-
-ACPClient:create_resource_content()         *avante-acp:create_resource_content*
-
-    Returns: ~
-        (table)
-
-
-ACPClient:create_text_resource()               *avante-acp:create_text_resource*
-
-    Returns: ~
-        (table)
-
-
-ACPClient:create_blob_resource()               *avante-acp:create_blob_resource*
-
-    Returns: ~
-        (table)
+ACPClient:cancel_session()                           *avante-acp:cancel_session*
 
 
 ACPClient:is_ready()                                       *avante-acp:is_ready*
-    Convenience method: Check if client is ready
-
-    Returns: ~
-        (boolean)
-
-
-ACPClient:is_connected()                               *avante-acp:is_connected*
-    Convenience method: Check if client is connected
-
-    Returns: ~
-        (boolean)
-
-
-ACPClient:get_state()                                     *avante-acp:get_state*
-    Convenience method: Get current state
-
-    Returns: ~
-        (ACPConnectionState)
-
-
-ACPClient:wait_ready()                                   *avante-acp:wait_ready*
-
-
-                                                   *avante-acp:send_text_prompt*
-ACPClient:send_text_prompt({session_id}, {text}, {callback})
-    Convenience method: Send simple text prompt
-
-    Parameters: ~
-        {session_id}  (string)
-        {text}        (string)
-        {callback}    (fun(result:table|nil,err:avante.acp.ACPError|nil))
 
 
 ==============================================================================

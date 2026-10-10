@@ -62,42 +62,16 @@ function M.open(category, prompt_label)
         return
       end
 
-      if client._legacy_api then
-        if choice.config_id == "mode" then
-          client:set_mode(session_id, choice.value, function(_, err)
-            vim.schedule(function()
-              if err then
-                Utils.error("Failed: " .. (err.message or ""))
-                return
-              end
-              Utils.info("ACP mode updated")
-              if sidebar:is_open() then sidebar:render_result() end
-            end)
-          end)
-        elseif choice.config_id == "model" then
-          client:set_model(session_id, choice.value, function(_, err)
-            vim.schedule(function()
-              if err then
-                Utils.warn("Model switching is not supported by this ACP agent")
-                return
-              end
-              Utils.info("ACP model updated")
-              if sidebar:is_open() then sidebar:render_result() end
-            end)
-          end)
-        end
-      else
-        client:set_config_option(session_id, choice.config_id, choice.value, function(_, err)
-          vim.schedule(function()
-            if err then
-              Utils.error("Failed: " .. (err.message or ""))
-              return
-            end
-            Utils.info("ACP " .. category .. " updated")
-            if sidebar:is_open() then sidebar:render_result() end
-          end)
+      client:set_session_option(session_id, choice.config_id, choice.value, function(_, err)
+        vim.schedule(function()
+          if err then
+            Utils.error("Failed: " .. (err.message or ""))
+            return
+          end
+          Utils.info("ACP " .. category .. " updated")
+          if sidebar:is_open() then sidebar:render_result() end
         end)
-      end
+      end)
     end)
   end
 

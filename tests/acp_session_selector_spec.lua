@@ -87,16 +87,27 @@ describe("acp_session_selector", function()
     end)
 
     it("creates a chat for a session that isn't linked yet and resumes it in a fresh client", function()
-      AcpSessionSelector.resume(1, { sessionId = "s1", cwd = "/p", title = "Fix the build" })
+      AcpSessionSelector.resume(1, {
+        sessionId = "s1",
+        cwd = "/p",
+        title = "Fix the build",
+        updatedAt = "2026-07-01T12:00:00Z",
+      })
 
       assert.equals("s1", saved.acp_session_id)
+      assert.is_true(saved.acp_session_import_pending)
       assert.equals("Fix the build", saved.title)
+      local imported_at = os.date("%Y-%m-%d %H:%M:%S", 1782907200)
+      assert.equals(imported_at, saved.timestamp)
       assert.equals(1, sidebar.stopped)
       assert.equals("/p", saved.acp_session_cwd)
-      assert.same(
-        { session_id = "s1", filename = "8.json", created = true, previous_filename = "7.json" },
-        sidebar.pending_acp_import
-      )
+      assert.same({
+        session_id = "s1",
+        filename = "8.json",
+        created = true,
+        previous_filename = "7.json",
+        timestamp = imported_at,
+      }, sidebar.pending_acp_import)
       assert.equals(1, sidebar.switched)
     end)
 
@@ -107,6 +118,7 @@ describe("acp_session_selector", function()
       AcpSessionSelector.resume(1, { sessionId = "s1", cwd = "/p", title = "New title" })
 
       assert.equals(linked, saved)
+      assert.is_true(saved.acp_session_import_pending)
       assert.equals("New title", saved.title)
       assert.same({ "kept" }, saved.messages)
       assert.same({ session_id = "s1", filename = "3.json", created = false }, sidebar.pending_acp_import)
@@ -178,6 +190,9 @@ describe("acp_session_selector", function()
       end
       function client:supports_list_sessions()
         return self.agent_capabilities ~= nil and self.agent_capabilities.sessionCapabilities ~= nil
+      end
+      function client:supports_load_session()
+        return self.agent_capabilities ~= nil and self.agent_capabilities.loadSession == true
       end
       function client:list_all_sessions(_, callback)
         callback(opts.sessions or {}, opts.list_error and { message = opts.list_error } or nil)
@@ -280,15 +295,15 @@ describe("acp_session_selector", function()
       assert.truthy(preview:find("1.json", 1, true))
     end)
 
-    it("shows a partial list with a warning when listing stopped early", function()
+    it("reports a Rust pagination error without showing a partial list", function()
       open_with({
         capabilities = LISTING,
         sessions = { { sessionId = "a", cwd = "/p", title = "A" } },
-        list_error = "Session list incomplete: stopped after 50 pages",
+        list_error = "session list exceeded the pagination limit",
       })
 
-      assert.stub(Utils.warn).was_called(1)
-      assert.equals(1, #selector_opts.items)
+      assert.stub(Utils.error).was_called_with("Failed to list sessions: session list exceeded the pagination limit")
+      assert.is_nil(selector_opts)
     end)
 
     it("reuses the sidebar's client only when it was started with the same settings", function()

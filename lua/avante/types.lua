@@ -448,6 +448,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field on_acp_config_change? fun(): nil
 ---@field just_connect_acp_client? boolean
 ---@field acp_session_id? string
+---@field _acp_session_recreated? boolean Prevents repeated session/new attempts for one prompt
 ---@field acp_session_cwd? string Directory the ACP session belongs to; defaults to the project root
 ---@field on_save_acp_session_id? fun(session_id: string): nil
 ---@field on_acp_session_replay? fun(session_id: string, messages: avante.HistoryMessage[]): nil Set to receive the conversation an agent replays on session/load; a failed load then calls on_acp_session_load_error instead of starting a new session
@@ -543,6 +544,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field tokens_usage avante.LLMTokenUsage | nil
 ---@field acp_session_id string | nil
 ---@field acp_session_cwd string | nil Directory of an imported ACP session, used to load it
+---@field acp_session_import_pending boolean | nil Whether an imported session still needs its replay saved
 ---
 ---@class avante.ChatMemory
 ---@field content string
