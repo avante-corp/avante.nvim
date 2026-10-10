@@ -2306,9 +2306,48 @@ function Sidebar:get_content_between_separators(position)
   return content, start_line
 end
 
+local function delete_acp_session(sidebar, stream_cancelled)
+  sidebar.acp_client_generation = sidebar.acp_client_generation + 1
+  local client = sidebar.acp_client
+  sidebar.acp_client = nil
+  if not client then return end
+
+  if client.config then client.config.handlers = {} end
+
+  local stopped = false
+  local function stop_client()
+    if stopped then return end
+    stopped = true
+    pcall(client.stop, client)
+  end
+
+  local session_id = sidebar.chat_history.acp_session_id
+  if not session_id or session_id == "" then
+    stop_client()
+    return
+  end
+
+  if not stream_cancelled then pcall(client.cancel_session, client, session_id) end
+  local function close_session()
+    local ok = pcall(client.close_session, client, session_id, stop_client)
+    if not ok then stop_client() end
+  end
+  local ok = pcall(client.delete_session, client, session_id, function(err)
+    if err and err.kind == "unsupported" then
+      close_session()
+    else
+      stop_client()
+    end
+  end)
+  if not ok then stop_client() end
+end
+
 function Sidebar:clear_history(args, cb)
   self.current_state = nil
   if next(self.chat_history) ~= nil then
+    local stream_cancelled = self.is_generating == true
+    if stream_cancelled then Llm.cancel_inflight_request() end
+    delete_acp_session(self, stream_cancelled)
     self.chat_history.messages = {}
     self.chat_history.entries = {}
     self.chat_history.acp_session_id = nil
