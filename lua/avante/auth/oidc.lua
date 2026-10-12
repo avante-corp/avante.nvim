@@ -55,9 +55,8 @@ local function verify_signature(key, signature, message)
   return ok and result.code == 0 and result.signal == 0
 end
 
----Neovim has hashing and randomness, but no built-in RSA signature verifier.
----Check a fixed, public test vector before opening the browser. Running OpenSSL
----as a bounded subprocess keeps library/version failures outside Neovim.
+---Neovim has no RSA verifier, so sign-in needs openssl on PATH.
+---Signature checks run it as a bounded subprocess.
 ---@return boolean available
 ---@return string|nil error
 function M.check_available()

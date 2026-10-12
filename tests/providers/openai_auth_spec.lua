@@ -258,10 +258,17 @@ describe("OpenAI sign-in lifecycle", function()
   it("preserves credentials and releases the refresh lock after failure", function()
     auth.state.openai_token = credentials()
     assert.is_true(store.update("openai", credentials()))
-    -- A Neovim process that exited must not leave refresh permanently blocked.
-    local owner = vim.system({ vim.v.progpath, "--version" })
-    owner:wait()
-    Path:new(data_dir .. "/avante/openai-refresh.lock"):write(tostring(owner.pid), "w")
+    -- A dead owner must not leave refresh permanently blocked.
+    local dead
+    for pid = 2, 100000 do
+      local _, _, kill_err = vim.uv.kill(pid, 0)
+      if kill_err == "ESRCH" then
+        dead = tostring(pid)
+        break
+      end
+    end
+    assert.is_string(dead)
+    Path:new(data_dir .. "/avante/openai-refresh.lock"):write(dead, "w")
     response.refresh_token = nil
     assert.is_false(auth.refresh_token(false))
     assert.equals("old-access", auth.get_token().access_token)
@@ -299,10 +306,16 @@ describe("OpenAI sign-in lifecycle", function()
   it("watches successive atomic credential replacements", function()
     local observed
     local unwatch = store.watch(function(data) observed = data and data.openai end)
-    store.update("openai", { access_token = "first" })
-    assert.is_true(vim.wait(1000, function() return observed and observed.access_token == "first" end))
-    store.update("openai", { access_token = "second" })
-    assert.is_true(vim.wait(1000, function() return observed and observed.access_token == "second" end))
+    -- FSEvents registration is async, so the first write can be dropped.
+    local function publish(token)
+      for _ = 1, 8 do
+        assert.is_true(store.update("openai", { access_token = token }))
+        if vim.wait(250, function() return observed and observed.access_token == token end) then return end
+      end
+      assert.equals(token, observed and observed.access_token)
+    end
+    publish("first")
+    publish("second")
     unwatch()
   end)
 end)

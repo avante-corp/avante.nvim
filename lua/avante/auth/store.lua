@@ -151,6 +151,13 @@ function M.update(provider, token)
   end)
 end
 
+local function is_auth_event(filename)
+  if type(filename) ~= "string" or filename == "" then return true end
+  local base = filename:gsub("\\", "/"):match("[^/]+$")
+  -- Atomic replace writes auth.json.tmp.<pid> before the rename.
+  return base == "auth.json" or base:find("^auth%.json%.tmp%.", 1) ~= nil
+end
+
 function M.watch(callback)
   table.insert(callbacks, callback)
   if not M._watcher then
@@ -161,7 +168,7 @@ function M.watch(callback)
       vim.fn.fnamemodify(auth_path, ":h"),
       {},
       vim.schedule_wrap(function(err, filename)
-        if err or (filename and filename ~= "auth.json") then return end
+        if err or not is_auth_event(filename) then return end
         local data = M.read()
         for _, cb in ipairs(callbacks) do
           cb(data)
