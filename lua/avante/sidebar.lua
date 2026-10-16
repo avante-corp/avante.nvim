@@ -16,6 +16,7 @@
 --- `e`             Edit user request
 --- `<Tab>`         Switch windows
 --- `<S-Tab>`       Reverse switch windows
+--- `i`             Focus input
 --- `d`             Remove file
 --- `@`             Add file
 --- `q`             Close sidebar
@@ -3382,6 +3383,7 @@ function Sidebar:render(opts)
 
   self.containers.result:map("n", Config.mappings.sidebar.close, function() self:shutdown() end)
   self.containers.result:map("n", Config.mappings.sidebar.toggle_code_window, function() self:toggle_code_window() end)
+  self.containers.result:map("n", Config.mappings.sidebar.focus_input, function() self:focus_input() end)
 
   self:create_input_container()
 

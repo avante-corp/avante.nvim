@@ -835,6 +835,7 @@ Sidebar                                                         *avante-sidebar*
  `e`             Edit user request
  `<Tab>`         Switch windows
  `<S-Tab>`       Reverse switch windows
+ `i`             Focus input
  `d`             Remove file
  `@`             Add file
  `q`             Close sidebar

@@ -995,6 +995,7 @@ The following key bindings are available for use with `avante.nvim`:
 | <kbd>e</kbd>                              | edit user request                      |
 | <kbd>&lt;Tab&gt;</kbd>                    | switch windows                         |
 | <kbd>&lt;S-Tab&gt;</kbd>                  | reverse switch windows                 |
+| <kbd>i</kbd>                              | focus input                            |
 | <kbd>d</kbd>                              | remove file                            |
 | <kbd>@</kbd>                              | add file                               |
 | <kbd>q</kbd>                              | close sidebar                          |
