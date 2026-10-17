@@ -17,6 +17,7 @@
 --- - Kagi: `KAGI_API_KEY`
 --- - Brave Search: `BRAVE_API_KEY`
 --- - Firecrawl: `FIRECRAWL_API_KEY`
+--- - Serply: `SERPLY_API_KEY`
 --- - SearXNG: `SEARXNG_API_URL`
 ---@brief ]]
 
@@ -31,6 +32,7 @@ local Utils = require("avante.utils")
 ---| '"kagi"'
 ---| '"brave"'
 ---| '"firecrawl"'
+---| '"serply"'
 ---| '"searxng"'
 
 ---@alias WebSearchResponseFormatter fun(body: table): (string, string?)
@@ -356,6 +358,48 @@ local function web_search_firecrawl_func(input, opts)
 end
 
 ---@type AvanteLLMToolFunc<{ query: string }>
+---Expects SERPLY_API_KEY in environment
+local function web_search_serply_func(input, opts)
+  log_search("serply", input, opts)
+  local api_key, api_key_err = get_api_key("SERPLY_API_KEY")
+  if not api_key then return nil, api_key_err end
+  local query = encode_query({ q = input.query, num = "10" })
+  return request(
+    "GET",
+    "https://api.serply.io/v1/search?" .. query,
+    {
+      headers = {
+        ["Content-Type"] = "application/json",
+        ["X-Api-Key"] = api_key,
+        -- identifies avante as the caller in Serply usage stats
+        ["User-Agent"] = "avante",
+      },
+    },
+    opts,
+    function(body)
+      if body.results == nil then return "", nil end
+      local results = vim
+        .iter(body.results)
+        -- skip the occasional result whose link is not a page URL
+        :filter(
+          function(result) return type(result.link) == "string" and result.link:match("^https?://") ~= nil end
+        )
+        :map(
+          function(result)
+            return {
+              title = result.title,
+              url = result.link,
+              snippet = result.description,
+            }
+          end
+        )
+        :totable()
+      return vim.json.encode(results), nil
+    end
+  )
+end
+
+---@type AvanteLLMToolFunc<{ query: string }>
 local function web_search_searxng_func(input, opts)
   log_search("searxng", input, opts)
   local api_url = Utils.environment.parse("SEARXNG_API_URL")
@@ -419,6 +463,7 @@ M.web_search_google = web_search_tool("google", web_search_google_func)
 M.web_search_kagi = web_search_tool("kagi", web_search_kagi_func)
 M.web_search_brave = web_search_tool("brave", web_search_brave_func)
 M.web_search_firecrawl = web_search_tool("firecrawl", web_search_firecrawl_func)
+M.web_search_serply = web_search_tool("serply", web_search_serply_func)
 M.web_search_searxng = web_search_tool("searxng", web_search_searxng_func)
 
 return M
