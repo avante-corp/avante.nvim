@@ -47,7 +47,7 @@ Anthropic provider ······························�
 Ollama provider ······································ |avante-providers-ollama|
 OpenAI provider ······································ |avante-providers-openai|
 Converts html to markdown ····································· |avante-html2md|
-Prompt generation ················································ |avante-path|
+Prompt generation and history ···································· |avante-path|
 
 ==============================================================================
 Installation                                               *avante-installation*
@@ -399,6 +399,22 @@ avante.Config.PromptLogger                          *avante.Config.PromptLogger*
         {prev_prompt?}  (avante.Config.PromptLoggerKeymap)  Mapping used to load the previous older prompt log.
 
 
+avante.Config.HistoryPaste                          *avante.Config.HistoryPaste*
+
+    Fields: ~
+        {extension}  (string)  Image filename extension. Defaults to "png". Currently unused.
+        {filename}   (string)  Image filename date format. Defaults to "pasted-%Y-%m-%d-%H-%M-%S". Currently unused.
+
+
+avante.Config.History                                    *avante.Config.History*
+
+    Fields: ~
+        {max_tokens}            (integer)                     History token limit. Defaults to 4096. Currently unused.
+        {carried_entry_count?}  (integer)                     Number of history entries to carry over. Defaults to nil. Currently unused.
+        {storage_path}          (string)                      Directory for chat history and pasted images. Defaults to vim.fs.joinpath(vim.fn.stdpath("state"), "avante").
+        {paste}                 (avante.Config.HistoryPaste)  Pasted image filename options. Currently unused.
+
+
 avante.Config.RagServiceModel                    *avante.Config.RagServiceModel*
 
     Fields: ~
@@ -468,6 +484,7 @@ avante.Config                                                    *avante.Config*
         {web_search_engine}           (avante.Config.WebSearchEngine)  Web search configuration.
         {behaviour}                   (avante.Config.Behaviour)        Behaviour and automation options.
         {prompt_logger}               (avante.Config.PromptLogger)     Prompt logging options.
+        {history}                     (avante.Config.History)          Chat history storage options.
         {windows}                     (table)
         {disabled_tools}              (string[])                       You can choose to disable tools by their names in case you want to avoid its usage (like Claude 3.7 overusing the python tool). For example: `{ "python" }`
         {custom_tools}                (AvanteSlashCommand[])           see |avante-custom-tools|
@@ -4111,7 +4128,7 @@ M.fetch_md()                                           *avante-html2md.fetch_md*
 
 
 ==============================================================================
-Prompt generation                                                  *avante-path*
+Prompt generation and history                                      *avante-path*
 
 avante.Path                                                        *avante.Path*
 
