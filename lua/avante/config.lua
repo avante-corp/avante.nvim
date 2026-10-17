@@ -225,6 +225,16 @@ end
 ---@field next_prompt? avante.Config.PromptLoggerKeymap Mapping used to load the next newer prompt log.
 ---@field prev_prompt? avante.Config.PromptLoggerKeymap Mapping used to load the previous older prompt log.
 
+---@class avante.Config.HistoryPaste
+---@field extension string Image filename extension. Defaults to "png". Currently unused.
+---@field filename string Image filename date format. Defaults to "pasted-%Y-%m-%d-%H-%M-%S". Currently unused.
+
+---@class avante.Config.History
+---@field max_tokens integer History token limit. Defaults to 4096. Currently unused.
+---@field carried_entry_count? integer Number of history entries to carry over. Defaults to nil. Currently unused.
+---@field storage_path string Directory for chat history and pasted images. Defaults to vim.fs.joinpath(vim.fn.stdpath("state"), "avante").
+---@field paste avante.Config.HistoryPaste Pasted image filename options. Currently unused.
+
 ---@class avante.Config.RagServiceModel
 ---@field provider string Model provider. One available in py/rag-service/src/providers ie., "ollama", "openai", "dashscope", "openrouter"
 ---@field endpoint string Model API endpoint (e.g., http://localhost)
@@ -299,6 +309,7 @@ M.instructions_file = "avante.md"
 ---@field web_search_engine avante.Config.WebSearchEngine Web search configuration.
 ---@field behaviour avante.Config.Behaviour Behaviour and automation options.
 ---@field prompt_logger avante.Config.PromptLogger Prompt logging options.
+---@field history avante.Config.History Chat history storage options.
 ---@field windows table
 ---@field disabled_tools string[] You can choose to disable tools by their names in case you want to avoid its usage (like Claude 3.7 overusing the python tool). For example: `{ "python" }`
 ---@field custom_tools AvanteSlashCommand[] see |avante-custom-tools|

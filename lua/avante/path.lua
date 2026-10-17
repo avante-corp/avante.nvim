@@ -1,4 +1,4 @@
----@mod avante-path Prompt generation
+---@mod avante-path Prompt generation and history
 ---@brief Prompt related utilities
 local fn = vim.fn
 local Utils = require("avante.utils")
@@ -30,6 +30,9 @@ local function filepath_to_filename(filepath) return tostring(filepath):sub(tost
 -- History path
 local History = {}
 
+---Returns the folder that contains past prompts
+---@see avante.Config.History
+---@return Path
 function History.get_history_dir(bufnr)
   local dirname = generate_project_dirname_in_storage(bufnr)
   local history_dir = Path:new(Config.history.storage_path):joinpath(dirname):joinpath("history")
@@ -47,6 +50,7 @@ function History.get_history_dir(bufnr)
   return history_dir
 end
 
+---Lists all conversations with the latest first, ordered by timestamp
 ---@return avante.ChatHistory[]
 function History.list(bufnr)
   local history_dir = History.get_history_dir(bufnr)
@@ -292,6 +296,7 @@ Prompt.custom_modes = {
 }
 
 ---Saved prompts for custom_modes
+---@type table<AvanteLlmMode, string>
 Prompt.custom_prompts_contents = {}
 
 ---Search and load avanterules in this order:
@@ -399,7 +404,7 @@ function Prompt.get_templates_dir(project_root)
     end
   end
 
-  vim.iter(Prompt.custom_prompts_contents):filter(function(_, v) return v ~= nil end):each(function(k, v)
+  for k, v in pairs(Prompt.custom_prompts_contents) do
     local orig_file = cache_prompt_dir:joinpath(Prompt.get_builtin_prompts_filepath(k))
     local orig_content = orig_file:read()
     local f = cache_prompt_dir:joinpath(Prompt.get_custom_prompts_filepath(k))
@@ -407,7 +412,7 @@ function Prompt.get_templates_dir(project_root)
     f:write("{% block custom_prompt -%}\n", "a")
     f:write(v, "a")
     f:write("\n{%- endblock %}", "a")
-  end)
+  end
 
   local dir = vim.fs.abspath(tostring(cache_prompt_dir))
   return dir
