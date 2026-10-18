@@ -71,4 +71,18 @@ describe("bedrock_provider", function()
       function() assert.is_false(bedrock_provider.check_curl_version_supports_aws_sig("Invalid version string")) end
     )
   end)
+
+  describe("parse_curl_args", function()
+    it("should pass SigV4 credentials as auth rather than with --user", function()
+      local provider = setmetatable({
+        model = "anthropic.claude-test",
+        parse_api_key = function() return "AKIDTEST,aws-test-SECRET123,us-east-1" end,
+      }, { __index = bedrock_provider })
+
+      local spec = provider:parse_curl_args({ system_prompt = "", messages = { { role = "user", content = "hi" } } })
+
+      assert.same({ "--aws-sigv4", "aws:amz:us-east-1:bedrock" }, spec.rawArgs)
+      assert.equals("AKIDTEST:aws-test-SECRET123", spec.auth)
+    end)
+  end)
 end)

@@ -25,7 +25,7 @@
 ---@field xcode boolean
 ---@field xcode_chat boolean
 
-local curl = require("plenary.curl")
+local curl = require("avante.utils.curl")
 
 local Path = require("plenary.path")
 local Utils = require("avante.utils")

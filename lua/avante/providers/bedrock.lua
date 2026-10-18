@@ -256,7 +256,7 @@ function M:parse_curl_args(prompt_opts)
     ["Content-Type"] = "application/json",
   }
 
-  local rawArgs
+  local rawArgs, auth
   if bearer_token and bearer_token ~= "" then
     -- Bedrock API key / bearer token flow: skip AWS SigV4 signing entirely.
     headers["Authorization"] = "Bearer " .. bearer_token
@@ -266,9 +266,9 @@ function M:parse_curl_args(prompt_opts)
     rawArgs = {
       "--aws-sigv4",
       string.format("aws:amz:%s:bedrock", region),
-      "--user",
-      string.format("%s:%s", access_key_id, secret_access_key),
     }
+    -- Used by --aws-sigv4. Passed as `auth` rather than --user so it stays off the command line.
+    auth = string.format("%s:%s", access_key_id, secret_access_key)
   end
 
   local body_payload = self:build_bedrock_payload(prompt_opts, request_body)
@@ -280,6 +280,7 @@ function M:parse_curl_args(prompt_opts)
     headers = Utils.tbl_override(headers, self.extra_headers),
     body = body_payload,
     rawArgs = rawArgs,
+    auth = auth,
   }
 end
 

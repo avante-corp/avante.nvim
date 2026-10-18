@@ -2,7 +2,7 @@ local api = vim.api
 local fn = vim.fn
 local uv = vim.uv
 
-local curl = require("plenary.curl")
+local curl = require("avante.utils.curl")
 local ACPClient = require("avante.libs.acp_client")
 
 local Utils = require("avante.utils")
@@ -604,6 +604,7 @@ function M.curl(opts)
       insecure = spec.insecure,
       form = spec.body,
       raw = spec.rawArgs,
+      auth = spec.auth,
     }
   else
     -- For regular JSON requests, encode as JSON and write to file
@@ -615,6 +616,7 @@ function M.curl(opts)
       insecure = spec.insecure,
       body = curl_body_file,
       raw = spec.rawArgs,
+      auth = spec.auth,
     }
   end
 
@@ -631,7 +633,8 @@ function M.curl(opts)
 
   local headers_reported = false
 
-  local started_job, new_active_job = pcall(
+  -- remove_private_files deletes the files that pass the headers and credentials to curl right away
+  local started_job, new_active_job, remove_private_files = pcall(
     curl.post,
     spec.url,
     vim.tbl_extend("force", curl_options, {
@@ -786,6 +789,7 @@ function M.curl(opts)
 
         -- Clean up and notify of cancellation
         cleanup()
+        remove_private_files()
         vim.schedule(function() handler_opts.on_stop({ reason = "cancelled" }) end)
       end
     end,

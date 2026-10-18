@@ -317,7 +317,7 @@ local function query_models(opts, timeout)
   local provider_conf = Providers.parse_config(opts)
   if not provider_conf.endpoint then return nil, "Ollama requires endpoint configuration" end
 
-  local curl = require("plenary.curl")
+  local curl = require("avante.utils.curl")
   local tags_url = Utils.url_join(provider_conf.endpoint, "/api/tags")
   local base_headers = {
     ["Content-Type"] = "application/json",

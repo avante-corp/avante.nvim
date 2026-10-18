@@ -2,7 +2,7 @@
 --- Generating an access token: https://www.ibm.com/products/watsonx-code-assistant or https://github.ibm.com/code-assistant/wca-api
 local P = require("avante.providers")
 local Utils = require("avante.utils")
-local curl = require("plenary.curl")
+local curl = require("avante.utils.curl")
 local Config = require("avante.config")
 local Llm = require("avante.llm")
 local ts_utils = pcall(require, "nvim-treesitter.ts_utils") and require("nvim-treesitter.ts_utils")

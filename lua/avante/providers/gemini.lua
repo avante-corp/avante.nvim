@@ -324,13 +324,14 @@ function M:parse_curl_args(prompt_opts)
   end
 
   return {
-    url = Utils.url_join(
-      provider_conf.endpoint,
-      provider_conf.model .. ":streamGenerateContent?alt=sse&key=" .. api_key
-    ),
+    url = Utils.url_join(provider_conf.endpoint, provider_conf.model .. ":streamGenerateContent?alt=sse"),
     proxy = provider_conf.proxy,
     insecure = provider_conf.allow_insecure,
-    headers = Utils.tbl_override({ ["Content-Type"] = "application/json" }, self.extra_headers),
+    -- In a header rather than the `key` query parameter, which would be visible on curl's command line
+    headers = Utils.tbl_override({
+      ["Content-Type"] = "application/json",
+      ["x-goog-api-key"] = api_key,
+    }, self.extra_headers),
     body = M.prepare_request_body(self, prompt_opts, provider_conf, request_body),
   }
 end
