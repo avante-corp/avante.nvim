@@ -11,19 +11,7 @@
       "$PWD/lua",
       "${3rd}/luv/library",
       "$DEPS_PATH/luvit-meta/library"
-      ,
-      "$DEPS_PATH/neodev.nvim/lua",
-      "$DEPS_PATH/plenary.nvim/lua",
-      "$DEPS_PATH/nui.nvim/lua",
-      "$DEPS_PATH/dressing.nvim/lua",
-      "$DEPS_PATH/snacks.nvim/lua",
-      "$DEPS_PATH/mini.nvim/lua",
-      "$DEPS_PATH/telescope.nvim/lua",
-      "$DEPS_PATH/nvim-cmp/lua",
-      "$DEPS_PATH/fzf-lua/lua",
-      "$DEPS_PATH/nvim-web-devicons/lua",
-      "$DEPS_PATH/copilot.lua/lua",
-      "$DEPS_PATH/lazy.nvim/lua"
+      , "$DEPS_PATH/share/lua/5.1"
     ],
     "ignoreDir": [
       "/lua"
