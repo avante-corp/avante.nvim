@@ -72,6 +72,9 @@ $(BUILD_DIR):
 clean:
 	@rm -rf $(BUILD_DIR)/*.$(EXT)
 
+pre-commit:
+	pre-commit run --all-files --show-diff-on-failure
+
 .PHONY: docgen
 docgen:
 	vimcats --prefix-func \
@@ -157,10 +160,8 @@ push-image: build-image
 
 .PHONY: rag-venv
 rag-venv:
-	uv venv --python 3.13
-	source .venv/bin/activate
-	# uv build
-	uv pip install py/rag-service
+	uv venv --python 3.14
+	source .venv/bin/activate && uv pip install py/rag-service
 
 
 .PHONY: rag-start

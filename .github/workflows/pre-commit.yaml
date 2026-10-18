@@ -16,26 +16,17 @@ jobs:
       if: github.event.action == 'labeled' && github.event.label.name == 'pre-commit ci run'
       env:
         GH_TOKEN: ${{ github.token }}
-    - uses: actions/setup-python@v6
+    - name: Install Nix
+      uses: DeterminateSystems/nix-installer-action@v23
       with:
-        python-version: '3.14'
-    - name: Install uv
-      uses: astral-sh/setup-uv@v7
-    - run: |
-        uv venv
-        source .venv/bin/activate
-        # uv build
-        uv pip install py/rag-service
-    - uses: leafo/gh-actions-lua@v13
-      with:
-        luaVersion: "5.1.5"
-    - uses: leafo/gh-actions-luarocks@v6
-    - run: luarocks install luacheck
-    - name: Install stylua from crates.io
-      uses: baptiste0928/cargo-install@v3
-      with:
-        crate: stylua
-        args: --features lua54
-    - uses: pre-commit/action@v3.0.1
+        determinate: false
+        extra-conf: |
+          extra-substituters = https://avante-nvim.cachix.org
+          extra-trusted-public-keys = avante-nvim.cachix.org-1:bxXX3jAkVDlvhLePyKfznp+rsvUpKm0onR8j0BuUKkA=
+    # Needs to be installed before running pyright
+    - name: setup rag service venv
+      run: nix develop .#ci --command make rag-venv
+    - name: Run pre-commit
+      run: nix develop --command make pre-commit
     - uses: pre-commit-ci/lite-action@v1.1.0
       if: always()

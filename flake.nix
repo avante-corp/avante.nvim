@@ -196,6 +196,7 @@
               python314
               silver-searcher # for tests
               docker
+              uv
               stylua
               mylua
               vimcats  # to generate docs
