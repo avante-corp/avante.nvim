@@ -651,7 +651,11 @@ AskOptions                                                          *AskOptions*
         {show_logo?}            (boolean)                      whether to show the logo
 
 
-M.full_view_ask()                                     *avante-api.full_view_ask*
+M.full_view_ask({opts?})                              *avante-api.full_view_ask*
+    Full view makes avante look like your typical terminal harness
+
+    Parameters: ~
+        {opts?}  (AskOptions)
 
 
 M.ask({opts?})                                                  *avante-api.ask*
@@ -3893,10 +3897,6 @@ AvanteClaudeProviderFunctor                        *AvanteClaudeProviderFunctor*
 
 
 M.setup()                                        *avante-providers-claude.setup*
-
-
-M.setup_claude_timer()              *avante-providers-claude.setup_claude_timer*
-    @nodoc
 
 
                              *avante-providers-claude:get_rate_limit_sleep_time*
