@@ -1754,9 +1754,7 @@ function M._continue_stream_acp(opts, acp_client, session_id)
       if err_.code == -32603 and err_.data and err_.data.details then
         local details = err_.data.details
         -- Support Claude, Gemini-CLI, and Codex ACP session-not-found formats.
-        is_session_not_found = details == "Session not found"
-          or details:match("^Session not found:") ~= nil
-          or details:match("^Session .+ not found$") ~= nil
+        is_session_not_found = details:match("^Session .-not found:?") ~= nil
       end
 
       if recovery_enabled and is_session_not_found and not rawget(opts, "_session_recovery_attempted") then
