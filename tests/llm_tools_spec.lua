@@ -13,10 +13,11 @@ LlmToolHelpers.confirm = function(_msg, cb) return cb(true) end
 LlmToolHelpers.already_in_context = function(_path) return false end
 
 describe("llm_tools", function()
-  local test_dir = "/tmp/test_llm_tools"
-  local test_file = test_dir .. "/test.txt"
+  local test_dir, test_file
 
   before_each(function()
+    test_dir = vim.fn.tempname()
+    test_file = test_dir .. "/test.txt"
     Config.setup()
     -- 创建测试目录和文件
     os.execute("mkdir -p " .. test_dir)

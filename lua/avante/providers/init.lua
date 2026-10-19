@@ -174,7 +174,22 @@ M = setmetatable(M, {
       local base_provider_config = M.get_config(provider_config.__inherited_from)
       local ok, module = pcall(require, "avante.providers." .. provider_config.__inherited_from)
       if not ok then error("Failed to load provider: " .. provider_config.__inherited_from, 2) end
-      provider_config = Utils.deep_extend_with_metatable("force", module, base_provider_config, provider_config)
+      -- auth_type describes how the base provider itself authenticates; it must
+      -- not leak into inherited providers (e.g. openrouter must not become a
+      -- ChatGPT OAuth provider just because openai is one). Set auth_type explicitly on
+      -- the inherited provider to opt in.
+      local has_user_setup = provider_config.setup ~= nil
+      local base_config = base_provider_config
+      if provider_config.auth_type == nil and base_provider_config.auth_type ~= nil then
+        base_config = {}
+        for key, value in pairs(base_provider_config) do
+          if key ~= "auth_type" then base_config[key] = value end
+        end
+      end
+      provider_config = Utils.deep_extend_with_metatable("force", module, base_config, provider_config)
+      -- The base module's setup (e.g. OpenAI auth) must not run for inherited
+      -- providers; drop it so the generic setup below gets installed instead.
+      if not has_user_setup then provider_config.setup = nil end
     else
       local ok, module = pcall(require, "avante.providers." .. k)
       if ok then

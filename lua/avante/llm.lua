@@ -569,7 +569,8 @@ function M.curl(opts)
       local ok, jsn = pcall(vim.json.decode, response_body)
       if ok then
         if jsn.error then
-          handler_opts.on_stop({ reason = "error", error = jsn.error })
+          local usage_limit_error = provider.get_usage_limit_error and provider:get_usage_limit_error(jsn.error)
+          handler_opts.on_stop({ reason = "error", error = usage_limit_error or jsn.error })
         else
           provider:parse_response(turn_ctx, response_body, current_event_state, handler_opts)
         end
@@ -704,6 +705,17 @@ function M.curl(opts)
           return acc
         end)
         if result.status >= 400 then
+          local usage_limit_error = provider.get_usage_limit_error and provider:get_usage_limit_error(result.body)
+          if usage_limit_error then
+            Utils.error(usage_limit_error, { once = true, title = "Avante" })
+            vim.schedule(function()
+              if not completed then
+                completed = true
+                handler_opts.on_stop({ reason = "error", error = usage_limit_error })
+              end
+            end)
+            return
+          end
           if provider.on_error then
             provider.on_error(result)
           else
@@ -1898,6 +1910,7 @@ function M._stream(opts)
   ---@cast provider AvanteProviderFunctor
 
   local prompt_opts = M.generate_prompts(opts)
+  prompt_opts.session_ctx = opts.session_ctx
 
   if
     prompt_opts.pending_compaction_history_messages
@@ -1929,6 +1942,7 @@ function M._stream(opts)
     update_tokens_usage = opts.update_tokens_usage,
     on_start = opts.on_start,
     on_chunk = opts.on_chunk,
+    session_ctx = opts.session_ctx,
     on_stop = function(stop_opts)
       if stop_opts.usage and opts.update_tokens_usage then opts.update_tokens_usage(stop_opts.usage) end
 

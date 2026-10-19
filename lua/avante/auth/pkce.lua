@@ -39,7 +39,7 @@ local function random_bytes_urandom(n)
   return chunk, nil
 end
 
----Generates a random N number of bytes using crypto lib over ffi, falling back to urandom
+---Generates secure random bytes using libuv, falling back to the OS random source.
 ---@param n integer number of bytes to generate
 ---@return string|nil bytes string of bytes generated, or nil if all methods fail
 ---@return string|nil error error message if generation failed
@@ -74,6 +74,8 @@ local function get_random_bytes(n)
     end
   end
 end
+
+M.random_bytes = get_random_bytes
 
 --- URL-safe base64
 --- @param data string value to base64 encode

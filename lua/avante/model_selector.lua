@@ -19,7 +19,8 @@ local list_models_cached_result = {}
 ---@return table
 local function create_model_entries(provider_name, provider_cfg, timeout)
   local res = {}
-  if provider_cfg.list_models then
+  local raw_provider_cfg = Config.get_provider_config(provider_name)
+  if provider_cfg.list_models and provider_cfg.__inherited_from == nil then
     local models
     local cache_key = provider_cfg.endpoint
     if type(provider_cfg.list_models) == "function" then
@@ -54,7 +55,8 @@ local function create_model_entries(provider_name, provider_cfg, timeout)
         :totable()
     end
   end
-  if provider_cfg.model then
+  local has_explicit_model = type(raw_provider_cfg) == "table" and rawget(raw_provider_cfg, "model") ~= nil
+  if has_explicit_model and provider_cfg.model then
     local seen = vim.iter(res):find(function(item) return item.model == provider_cfg.model end)
     if not seen then
       table.insert(res, {
@@ -65,7 +67,9 @@ local function create_model_entries(provider_name, provider_cfg, timeout)
       })
     end
   end
-  if provider_cfg.model_names then
+
+  local has_explicit_model_names = type(raw_provider_cfg) == "table" and rawget(raw_provider_cfg, "model_names") ~= nil
+  if has_explicit_model_names and provider_cfg.model_names then
     for _, model_name in ipairs(provider_cfg.model_names) do
       local seen = vim.iter(res):find(function(item) return item.model == model_name end)
       if not seen then

@@ -16,10 +16,9 @@
 ---   })
 ---@usage ]]
 ---
----After reopening Neovim, complete the browser authentication flow. If needed,
----run:
+---Run the login command, select Claude, and complete the browser flow:
 --->
----   :AvanteSwitchProvider
+---   :AvanteLogin
 ---<
 
 local Utils = require("avante.utils")
@@ -28,31 +27,15 @@ local P = require("avante.providers")
 local HistoryMessage = require("avante.history.message")
 local JsonParser = require("avante.libs.jsonparser")
 local Config = require("avante.config")
-local Path = require("plenary.path")
-local curl = require("plenary.curl")
+local ClaudeAuth = require("avante.auth.providers.claude")
 
 ---@class AvanteAnthropicProvider : AvanteDefaultBaseProvider
 ---@field auth_type "api" | "max"
 
----@class ClaudeAuthToken
----@field access_token string
----@field refresh_token string
----@field expires_at integer
-
----@class AvanteClaudeProviderFunctor
+---@class AvanteClaudeProviderFunctor : AvanteProviderFunctor
 local M = {}
 
-local claude_path = vim.fn.stdpath("data") .. "/avante/claude-auth.json"
-local lockfile_path = vim.fn.stdpath("data") .. "/avante/claude-timer.lock"
-local auth_endpoint = "https://claude.ai/oauth/authorize"
-local token_endpoint = "https://console.anthropic.com/v1/oauth/token"
-local client_id = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 local claude_code_spoof_prompt = "You are Claude Code, Anthropic's official CLI for Claude."
-
----@private
----@class AvanteAnthropicState
----@field claude_token ClaudeAuthToken?
-M.state = nil
 
 M.api_key_name = "ANTHROPIC_API_KEY"
 M.support_prompt_caching = true
@@ -63,184 +46,9 @@ M.role_map = {
   assistant = "assistant",
 }
 
-M._is_setup = false
-M._refresh_timer = nil
-
--- Token validation helper
----@param token ClaudeAuthToken?
----@return boolean
-local function is_valid_token(token)
-  return token ~= nil
-    and type(token.access_token) == "string"
-    and type(token.refresh_token) == "string"
-    and type(token.expires_at) == "number"
-    and token.access_token ~= ""
-    and token.refresh_token ~= ""
-end
-
--- Lockfile management
-local function is_process_running(pid)
-  local result = vim.uv.kill(pid, 0)
-  if result ~= nil and result == 0 then
-    return true
-  else
-    return false
-  end
-end
-
-local function try_acquire_claude_timer_lock()
-  local lockfile = Path:new(lockfile_path)
-
-  local tmp_lockfile = lockfile_path .. ".tmp." .. vim.fn.getpid()
-
-  Path:new(tmp_lockfile):write(tostring(vim.fn.getpid()), "w")
-
-  -- Check existing lock
-  if lockfile:exists() then
-    local content = lockfile:read()
-    local pid = tonumber(content)
-    if pid and is_process_running(pid) then
-      os.remove(tmp_lockfile)
-      return false -- Another instance is already managing
-    end
-  end
-
-  -- Attempt to take ownership
-  local success = os.rename(tmp_lockfile, lockfile_path)
-  if not success then
-    os.remove(tmp_lockfile)
-    return false
-  end
-
-  return true
-end
-
-local function start_manager_check_timer()
-  if M._manager_check_timer then
-    M._manager_check_timer:stop()
-    M._manager_check_timer:close()
-  end
-
-  M._manager_check_timer = vim.uv.new_timer()
-  M._manager_check_timer:start(
-    30000,
-    30000,
-    vim.schedule_wrap(function()
-      if not M._refresh_timer and try_acquire_claude_timer_lock() then M.setup_claude_timer() end
-    end)
-  )
-end
-
----@private
-function M.setup_claude_file_watcher()
-  if M._file_watcher then return end
-
-  local claude_token_file = Path:new(claude_path)
-  M._file_watcher = vim.uv.new_fs_event()
-
-  M._file_watcher:start(
-    claude_path,
-    {},
-    vim.schedule_wrap(function()
-      -- Reload token from file
-      if claude_token_file:exists() then
-        local ok, token = pcall(vim.json.decode, claude_token_file:read())
-        if ok then M.state.claude_token = token end
-      end
-    end)
-  )
-end
-
--- Common token management setup (timer, file watcher, tokenizer)
-local function setup_token_management()
-  -- Setup timer management
-  local timer_lock_acquired = try_acquire_claude_timer_lock()
-  if timer_lock_acquired then
-    M.setup_claude_timer()
-  else
-    vim.schedule(function()
-      if M._is_setup then M.refresh_token(true, false) end
-    end)
-  end
-
-  M.setup_claude_file_watcher()
-  start_manager_check_timer()
-  require("avante.tokenizers").setup(M.tokenizer_id)
-  vim.g.avante_login = true
-end
-
 function M.setup()
-  local claude_token_file = Path:new(claude_path)
-  local auth_type = P[Config.provider].auth_type
-
-  if auth_type == "api" then
-    require("avante.tokenizers").setup(M.tokenizer_id)
-    M._is_setup = true
-    return
-  end
-
-  M.api_key_name = ""
-
-  if not M.state then M.state = {
-    claude_token = nil,
-  } end
-
-  if claude_token_file:exists() then
-    local ok, token = pcall(vim.json.decode, claude_token_file:read())
-    -- Note: We don't check expiration here because refresh logic needs the refresh_token field
-    -- from the existing token. Expired tokens will be refreshed automatically on next use.
-    if ok and is_valid_token(token) then
-      M.state.claude_token = token
-    elseif ok and not is_valid_token(token) then
-      -- Token file exists but is malformed - delete and re-authenticate
-      Utils.warn("Claude token file is corrupted or invalid, re-authenticating...", { title = "Avante" })
-      vim.schedule(function() pcall(claude_token_file.rm, claude_token_file) end)
-      M.authenticate()
-    elseif not ok then
-      -- JSON decode failed - file is corrupted
-      Utils.warn(
-        "Failed to parse Claude token file: " .. tostring(token) .. ", re-authenticating...",
-        { title = "Avante" }
-      )
-      vim.schedule(function() pcall(claude_token_file.rm, claude_token_file) end)
-      M.authenticate()
-    end
-
-    setup_token_management()
-    M._is_setup = true
-  else
-    M.authenticate()
-    setup_token_management()
-    -- Note: M._is_setup is NOT set to true here because authenticate() is async
-    -- and may fail. The flag indicates setup was attempted, not that it succeeded.
-  end
-end
-
----@nodoc
-function M.setup_claude_timer()
-  if M._refresh_timer then
-    M._refresh_timer:stop()
-    M._refresh_timer:close()
-  end
-
-  -- Calculate time until token expires
-  local now = math.floor(os.time())
-  local expires_at = M.state.claude_token and M.state.claude_token.expires_at or now
-  local time_until_expiry = math.max(0, expires_at - now)
-  -- Refresh 2 minutes before expiration
-  local initial_interval = math.max(0, (time_until_expiry - 120) * 1000)
-  -- Regular interval of 28 minutes after the first refresh
-  -- local repeat_interval = 28 * 60 * 1000
-  local repeat_interval = 0 -- Try 0 as we should know exactly when the refresh is needed, rather than repeating
-
-  M._refresh_timer = vim.uv.new_timer()
-  M._refresh_timer:start(
-    initial_interval,
-    repeat_interval,
-    vim.schedule_wrap(function()
-      if M._is_setup then M.refresh_token(true, true) end
-    end)
-  )
+  ClaudeAuth.setup(M)
+  M.api_key_name = ClaudeAuth.api_key_name
 end
 
 ---@param headers table<string, string>
@@ -580,10 +388,6 @@ end
 ---@param prompt_opts AvantePromptOptions
 ---@return AvanteCurlOutput|nil
 function M:parse_curl_args(prompt_opts)
-  -- refresh token synchronously, only if it has expired
-  -- (this should rarely happen, as we refresh the token in the background)
-  M.refresh_token(false, false)
-
   local provider_conf, request_body = P.parse_config(self)
   ---@cast provider_conf AvanteAnthropicProvider
   local disable_tools = provider_conf.disable_tools or false
@@ -593,25 +397,10 @@ function M:parse_curl_args(prompt_opts)
     ["anthropic-version"] = "2023-06-01",
   }
 
-  if provider_conf.auth_type == "max" then
-    local api_key = M.state.claude_token.access_token
-    headers["authorization"] = string.format("Bearer %s", api_key)
-    -- Match Claude CLI user-agent for OAuth requests (per opencode-anthropic-auth PR #11)
-    headers["user-agent"] = "claude-cli/2.1.2 (external, cli)"
-    -- OAuth beta headers - include claude-code identifier, exclude fine-grained-tool-streaming
-    headers["anthropic-beta"] =
-      "oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14,prompt-caching-2024-07-31"
-  else
-    if P.env.require_api_key(provider_conf) then
-      local api_key = self.parse_api_key()
-      if not api_key then
-        Utils.error("Claude: API key is not set. Please set " .. M.api_key_name)
-        return nil
-      end
-      headers["x-api-key"] = api_key
-      headers["anthropic-beta"] = "prompt-caching-2024-07-31"
-    end
-  end
+  local auth_headers = ClaudeAuth.get_headers(provider_conf, self)
+  M.api_key_name = ClaudeAuth.api_key_name
+  if not auth_headers then return nil end
+  headers = Utils.tbl_override(headers, auth_headers)
 
   local messages = self:parse_messages(prompt_opts)
 
@@ -751,247 +540,12 @@ function M.on_error(result)
   Utils.error(error_msg, { once = true, title = "Avante" })
 end
 
-function M.authenticate()
-  local pkce = require("avante.auth.pkce")
-  local verifier, verifier_err = pkce.generate_verifier()
-  if not verifier then
-    vim.schedule(
-      function()
-        vim.notify("Failed to generate PKCE verifier: " .. (verifier_err or "Unknown error"), vim.log.levels.ERROR)
-      end
-    )
-    return
-  end
+function M.authenticate() return ClaudeAuth.authenticate() end
 
-  local challenge, challenge_err = pkce.generate_challenge(verifier)
-  if not challenge then
-    vim.schedule(
-      function()
-        vim.notify("Failed to generate PKCE challenge: " .. (challenge_err or "Unknown error"), vim.log.levels.ERROR)
-      end
-    )
-    return
-  end
+function M.refresh_token(...) return ClaudeAuth.refresh_token(...) end
 
-  local state, state_err = pkce.generate_verifier()
-  if not state then
-    vim.schedule(
-      function() vim.notify("Failed to generate PKCE state: " .. (state_err or "Unknown error"), vim.log.levels.ERROR) end
-    )
-    return
-  end
+function M.store_tokens(...) return ClaudeAuth.store_tokens(...) end
 
-  local auth_url = string.format(
-    "%s?client_id=%s&response_type=code&redirect_uri=%s&scope=%s&state=%s&code_challenge=%s&code_challenge_method=S256",
-    auth_endpoint,
-    client_id,
-    vim.uri_encode("https://console.anthropic.com/oauth/code/callback"),
-    vim.uri_encode("org:create_api_key user:profile user:inference"),
-    state,
-    challenge
-  )
-
-  -- Open browser to begin authentication
-  -- Always show URL for terminal environments without browsers
-  vim.schedule(function()
-    vim.fn.setreg("+", auth_url)
-    vim.notify("Please open this URL in your browser:\n" .. auth_url, vim.log.levels.WARN)
-    pcall(vim.ui.open, auth_url)
-  end)
-
-  local function on_submit(input)
-    if input then
-      local splits = vim.split(input, "#")
-      local response = curl.post(token_endpoint, {
-        body = vim.json.encode({
-          grant_type = "authorization_code",
-          client_id = client_id,
-          code = splits[1],
-          state = splits[2],
-          redirect_uri = "https://console.anthropic.com/oauth/code/callback",
-          code_verifier = verifier,
-        }),
-        headers = {
-          ["Content-Type"] = "application/json",
-        },
-      })
-
-      if response.status >= 400 then
-        vim.schedule(
-          function() vim.notify(string.format("HTTP %d: %s", response.status, response.body), vim.log.levels.ERROR) end
-        )
-        return
-      end
-
-      local ok, tokens = pcall(vim.json.decode, response.body)
-      if ok then
-        M.store_tokens(tokens)
-        vim.schedule(function() vim.notify("✓ Authentication successful!", vim.log.levels.INFO) end)
-        M._is_setup = true
-      else
-        vim.schedule(function() vim.notify("Failed to decode JSON", vim.log.levels.ERROR) end)
-      end
-    else
-      vim.schedule(function() vim.notify("Failed to parse code, authentication failed!", vim.log.levels.ERROR) end)
-    end
-  end
-
-  local Input = require("avante.ui.input")
-  local input = Input:new({
-    provider = Config.input.provider,
-    title = "Enter Auth Key: ",
-    default = "",
-    conceal = false, -- Key input should be concealed
-    provider_opts = Config.input.provider_opts,
-    on_submit = on_submit,
-  })
-  input:open()
-end
-
---- Function to refresh an expired claude auth token
----@param async boolean whether to refresh the token asynchronously
----@param force boolean whether to force the refresh
-function M.refresh_token(async, force)
-  if not M.state or not M.state.claude_token then return false end -- Exit early if no state
-  async = async == nil and true or async
-  force = force or false
-
-  -- Do not refresh token if not forced or not expired
-  if
-    not force
-    and M.state.claude_token
-    and M.state.claude_token.expires_at
-    and M.state.claude_token.expires_at > math.floor(os.time())
-  then
-    return false
-  end
-
-  local base_url = "https://console.anthropic.com/v1/oauth/token"
-  local body = {
-    grant_type = "refresh_token",
-    client_id = client_id,
-    refresh_token = M.state.claude_token.refresh_token,
-  }
-  local curl_opts = {
-    body = vim.json.encode(body),
-    headers = {
-      ["Content-Type"] = "application/json",
-    },
-  }
-
-  local function handle_response(response)
-    if response.status >= 400 then
-      vim.schedule(
-        function()
-          vim.notify(
-            string.format("[%s]Failed to refresh access token: %s", response.status, response.body),
-            vim.log.levels.ERROR
-          )
-        end
-      )
-      return false
-    else
-      local ok, tokens = pcall(vim.json.decode, response.body)
-      if ok then
-        M.store_tokens(tokens)
-
-        return true
-      else
-        return false
-      end
-    end
-  end
-
-  if async then
-    curl.post(
-      base_url,
-      vim.tbl_deep_extend("force", {
-        callback = handle_response,
-      }, curl_opts)
-    )
-  else
-    local response = curl.post(base_url, curl_opts)
-    handle_response(response)
-  end
-end
-
-function M.store_tokens(tokens)
-  local json = {
-    access_token = tokens["access_token"],
-    refresh_token = tokens["refresh_token"],
-    expires_at = os.time() + tokens["expires_in"],
-  }
-  M.state.claude_token = json
-
-  vim.schedule(function()
-    local data_path = vim.fn.stdpath("data") .. "/avante/claude-auth.json"
-
-    -- Safely encode JSON
-    local ok, json_str = pcall(vim.json.encode, json)
-    if not ok then
-      Utils.error("Failed to encode token data: " .. tostring(json_str), { once = true, title = "Avante" })
-      return
-    end
-
-    -- Open file for writing
-    local file, open_err = io.open(data_path, "w")
-    if not file then
-      Utils.error("Failed to save token file: " .. tostring(open_err), { once = true, title = "Avante" })
-      return
-    end
-
-    -- Write token data
-    local write_ok, write_err = pcall(file.write, file, json_str)
-    file:close()
-
-    if not write_ok then
-      Utils.error("Failed to write token file: " .. tostring(write_err), { once = true, title = "Avante" })
-      return
-    end
-
-    -- Set file permissions (Unix only)
-    if vim.fn.has("unix") == 1 then
-      local chmod_ok = vim.loop.fs_chmod(data_path, 384) -- 0600 in decimal
-      if not chmod_ok then Utils.warn("Failed to set token file permissions", { once = true, title = "Avante" }) end
-    end
-  end)
-end
-
-function M.cleanup_claude()
-  -- Cleanup refresh timer
-  if M._refresh_timer then
-    M._refresh_timer:stop()
-    M._refresh_timer:close()
-    M._refresh_timer = nil
-
-    -- Remove lockfile if we were the manager
-    local lockfile = Path:new(lockfile_path)
-    if lockfile:exists() then
-      local content = lockfile:read()
-      local pid = tonumber(content)
-      if pid and pid == vim.fn.getpid() then vim.fs.rm(tostring(lockfile)) end
-    end
-  end
-
-  -- Cleanup manager check timer
-  if M._manager_check_timer then
-    M._manager_check_timer:stop()
-    M._manager_check_timer:close()
-    M._manager_check_timer = nil
-  end
-
-  -- Cleanup file watcher
-  if M._file_watcher then
-    ---@diagnostic disable-next-line: param-type-mismatch
-    M._file_watcher:stop()
-    pcall(function() M._file_watcher:close() end)
-    M._file_watcher = nil
-  end
-end
-
--- Register cleanup on Neovim exit
-vim.api.nvim_create_autocmd("VimLeavePre", {
-  callback = function() M.cleanup_claude() end,
-})
+function M.cleanup_claude() return ClaudeAuth.cleanup() end
 
 return M

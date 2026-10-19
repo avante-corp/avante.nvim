@@ -24,6 +24,7 @@ describe("bedrock_provider", function()
       local message = ""
       bedrock_provider:parse_stream_data({}, data, {
         on_chunk = function(msg) message = msg end,
+        on_stop = function() end,
       })
       assert.equals(
         "- Too many requests, please wait before trying again. You have sent too many requests.  Wait before trying again.",

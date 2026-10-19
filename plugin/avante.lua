@@ -284,3 +284,7 @@ api.nvim_create_user_command("AvanteStop", function() require("avante.api").stop
   desc = "avante: stop current AI request",
   nargs = 0,
 })
+api.nvim_create_user_command("AvanteLogin", function() require("avante.api").login() end, {
+  desc = "avante: log in to a provider",
+  nargs = 0,
+})

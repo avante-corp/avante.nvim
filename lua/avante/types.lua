@@ -78,6 +78,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field on_messages_add? fun(messages: avante.HistoryMessage[]): nil
 ---@field on_state_change? fun(state: avante.GenerateState): nil
 ---@field update_tokens_usage? fun(usage: avante.LLMTokenUsage): nil
+---@field session_ctx? table
 ---
 ---@alias AvanteLLMMessageContentItem string | { type: "text", text: string, cache_control: { type: string } | nil } | { type: "image", source: { type: "base64", media_type: string, data: string } } | { type: "tool_use", name: string, id: string, input: any } | { type: "tool_result", tool_use_id: string, content: string, is_error?: boolean, is_user_declined?: boolean } | { type: "thinking", thinking: string, signature: string } | { type: "redacted_thinking", data: string }
 
@@ -134,6 +135,9 @@ vim.g.avante_login = vim.g.avante_login
 ---@field image_paths? string[]
 ---@field tools? AvanteLLMTool[] Available tools
 ---@field pending_compaction_history_messages? AvanteLLMMessage[] messages that might need to get compacted
+---@field session_id? string
+---@field session_ctx? table
+---@field force_include_tool_calls? boolean
 ---
 ---@class AvanteGeminiMessage
 ---@field role "user"
@@ -368,6 +372,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field on_error? fun(result: table<string, any>): nil
 ---@field transform_tool? fun(self: AvanteProviderFunctor, tool: AvanteLLMTool, use_prefix?: boolean): AvanteOpenAITool | AvanteClaudeTool
 ---@field get_rate_limit_sleep_time? fun(self: AvanteProviderFunctor, headers: table<string, string>): integer | nil
+---@field get_usage_limit_error? fun(self: AvanteProviderFunctor, err: string | table | nil): string | nil Returns a message for errors that should stop instead of retrying as a rate limit
 ---@field list_models? fun(self, timeout?: integer): AvanteProviderModelList | nil
 ---
 ---@alias AvanteBedrockPayloadBuilder fun(self: AvanteBedrockModelHandler | AvanteBedrockProviderFunctor, prompt_opts: AvantePromptOptions, request_body: table<string, any>): table<string, any>
