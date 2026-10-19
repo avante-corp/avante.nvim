@@ -25,6 +25,7 @@ jobs:
       - uses: googleapis/release-please-action@v5
         id: release
         with:
+          target-branch: ${{ github.ref_name }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
