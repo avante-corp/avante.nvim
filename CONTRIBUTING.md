@@ -93,6 +93,8 @@ to specific commit. See the 'upgrade-actions' target in Makefile.
 
 # How to create a new release ? (maintainers-only)
 
-1. Create a branch `release-vX.X` if it doesn't exist yet
-2. Create a tag. The CI will create a release as a "draft"
-3. Edit the release notes and "publish" the release
+1. Merge changes into `main` using [Conventional Commits](https://www.conventionalcommits.org/).
+2. Review and merge the release PR opened by [Release Please](https://github.com/googleapis/release-please-action). It updates `CHANGELOG.md`, `version.txt`, and the release manifest.
+3. The release workflow creates the version tag and GitHub release, builds and uploads binary assets, then publishes to LuaRocks for the upstream repository.
+
+Enable **Allow GitHub Actions to create and approve pull requests** under the repository's **Settings > Actions > General**. The workflow uses `GITHUB_TOKEN`; its release PRs do not automatically trigger other workflows, so run any required checks manually before merging.

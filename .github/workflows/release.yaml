@@ -3,53 +3,34 @@ name: Release
 on:
   workflow_dispatch:
   push:
-    branches: ["release-v*"]
-    tags: ["v*"]
+    branches:
+      - "main"
+      - "release-v*"
 
 permissions:
   contents: write
-  packages: write
+  issues: write
+  pull-requests: write
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   create-release:
-    permissions:
-      contents: write
     runs-on: ubuntu-24.04
     outputs:
-      release_id: ${{ steps.create-release.outputs.id }}
-      release_tag: ${{ steps.release.outputs.tag }}
-      release_body: "${{ steps.tag.outputs.message }}"
-
+      release_created: ${{ steps.release.outputs.release_created }}
+      release_tag: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: actions/checkout@v7
-
-      - name: Resolve release
+      - uses: googleapis/release-please-action@v5
         id: release
-        shell: bash
-        run: |
-          if [[ "$GITHUB_REF_TYPE" == "branch" ]]; then
-            echo "tag=${GITHUB_REF_NAME#release-}-rc" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Create Release
-        id: create-release
-        uses: ncipollo/release-action@v1
         with:
-          draft: true
-          name: ${{ steps.release.outputs.tag }}
-          tag: ${{ steps.release.outputs.tag }}
-          commit: ${{ github.sha }}
-          allowUpdates: true
-          generateReleaseNotes: true
-          prerelease: true
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
 
   releases-matrix:
     needs: [create-release]
+    if: needs.create-release.outputs.release_created == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -85,7 +66,12 @@ jobs:
 
       - uses: ./.github/actions/build
         id: build
-        with: ${{ matrix.config }}
+        with:
+          os: ${{ matrix.config.os }}
+          arch: ${{ matrix.config.arch }}
+          rust_target: ${{ matrix.config.rust_target }}
+          docker_platform: ${{ matrix.config.docker_platform }}
+          container: ${{ matrix.config.container }}
 
       - name: Upload Release Asset
         if: ${{ steps.build.outputs.os_name != 'windows' }}
@@ -105,25 +91,10 @@ jobs:
             "./avante_lib-${{ steps.build.outputs.os_name }}-${{ matrix.config.arch }}-${{ matrix.feature }}.zip"
             --clobber
 
-  publish-release:
-    if: github.ref_type == 'tag'
-    permissions:
-      contents: write
-    runs-on: ubuntu-24.04
+  luarocks-upload:
     needs: [create-release, releases-matrix]
-
-    steps:
-      - name: publish release
-        id: publish-release
-        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410 # ratchet:actions/github-script@v6
-        env:
-          release_id: ${{ needs.create-release.outputs.release_id }}
-        with:
-          script: |
-            github.rest.repos.updateRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              release_id: process.env.release_id,
-              draft: false,
-              prerelease: false
-            })
+    if: needs.create-release.outputs.release_created == 'true'
+    uses: ./.github/workflows/luarocks.yml
+    with:
+      release_tag: ${{ needs.create-release.outputs.release_tag }}
+    secrets: inherit
