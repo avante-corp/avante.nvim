@@ -107,22 +107,13 @@ M.func = vim.schedule_wrap(function(input, opts)
   local json_content = vim.json.encode(body)
   vim.fn.writefile(vim.split(json_content, "\n"), curl_body_file)
 
-  local headers = { ["Content-Type"] = "application/json" }
-  -- Add authorization header if available
-  if Providers.env.require_api_key(provider_conf) then
-    local api_key = provider.parse_api_key()
-    headers["Authorization"] = "Bearer " .. api_key
-  end
-  -- Read by curl from a private file, as the command line is visible to other users
-  local headers_file = Curl.write_headers_file(headers)
-
   -- Construct curl command with additional debugging and error handling
   local curl_cmd = {
     "curl",
     "-X",
     "POST",
     "-H",
-    "@" .. headers_file,
+    "Content-Type: application/json",
     "-d",
     "@" .. curl_body_file,
     "--fail", -- Return error for HTTP status codes >= 400
@@ -135,6 +126,15 @@ M.func = vim.schedule_wrap(function(input, opts)
     Utils.url_join(provider_conf.endpoint, "/chat/completions"),
   }
 
+  -- Add authorization header if available, from a private file as the command line is visible to other users
+  local headers_file
+  if Providers.env.require_api_key(provider_conf) then
+    local api_key = provider.parse_api_key()
+    headers_file = Curl.write_headers_file({ ["Authorization"] = "Bearer " .. api_key })
+    table.insert(curl_cmd, 4, "-H")
+    table.insert(curl_cmd, 5, "@" .. headers_file)
+  end
+
   vim.system(
     curl_cmd,
     {
@@ -143,7 +143,7 @@ M.func = vim.schedule_wrap(function(input, opts)
     vim.schedule_wrap(function(result)
       -- Clean up temporary files
       vim.fn.delete(curl_body_file)
-      vim.fn.delete(headers_file)
+      if headers_file then vim.fn.delete(headers_file) end
 
       if result.code ~= 0 then
         local error_msg = result.stderr

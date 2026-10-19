@@ -40,6 +40,7 @@ Avante bash ··································
 Web search tools ····································· |avante-tools-web-search|
 Custom prompts ················································ |avante-prompts|
 avante utilities ················································ |avante-utils|
+Curl wrapper ··············································· |avante-utils-curl|
 Agent Client Protocol support ····································· |avante-acp|
 Model providers ············································· |avante-providers|
 Bedrock provider ···································· |avante-providers-bedrock|
@@ -2797,6 +2798,44 @@ M.get_unified_diff()                             *avante-utils.get_unified_diff*
 
 
 M.is_floating_window()                         *avante-utils.is_floating_window*
+
+
+==============================================================================
+Curl wrapper                                                 *avante-utils-curl*
+
+
+ Drop-in replacement for plenary.curl's `get` and `post` that keeps `headers`, a string `body` and
+ `auth` off curl's command line, where any user of the machine can read them (e.g. with `ps`).
+ They are written to files only the current user can read, which curl loads with `-H @file`,
+ `--data-binary @file` and `--config file`, and the files are removed once curl exits.
+
+
+avante.utils.curl                                            *avante.utils.curl*
+
+
+M.write_headers_file({headers})           *avante-utils-curl.write_headers_file*
+    Writes headers to a private file in the format of curl's `-H @file`.
+    The caller must delete the file once curl has exited.
+
+    Parameters: ~
+        {headers}  (table<string,string>)
+
+    Returns: ~
+        (string)  path
+
+
+M.get({url}, {opts?})                                    *avante-utils-curl.get*
+
+    Parameters: ~
+        {url}    (string)
+        {opts?}  (table)   plenary.curl options
+
+
+M.post({url}, {opts?})                                  *avante-utils-curl.post*
+
+    Parameters: ~
+        {url}    (string)
+        {opts?}  (table)   plenary.curl options
 
 
 ==============================================================================

@@ -89,6 +89,7 @@ docgen:
 		lua/avante/utils/prompts.lua \
 		lua/avante/extensions/init.lua \
 		lua/avante/utils/init.lua \
+		lua/avante/utils/curl.lua \
 		lua/avante/libs/acp_client.lua \
 		lua/avante/providers/init.lua \
 		lua/avante/providers/bedrock.lua \

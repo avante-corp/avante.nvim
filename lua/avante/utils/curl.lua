@@ -1,7 +1,12 @@
----Drop-in replacement for plenary.curl's `get` and `post` that keeps `headers`, a string `body` and
----`auth` off curl's command line, where any user of the machine can read them (e.g. with `ps`).
----They are written to files only the current user can read, which curl loads with `-H @file`,
----`--data-binary @file` and `--config file`, and the files are removed once curl exits.
+---@mod avante-utils-curl Curl wrapper
+---@brief [[
+---
+--- Drop-in replacement for plenary.curl's `get` and `post` that keeps `headers`, a string `body` and
+--- `auth` off curl's command line, where any user of the machine can read them (e.g. with `ps`).
+--- They are written to files only the current user can read, which curl loads with `-H @file`,
+--- `--data-binary @file` and `--config file`, and the files are removed once curl exits.
+---
+---@brief ]]
 local curl = require("plenary.curl")
 
 ---@class avante.utils.curl
