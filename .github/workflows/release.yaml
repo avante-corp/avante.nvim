@@ -17,6 +17,7 @@ env:
 
 jobs:
   create-release:
+    needs: [releases-matrix]
     runs-on: ubuntu-24.04
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
@@ -30,8 +31,6 @@ jobs:
           manifest-file: .release-please-manifest.json
 
   releases-matrix:
-    needs: [create-release]
-    if: needs.create-release.outputs.release_created == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -74,23 +73,30 @@ jobs:
           docker_platform: ${{ matrix.config.docker_platform }}
           container: ${{ matrix.config.container }}
 
-      - name: Upload Release Asset
-        if: ${{ steps.build.outputs.os_name != 'windows' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          ls -l
-          gh release upload "${{ needs.create-release.outputs.release_tag }}" \
-            "./avante_lib-${{ steps.build.outputs.os_name }}-${{ matrix.config.arch }}-${{ matrix.feature }}.tar.gz" --clobber
+      - name: Store Release Asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: avante_lib-${{ steps.build.outputs.os_name }}-${{ matrix.config.arch }}-${{ matrix.feature }}
+          path: ./avante_lib-${{ steps.build.outputs.os_name }}-${{ matrix.config.arch }}-${{ matrix.feature }}.*
+          if-no-files-found: error
 
-      - name: Upload Release Asset (Windows)
-        if: ${{ steps.build.outputs.os_name == 'windows' }}
+  upload-release-assets:
+    needs: [create-release]
+    if: needs.create-release.outputs.release_created == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: avante_lib-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Upload Release Assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run:
-          gh release upload "${{ needs.create-release.outputs.release_tag }}"
-            "./avante_lib-${{ steps.build.outputs.os_name }}-${{ matrix.config.arch }}-${{ matrix.feature }}.zip"
-            --clobber
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.create-release.outputs.release_tag }}
+        run: gh release upload "$RELEASE_TAG" release-assets/* --clobber
 
   luarocks-upload:
     needs: [create-release, releases-matrix]
