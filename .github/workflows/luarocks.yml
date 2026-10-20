@@ -28,7 +28,7 @@ jobs:
       - name: Get Version
         run: echo "LUAROCKS_VERSION=$(git describe --abbrev=0 --tags)" >> "$GITHUB_ENV"
       - name: LuaRocks Upload
-        uses: nvim-neorocks/luarocks-tag-release@v7
+        uses: nvim-neorocks/luarocks-tag-release@v8
         env:
           LUAROCKS_API_KEY: ${{ secrets.LUAROCKS_API_KEY }}
         with:

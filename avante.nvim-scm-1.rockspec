@@ -1,9 +1,7 @@
-local git_ref = '$git_ref'
 local specrev = '1'
 
--- in the luarocks-tag-release action, we set $summary to "USED_AS_TEMPLATE"
--- to know if the rockspec is running in actual release mode
-local release_mode = '$summary' == "USED_AS_TEMPLATE"
+-- luarocks-tag-release reserved variable
+local is_release = '$is_release' == 'true'
 
 local repo_url = 'https://github.com/avante-corp/avante.nvim'
 
@@ -22,10 +20,11 @@ dependencies = {
 test_dependencies = { 'busted' }
 
 
-if release_mode then
+if is_release then
+  -- git_ref is set to a tag if possible, else git revision
+  local git_ref = '$git_ref'
   -- $modrev is "git_ref" stripped of "v" prefix (disallowed in rockspec filename)
   local modrev = '$modrev'
-  version = '$modrev-'.. specrev
   source = {
     url = repo_url .. '/archive/' .. git_ref .. '.zip',
     dir = 'avante.nvim-' .. modrev,
