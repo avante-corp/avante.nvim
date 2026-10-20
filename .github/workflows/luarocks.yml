@@ -1,14 +1,6 @@
 name: Push to luarocks.org
 
 on:
-  workflow_call:
-    inputs:
-      release_tag:
-        required: true
-        type: string
-    secrets:
-      LUAROCKS_API_KEY:
-        required: true
   push:
     tags:
       - '*'
@@ -23,7 +15,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.release_tag || github.ref }}
           fetch-depth: 0 # Required to count the commits
       - name: Get Version
         run: echo "LUAROCKS_VERSION=$(git describe --abbrev=0 --tags)" >> "$GITHUB_ENV"

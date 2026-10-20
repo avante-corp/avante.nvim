@@ -98,10 +98,3 @@ jobs:
           RELEASE_TAG: ${{ needs.create-release.outputs.release_tag }}
         run: gh release upload "$RELEASE_TAG" release-assets/* --clobber
 
-  luarocks-upload:
-    needs: [create-release, releases-matrix]
-    if: needs.create-release.outputs.release_created == 'true'
-    uses: ./.github/workflows/luarocks.yml
-    with:
-      release_tag: ${{ needs.create-release.outputs.release_tag }}
-    secrets: inherit
