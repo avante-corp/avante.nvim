@@ -1,16 +1,16 @@
 {% if selected_files -%}
 <selected_files>
 {%- for file in selected_files %}
-<file path="{{file.path}}" language="{{file.file_type}}">
-{{file.content}}
+<file path="{{file.path|escape}}" language="{{file.file_type|escape}}">
+{{file.content|replace("</file>", "&lt;/file&gt;")|replace("</selected_files>", "&lt;/selected_files&gt;")}}
 </file>
 {%- endfor %}
 </selected_files>
 {%- endif %}
 
 {% if selected_code -%}
-<selected_code path="{{selected_code.path}}" language="{{selected_code.file_type}}">
-{{selected_code.content}}
+<selected_code path="{{selected_code.path|escape}}" language="{{selected_code.file_type|escape}}">
+{{selected_code.content|replace("</selected_code>", "&lt;/selected_code&gt;")}}
 </selected_code>
 {%- endif %}
 
