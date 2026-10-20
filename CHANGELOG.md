@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/avante-corp/avante.nvim/compare/v0.4.2...v0.4.3) (2026-10-20)
+
+
+### Continuous Integration
+
+* dont chaincall luarocks-upload ([bcbe3b1](https://github.com/avante-corp/avante.nvim/commit/bcbe3b145620e7cf21219ca2d02bb6f2a99de600))
+
 ## [0.4.2](https://github.com/avante-corp/avante.nvim/compare/v0.4.0...v0.4.2) (2026-10-19)
 
 
