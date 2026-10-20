@@ -413,6 +413,217 @@ describe("llm_tools", function()
   end)
 
   describe("glob", function()
+    it("should preserve trailing slashes for directory-only patterns", function()
+      local cases = {
+        { pattern = "test_dir1/", expected = { test_dir .. "/test_dir1/" } },
+        { pattern = "*/", expected = { test_dir .. "/test_dir1/", test_dir .. "/test_dir2/" } },
+        { pattern = "**/", expected = { test_dir .. "/test_dir1/", test_dir .. "/test_dir2/" } },
+        {
+          pattern = "{test_dir1/,test_dir2/}",
+          expected = { test_dir .. "/test_dir1/", test_dir .. "/test_dir2/" },
+        },
+        { pattern = "test.txt/", expected = {} },
+      }
+      for _, case in ipairs(cases) do
+        local result, err = glob({ path = ".", pattern = case.pattern }, {})
+        assert.is_nil(err)
+        assert.are.same(case.expected, vim.json.decode(result).matches)
+      end
+    end)
+
+    it("should require an explicit dot for each hidden path component", function()
+      vim.fn.mkdir(test_dir .. "/.config/nested", "p")
+      vim.fn.mkdir(test_dir .. "/.config/.hidden", "p")
+      vim.fn.writefile({}, test_dir .. "/.config/visible.txt")
+      vim.fn.writefile({}, test_dir .. "/.config/.secret.txt")
+      vim.fn.writefile({}, test_dir .. "/.config/nested/visible.txt")
+      vim.fn.writefile({}, test_dir .. "/.config/nested/.secret.txt")
+      vim.fn.writefile({}, test_dir .. "/.config/.hidden/visible.txt")
+
+      local cases = {
+        {
+          pattern = ".config/*",
+          expected = { test_dir .. "/.config/nested", test_dir .. "/.config/visible.txt" },
+        },
+        {
+          pattern = ".config/**/*.txt",
+          expected = { test_dir .. "/.config/nested/visible.txt", test_dir .. "/.config/visible.txt" },
+        },
+        { pattern = ".config/.*.txt", expected = { test_dir .. "/.config/.secret.txt" } },
+        { pattern = "**/.config/.hidden/*.txt", expected = { test_dir .. "/.config/.hidden/visible.txt" } },
+      }
+      for _, case in ipairs(cases) do
+        local result, err = glob({ path = ".", pattern = case.pattern }, {})
+        assert.is_nil(err)
+        assert.are.same(case.expected, vim.json.decode(result).matches)
+      end
+    end)
+
+    it("should not enable hidden files in other brace alternatives", function()
+      vim.fn.writefile({}, test_dir .. "/.secret.txt")
+      local result, err = glob({ path = ".", pattern = "{.gitignore,*.txt}" }, {})
+      assert.is_nil(err)
+      assert.are.same({ test_dir .. "/.gitignore", test_dir .. "/test.txt" }, vim.json.decode(result).matches)
+    end)
+
+    it("should avoid scanning unrelated directories for targeted patterns", function()
+      local private = test_dir .. "/private"
+      vim.fn.mkdir(private, "p")
+      local original_scandir = vim.uv.fs_scandir
+      for _, pattern in ipairs({ "test_dir1/*.txt", "test_dir1/**/*.txt" }) do
+        local scanned = {}
+        stub(vim.uv, "fs_scandir", function(path, callback)
+          table.insert(scanned, path)
+          if path == private then
+            callback("EACCES: permission denied", nil)
+            return {}
+          end
+          return original_scandir(path, callback)
+        end)
+        local ok, result, err = pcall(glob.func, { path = ".", pattern = pattern }, {})
+        vim.uv.fs_scandir:revert()
+        assert.is_true(ok)
+        assert.is_nil(err)
+        assert.are.same({ test_dir .. "/test_dir1/test1.txt" }, vim.json.decode(result).matches)
+        assert.are.same({ test_dir, test_dir .. "/test_dir1" }, scanned)
+      end
+    end)
+
+    it("should expand nested braces and deduplicate overlapping patterns", function()
+      local result, err = glob({ path = ".", pattern = "{test.txt,{test_dir1,test_dir2}/*.txt,**/test[12].txt}" }, {})
+      assert.is_nil(err)
+      assert.are.same({
+        test_dir .. "/test.txt",
+        test_dir .. "/test_dir1/test1.txt",
+        test_dir .. "/test_dir2/test2.txt",
+      }, vim.json.decode(result).matches)
+    end)
+
+    it("should preserve escaped braces and braces inside character classes", function()
+      vim.fn.writefile({}, test_dir .. "/{literal}.txt")
+      for _, pattern in ipairs({ "\\{literal\\}.txt", "[{]literal[}].txt" }) do
+        local result, err = glob({ path = ".", pattern = pattern }, {})
+        assert.is_nil(err)
+        assert.are.same({ test_dir .. "/{literal}.txt" }, vim.json.decode(result).matches)
+      end
+    end)
+
+    it("should handle consecutive globstars without duplicate results", function()
+      local result, err = glob({ path = ".", pattern = "**/**/test*.txt" }, {})
+      assert.is_nil(err)
+      assert.are.same({
+        test_dir .. "/test.txt",
+        test_dir .. "/test_dir1/test1.txt",
+        test_dir .. "/test_dir2/test2.txt",
+      }, vim.json.decode(result).matches)
+    end)
+
+    it("should expand brace alternatives across directories", function()
+      local pattern = "{test.txt,test_dir1/test1.txt,test_dir2/test2.txt}"
+      local result, err = glob({ path = ".", pattern = pattern }, {})
+      assert.is_nil(err)
+      local files = vim.json.decode(result).matches
+      assert.equals(3, #files)
+      assert.truthy(vim.tbl_contains(files, test_dir .. "/test.txt"))
+      assert.truthy(vim.tbl_contains(files, test_dir .. "/test_dir1/test1.txt"))
+      assert.truthy(vim.tbl_contains(files, test_dir .. "/test_dir2/test2.txt"))
+    end)
+
+    it("should complete asynchronously when a callback is provided", function()
+      local completed = false
+      local output, error
+      local result, err = glob({ path = ".", pattern = "{*.txt,test_dir1/*.txt}" }, {
+        on_complete = function(value, problem)
+          output, error = value, problem
+          completed = true
+        end,
+      })
+      assert.is_nil(result)
+      assert.is_nil(err)
+      assert.is_false(completed)
+      assert.is_true(vim.wait(5000, function() return completed end))
+      assert.is_nil(error)
+      assert.truthy(vim.json.decode(output).matches)
+    end)
+
+    it("should return malformed pattern errors without throwing", function()
+      local ok, result, err = pcall(glob.func, { path = ".", pattern = "{missing" }, {})
+      assert.is_true(ok)
+      assert.equals("", result)
+      assert.truthy(err:find("Glob search failed"))
+    end)
+
+    it("should report directory scan failures without throwing", function()
+      stub(vim.uv, "fs_scandir", function() error("scan failed") end)
+      local ok, result, err = pcall(glob.func, { path = ".", pattern = "*.txt" }, {})
+      vim.uv.fs_scandir:revert()
+      assert.is_true(ok)
+      assert.equals("", result)
+      assert.truthy(err:find("Glob search failed"))
+    end)
+
+    it("should report search timeouts", function()
+      stub(vim, "defer_fn", function(callback, timeout)
+        assert.equals(10000, timeout)
+        vim.schedule(callback)
+      end)
+      local result, err = glob({ path = ".", pattern = "*.txt" }, {})
+      vim.defer_fn:revert()
+      assert.equals("", result)
+      assert.truthy(err:find("timed out"))
+    end)
+
+    it("should preserve filenames and stop scanning when results are truncated", function()
+      local filename = "file with spaces\nand a newline.txt"
+      local entries = 0
+      stub(vim.uv, "fs_scandir", function(_, callback)
+        callback(nil, {})
+        return {}
+      end)
+      stub(vim.uv, "fs_scandir_next", function()
+        entries = entries + 1
+        return entries == 1 and filename or string.rep("a", 10240), "file"
+      end)
+      local result, err = glob({ path = ".", pattern = "*" }, {})
+      vim.uv.fs_scandir:revert()
+      vim.uv.fs_scandir_next:revert()
+      assert.is_nil(err)
+      local decoded = vim.json.decode(result)
+      assert.equals(test_dir .. "/" .. filename, decoded.matches[1])
+      assert.is_true(decoded.is_truncated)
+      assert.equals(2, entries)
+    end)
+
+    it("should yield between batches in a large directory", function()
+      local entries = 0
+      local heartbeat = false
+      stub(vim.uv, "fs_scandir", function(_, callback)
+        callback(nil, {})
+        return {}
+      end)
+      stub(vim.uv, "fs_scandir_next", function()
+        entries = entries + 1
+        if entries == 1 then vim.schedule(function() heartbeat = true end) end
+        if entries == 129 then assert.is_true(heartbeat) end
+        if entries <= 300 then return "entry" .. entries .. ".txt", "file" end
+      end)
+      local result, err = glob({ path = ".", pattern = "*.lua" }, {})
+      vim.uv.fs_scandir:revert()
+      vim.uv.fs_scandir_next:revert()
+      assert.is_nil(err)
+      assert.equals(0, #vim.json.decode(result).matches)
+      assert.is_true(heartbeat)
+      assert.equals(301, entries)
+    end)
+
+    it("should work without an external search executable", function()
+      stub(vim.fn, "exepath", function() return "" end)
+      local result, err = glob({ path = ".", pattern = "*.txt" }, {})
+      vim.fn.exepath:revert()
+      assert.is_nil(err)
+      assert.truthy(vim.tbl_contains(vim.json.decode(result).matches, test_dir .. "/test.txt"))
+    end)
+
     it("should find files matching the pattern", function()
       -- Create some additional test files with different extensions for glob testing
       os.execute("touch " .. test_dir .. "/file1.lua")
