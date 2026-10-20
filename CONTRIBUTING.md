@@ -94,7 +94,9 @@ to specific commit. See the 'upgrade-actions' target in Makefile.
 # How to create a new release ? (maintainers-only)
 
 1. Merge changes into `main` using [Conventional Commits](https://www.conventionalcommits.org/).
-2. Review and merge the release PR opened by [Release Please](https://github.com/googleapis/release-please-action). It updates `CHANGELOG.md`, `version.txt`, and the release manifest.
+2. Review and merge the release PR opened by [Release Please](https://github.com/googleapis/release-please-action). It updates `CHANGELOG.md`, `lua/avante/version.lua`, the Rust workspace version and lockfile, and the release manifest.
 3. The release workflow creates the version tag and GitHub release, builds and uploads binary assets, then publishes to LuaRocks for the upstream repository.
 
 Enable **Allow GitHub Actions to create and approve pull requests** under the repository's **Settings > Actions > General**. The workflow uses `GITHUB_TOKEN`; its release PRs do not automatically trigger other workflows, so run any required checks manually before merging.
+
+The release configuration uses the `go` strategy without a `version-file` to update the changelog without generating `version.txt`. Generic and TOML updaters in `extra-files` maintain the Lua and Rust versions. The Lua version is available through `require("avante.version")`.

@@ -4,8 +4,24 @@
     ".": {
       "bump-patch-for-minor-pre-major": true,
       "bump-minor-pre-major": true,
-      "release-type": "simple",
-      "include-component-in-tag": false
+      "release-type": "go",
+      "include-component-in-tag": false,
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "lua/avante/version.lua"
+        },
+        {
+          "type": "toml",
+          "path": "Cargo.toml",
+          "jsonpath": "$.workspace.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "Cargo.lock",
+          "jsonpath": "$.package[?(@.name == 'avante-html2md' || @.name == 'avante-repo-map' || @.name == 'avante-templates' || @.name == 'avante-tokenizers')].version"
+        }
+      ]
     }
   }
 }
