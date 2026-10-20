@@ -45,6 +45,7 @@
       ];
 
       rustLibraryNames = [
+          "avante-acp"
           "avante-html2md"
           "avante-repo-map"
           "avante-templates"
@@ -120,7 +121,7 @@
             };
 
             cargoDepsName = "avante";
-            cargoHash = "sha256-KwJVTrit0lmF5yFgVqQo3GQb1O2cUHEelLBhVu7USCU=";
+            cargoHash = "sha256-AnPie9wY1XgZAAVMQh9te48GLbE9hlI9ZdSlA42LD68=";
             cargoBuildFlags = [ "--package" pname ];
             nativeBuildInputs = [ pkgs.pkg-config pkgs.perl ];
             buildInputs = [ pkgs.openssl ];

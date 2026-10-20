@@ -7,6 +7,10 @@ on:
     paths:
       - "**/*.lua"
       - ".github/**"
+      - "crates/avante-acp/**"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "Makefile"
       - "scripts/**"
   pull_request:
     branches:
@@ -14,6 +18,10 @@ on:
     paths:
       - "**/*.lua"
       - ".github/**"
+      - "crates/avante-acp/**"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "Makefile"
       - "scripts/**"
 
 jobs:
@@ -70,3 +78,7 @@ jobs:
           os: ${{ matrix.os }}
           arch: x86_64
           rust_target: ${{ startsWith(matrix.os, 'windows') && 'x86_64-pc-windows-msvc' || '' }}
+
+      - name: Run ACP native integration tests
+        if: runner.os != 'Windows'
+        run: nix develop .#ci --command make acp-integration-test

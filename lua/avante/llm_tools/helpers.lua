@@ -9,8 +9,8 @@ M.CANCEL_TOKEN = "__CANCELLED__"
 
 -- Track cancellation state
 M.is_cancelled = false
----@type avante.ui.Confirm
-M.confirm_popup = nil
+---@type table<avante.Sidebar, avante.ui.Confirm>
+M.confirm_popups = {}
 
 ---@param rel_path string
 ---@return string
@@ -28,31 +28,40 @@ local default_permission_options = {
   { optionId = "reject_once", name = "Reject", kind = "reject_once" },
 }
 
----@param callback fun(option_id: string)
+---@param callback fun(option_id?: string)
 ---@param confirm_opts avante.ui.ConfirmOptions
 function M.confirm_inline(callback, confirm_opts)
-  local sidebar = require("avante").get()
+  local sidebar = confirm_opts.sidebar or require("avante").get()
   local items =
     ACPConfirmAdapter.generate_buttons_for_acp_options(confirm_opts.permission_options or default_permission_options)
 
-  sidebar.permission_button_options = items
-  sidebar.permission_handler = function(id)
+  if sidebar.permission_handler then sidebar.permission_handler(nil) end
+  local settled = false
+  local handler
+  handler = function(id)
+    if settled then return end
+    settled = true
+    if sidebar.permission_handler == handler then
+      sidebar.permission_button_options = nil
+      sidebar.permission_handler = nil
+    end
     callback(id)
     sidebar.scroll = true
-    sidebar.permission_button_options = nil
-    sidebar.permission_handler = nil
     sidebar._history_cache_invalidated = true
     sidebar:update_content("")
   end
+  sidebar.permission_button_options = items
+  sidebar.permission_handler = handler
 end
 
 ---@param message string
----@param callback fun(response: boolean, reason?: string)
+---@param callback fun(response: boolean, reason?: string, option_id?: string)
 ---@param confirm_opts? avante.ui.ConfirmOptions
 ---@param session_ctx? table
 ---@param tool_name? string -- Optional tool name to check against tool_permissions config
 ---@return avante.ui.Confirm | nil
 function M.confirm(message, callback, confirm_opts, session_ctx, tool_name)
+  confirm_opts = confirm_opts or {}
   callback = vim.schedule_wrap(callback)
   if session_ctx and session_ctx.always_yes then
     callback(true)
@@ -76,39 +85,54 @@ function M.confirm(message, callback, confirm_opts, session_ctx, tool_name)
 
   if Config.behaviour.confirmation_ui_style == "inline_buttons" then
     M.confirm_inline(function(option_id)
-      if option_id == "allow" or option_id == "allow_once" or option_id == "allow_always" then
-        if option_id == "allow_always" and session_ctx then session_ctx.always_yes = true end
-
-        callback(true)
-      else
-        callback(false, option_id)
+      if not option_id then
+        callback(false, M.CANCEL_TOKEN)
+        return
       end
-    end, confirm_opts or {})
+      for _, option in ipairs(confirm_opts.permission_options or default_permission_options) do
+        if option.optionId == option_id then
+          local allowed = option.kind == "allow_once" or option.kind == "allow_always"
+          if option.kind == "allow_always" and session_ctx and not confirm_opts.permission_options then
+            session_ctx.always_yes = true
+          end
+          callback(allowed, not allowed and option_id or nil, option_id)
+          return
+        end
+      end
+      callback(false)
+    end, confirm_opts)
     return
   end
 
   local Confirm = require("avante.ui.confirm")
-  local sidebar = require("avante").get()
+  local sidebar = confirm_opts.sidebar or require("avante").get()
   if not sidebar or not sidebar.containers.input or not sidebar.containers.input.winid then
     Utils.error("Avante sidebar not found", { title = "Avante" })
     callback(false)
     return
   end
-  confirm_opts = vim.tbl_deep_extend("force", { container_winid = sidebar.containers.input.winid }, confirm_opts or {})
-  if M.confirm_popup then M.confirm_popup:close() end
-  M.confirm_popup = Confirm:new(message, function(type, reason)
-    if type == "yes" then
-      callback(true)
-    elseif type == "all" then
-      if session_ctx then session_ctx.always_yes = true end
-      callback(true)
-    elseif type == "no" then
-      callback(false, reason)
+  confirm_opts = vim.tbl_extend("force", { container_winid = sidebar.containers.input.winid }, confirm_opts)
+  local option_ids = ACPConfirmAdapter.map_acp_options(confirm_opts.permission_options or {})
+  if M.confirm_popups[sidebar] then M.confirm_popups[sidebar]:cancel() end
+  local popup
+  popup = Confirm:new(message, function(type, reason)
+    if M.confirm_popups[sidebar] == popup then M.confirm_popups[sidebar] = nil end
+    if confirm_opts.permission_options and not option_ids[type] then
+      callback(false)
+      return
     end
-    M.confirm_popup = nil
+    if type == "yes" then
+      callback(true, nil, option_ids.yes)
+    elseif type == "all" then
+      if session_ctx and not confirm_opts.permission_options then session_ctx.always_yes = true end
+      callback(true, nil, option_ids.all)
+    elseif type == "no" then
+      callback(false, reason, option_ids.no)
+    end
   end, confirm_opts)
-  M.confirm_popup:open()
-  return M.confirm_popup
+  M.confirm_popups[sidebar] = popup
+  popup:open()
+  return popup
 end
 
 ---@param abs_path string

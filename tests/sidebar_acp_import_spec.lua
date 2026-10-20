@@ -1,10 +1,11 @@
 local stub = require("luassert.stub")
+local Config = require("avante.config")
 local Path = require("avante.path")
 local Utils = require("avante.utils")
 local Sidebar = require("avante.sidebar")
 
 describe("Sidebar ACP import", function()
-  local stubs, saved, deleted, latest, stored
+  local stubs, saved, saved_bufnr, deleted, latest, stored, saved_provider, saved_acp_providers
 
   ---@return table
   local function fake_sidebar(opts)
@@ -17,9 +18,13 @@ describe("Sidebar ACP import", function()
       pending_acp_import = opts.import,
       rendered = 0,
       reconnected = 0,
+      content_updates = 0,
     }, { __index = Sidebar })
     function s:is_open() return self.open end
     function s:update_content_with_history() self.rendered = self.rendered + 1 end
+    function s:update_content() self.content_updates = self.content_updates + 1 end
+    function s:reload_chat_history() end
+    function s:focus_input() end
     function s:create_todos_container() end
     function s:initialize_token_count() end
     function s:switch_to_history_and_reconnect() self.reconnected = self.reconnected + 1 end
@@ -27,11 +32,14 @@ describe("Sidebar ACP import", function()
   end
 
   before_each(function()
-    saved, deleted, latest = nil, {}, nil
+    saved, saved_bufnr, deleted, latest = nil, nil, {}, nil
+    saved_provider, saved_acp_providers = Config.provider, Config.acp_providers
     -- Chats on disk, by filename, for discard_acp_import_chat to check
     stored = {}
     stubs = {
-      stub(Path.history, "save").invokes(function(_, history) saved = history end),
+      stub(Path.history, "save").invokes(function(bufnr, history)
+        saved_bufnr, saved = bufnr, history
+      end),
       stub(Path.history, "delete").invokes(function(_, filename) table.insert(deleted, filename) end),
       stub(Path.history, "save_latest_filename").invokes(function(_, filename) latest = filename end),
       stub(Path.history, "load").invokes(function(_, filename) return stored[filename] end),
@@ -41,6 +49,7 @@ describe("Sidebar ACP import", function()
   end)
 
   after_each(function()
+    Config.provider, Config.acp_providers = saved_provider, saved_acp_providers
     for _, s in ipairs(stubs) do
       s:revert()
     end
@@ -63,6 +72,170 @@ describe("Sidebar ACP import", function()
       sidebar:stop_acp_client()
       assert.equals(1, sidebar.acp_client_generation)
     end)
+
+    it("invalidates a pending import before the stopped client can deliver callbacks", function()
+      local import = { session_id = "s1", filename = "old.json", created = true }
+      local chat = { acp_session_id = "s1", filename = "old.json", acp_session_import_pending = true, messages = {} }
+      local sidebar = fake_sidebar({ import = import, chat_history = chat })
+      local pending_at_stop
+      sidebar.acp_client = { stop = function() pending_at_stop = sidebar.pending_acp_import end }
+
+      sidebar:stop_acp_client()
+
+      assert.is_nil(pending_at_stop)
+      assert.is_nil(sidebar.pending_acp_import)
+      assert.is_true(chat.acp_session_import_pending)
+      assert.same({}, deleted)
+    end)
+  end)
+
+  describe("clear_history", function()
+    it("keeps the local session when no client can delete it", function()
+      local chat = { acp_session_id = "s1", messages = { "kept" }, entries = { "kept" } }
+      local sidebar = fake_sidebar({ chat_history = chat })
+
+      sidebar:clear_history({})
+
+      assert.equals("s1", chat.acp_session_id)
+      assert.same({ "kept" }, chat.messages)
+      assert.is_nil(saved)
+      assert.stub(Utils.error).was_called(1)
+    end)
+
+    it("keeps the local session when the agent rejects deletion", function()
+      local deletion_error = { kind = "internal", message = "delete failed" }
+      local client = {
+        config = {},
+        cancel_session = stub(),
+        stop = stub(),
+        delete_session = function(_, _, callback) callback(deletion_error) end,
+      }
+      local chat = { acp_session_id = "s1", messages = { "kept" }, entries = { "kept" } }
+      local sidebar = fake_sidebar({ chat_history = chat, client = client })
+
+      sidebar:clear_history({})
+
+      assert.equals("s1", chat.acp_session_id)
+      assert.same({ "kept" }, chat.messages)
+      assert.is_nil(saved)
+      assert.stub(client.stop).was_called(1)
+      assert.stub(Utils.error).was_called(1)
+    end)
+
+    it("clears local history after the agent confirms deletion", function()
+      local client = {
+        config = {},
+        cancel_session = stub(),
+        stop = stub(),
+        delete_session = function(_, _, callback) callback(nil) end,
+      }
+      local chat = { acp_session_id = "s1", messages = { "old" }, entries = { "old" } }
+      local sidebar = fake_sidebar({ chat_history = chat, client = client })
+
+      sidebar:clear_history({})
+
+      assert.is_nil(chat.acp_session_id)
+      assert.same({}, chat.messages)
+      assert.same({}, chat.entries)
+      assert.equals(chat, saved)
+      assert.stub(client.stop).was_called(1)
+    end)
+
+    it("does not clear a different chat while deletion is in flight", function()
+      local complete_delete
+      local client = {
+        config = {},
+        cancel_session = stub(),
+        stop = stub(),
+        delete_session = function(_, _, callback) complete_delete = callback end,
+      }
+      local original = { acp_session_id = "s1", messages = { "old" }, entries = { "old" } }
+      local current = { messages = { "current" }, entries = { "current" } }
+      local sidebar = fake_sidebar({ chat_history = original, client = client })
+
+      sidebar:clear_history({})
+      sidebar.chat_history = current
+      sidebar.code.bufnr = 2
+      complete_delete(nil)
+
+      assert.same({}, original.messages)
+      assert.is_nil(original.acp_session_id)
+      assert.same({ "current" }, current.messages)
+      assert.same({ "current" }, current.entries)
+      assert.equals(1, saved_bufnr)
+    end)
+  end)
+
+  describe("resume_pending_acp_import", function()
+    it("reloads a session whose import was interrupted", function()
+      local client = { stop = stub() }
+      local chat = {
+        acp_session_id = "s1",
+        acp_session_import_pending = true,
+        filename = "3.json",
+        timestamp = "2026-07-01 20:00:00",
+        messages = {},
+      }
+      local sidebar = fake_sidebar({ chat_history = chat, client = client })
+
+      sidebar:resume_pending_acp_import()
+
+      assert.stub(client.stop).was_called(1)
+      assert.is_nil(sidebar.acp_client)
+      assert.same(
+        { session_id = "s1", filename = "3.json", created = false, timestamp = "2026-07-01 20:00:00" },
+        sidebar.pending_acp_import
+      )
+    end)
+
+    it("does not reload a normal empty session", function()
+      local client = { stop = stub() }
+      local chat = { acp_session_id = "s1", filename = "3.json", messages = {} }
+      local sidebar = fake_sidebar({ chat_history = chat, client = client })
+
+      sidebar:resume_pending_acp_import()
+
+      assert.stub(client.stop).was_not_called()
+      assert.equals(client, sidebar.acp_client)
+      assert.is_nil(sidebar.pending_acp_import)
+    end)
+
+    it("does not replace an explicit session import", function()
+      local import = { session_id = "s2", filename = "4.json", created = true }
+      local sidebar = fake_sidebar({
+        chat_history = {
+          acp_session_id = "s1",
+          acp_session_import_pending = true,
+          filename = "3.json",
+          messages = {},
+        },
+        import = import,
+      })
+
+      sidebar:resume_pending_acp_import()
+
+      assert.equals(import, sidebar.pending_acp_import)
+    end)
+  end)
+
+  it("restores replay when reselecting a chat whose import was interrupted", function()
+    Config.provider = "test-acp"
+    Config.acp_providers = { ["test-acp"] = { command = "agent" } }
+    local chat = { filename = "3.json", acp_session_id = "s1", acp_session_import_pending = true, messages = {} }
+    local sidebar = fake_sidebar({
+      chat_history = chat,
+      import = { session_id = "s1", filename = "3.json", created = false },
+    })
+    local submitted_import
+    sidebar.handle_submit = function() submitted_import = sidebar.pending_acp_import end
+
+    sidebar:stop_acp_client()
+    Sidebar.switch_to_history_and_reconnect(sidebar)
+
+    assert.is_not_nil(submitted_import)
+    assert.equals("s1", submitted_import.session_id)
+    assert.equals("3.json", submitted_import.filename)
+    assert.is_true(chat.acp_session_import_pending)
   end)
 
   describe("finish_acp_import", function()
@@ -70,6 +243,7 @@ describe("Sidebar ACP import", function()
       local import = { session_id = "s1", filename = "3.json", created = false }
       local chat = {
         acp_session_id = "s1",
+        acp_session_import_pending = true,
         filename = "3.json",
         messages = { "stale" },
         entries = { "legacy" },
@@ -86,20 +260,64 @@ describe("Sidebar ACP import", function()
       assert.same({}, chat.todos)
       assert.is_nil(chat.memory)
       assert.is_nil(chat.tokens_usage)
+      assert.is_nil(chat.acp_session_import_pending)
       assert.equals(chat, saved)
       assert.is_nil(sidebar.pending_acp_import)
       assert.equals(1, sidebar.rendered)
     end)
 
+    it("attributes replayed requests to the loaded ACP session", function()
+      Config.provider = "test-acp"
+      Config.acp_providers = { ["test-acp"] = { command = "agent", args = {} } }
+      local import = {
+        session_id = "s1",
+        filename = "3.json",
+        created = false,
+        timestamp = "2026-07-01 20:00:00",
+      }
+      local chat = { acp_session_id = "s1", filename = "3.json", messages = {} }
+      local client = {
+        config = { command = "agent", args = {} },
+        config_options = {
+          { id = "model", category = "model", currentValue = "gpt-5.6-sol" },
+          { id = "mode", category = "mode", currentValue = "agent" },
+        },
+      }
+      local request = { is_user_submission = true, timestamp = "now" }
+      local response = { is_user_submission = false, timestamp = "now" }
+      local sidebar = fake_sidebar({ chat_history = chat, import = import, client = client })
+
+      sidebar:finish_acp_import(import, "s1", { request, response })
+
+      assert.same({
+        provider = "test-acp",
+        model = "gpt-5.6-sol",
+        mode = "agent",
+        timestamp = "2026-07-01 20:00:00",
+      }, {
+        provider = request.provider,
+        model = request.model,
+        mode = request.mode,
+        timestamp = request.timestamp,
+      })
+      assert.equals("now", response.timestamp)
+    end)
+
     it("keeps an existing chat when the agent replays nothing", function()
       local import = { session_id = "s1", filename = "3.json", created = false }
-      local chat = { acp_session_id = "s1", filename = "3.json", messages = { "kept" } }
+      local chat = {
+        acp_session_id = "s1",
+        acp_session_import_pending = true,
+        filename = "3.json",
+        messages = { "kept" },
+      }
       local sidebar = fake_sidebar({ chat_history = chat, import = import })
 
       sidebar:finish_acp_import(import, "s1", {})
 
       assert.same({ "kept" }, chat.messages)
-      assert.is_nil(saved)
+      assert.is_nil(chat.acp_session_import_pending)
+      assert.equals(chat, saved)
       assert.stub(Utils.warn).was_called(1)
     end)
 
@@ -161,7 +379,12 @@ describe("Sidebar ACP import", function()
 
     it("keeps an existing chat and its messages", function()
       local import = { session_id = "s1", filename = "3.json", created = false }
-      local chat = { acp_session_id = "s1", messages = { "kept" }, filename = "3.json" }
+      local chat = {
+        acp_session_id = "s1",
+        acp_session_import_pending = true,
+        messages = { "kept" },
+        filename = "3.json",
+      }
       local sidebar = fake_sidebar({ chat_history = chat, import = import })
 
       sidebar:fail_acp_import(import, { message = "Session not found" })
@@ -169,6 +392,8 @@ describe("Sidebar ACP import", function()
       assert.stub(Utils.error).was_called(1)
       assert.same({}, deleted)
       assert.same({ "kept" }, chat.messages)
+      assert.is_nil(chat.acp_session_import_pending)
+      assert.equals(chat, saved)
       assert.equals(0, sidebar.reconnected)
     end)
 

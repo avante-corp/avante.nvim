@@ -1,6 +1,7 @@
 ---@diagnostic disable: duplicate-set-field, need-check-nil
 local test_util = require("avante.utils.test")
 local pkce = require("avante.auth.pkce")
+local stub = require("luassert.stub")
 
 -- Mock data helpers
 local function create_mock_token_data(expired)
@@ -25,6 +26,16 @@ end
 local function wait_for_schedule() vim.wait(100) end
 
 describe("claude provider", function()
+  before_each(function()
+    stub(vim.fn, "setreg", function() return 0 end)
+    stub(vim.uv, "fs_chmod", function() return true end)
+  end)
+
+  after_each(function()
+    vim.fn.setreg:revert()
+    vim.uv.fs_chmod:revert()
+  end)
+
   -- PKCE Implementation Tests
   describe("PKCE implementation", function()
     describe("generate_verifier", function()

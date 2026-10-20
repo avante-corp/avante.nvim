@@ -287,11 +287,14 @@ function M.select_history()
       -- session id instead of the selected one.
       local Path = require("avante.path")
       Path.history.save_latest_filename(buf, filename)
-      if not require("avante").is_sidebar_open() then require("avante").open_sidebar({}) end
-      local sidebar = require("avante").get()
-      sidebar:update_content_with_history()
-      sidebar:create_todos_container()
-      sidebar:initialize_token_count()
+      local Avante = require("avante")
+      local was_open = Avante.is_sidebar_open()
+      if not was_open then Avante.open_sidebar({}) end
+      local sidebar = Avante.get()
+      if was_open then
+        sidebar:stop_acp_client()
+        sidebar:switch_to_history_and_reconnect()
+      end
       vim.schedule(function() sidebar:focus_input() end)
     end)
   end)

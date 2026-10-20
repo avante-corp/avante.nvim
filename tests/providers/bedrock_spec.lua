@@ -22,9 +22,13 @@ describe("bedrock_provider", function()
     it("should parse exception inside a stream.", function()
       local data = test_util.read_file("tests/data/bedrock_response_stream_with_exception.bin")
       local message = ""
+      local stopped
       bedrock_provider:parse_stream_data({}, data, {
         on_chunk = function(msg) message = msg end,
+        on_stop = function(result) stopped = result end,
       })
+      assert.is_true(vim.wait(1000, function() return stopped ~= nil end, 1))
+      assert.same({ reason = "error" }, stopped)
       assert.equals(
         "- Too many requests, please wait before trying again. You have sent too many requests.  Wait before trying again.",
         message

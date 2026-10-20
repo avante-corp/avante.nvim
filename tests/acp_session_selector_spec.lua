@@ -3,6 +3,110 @@ local Path = require("avante.path")
 local Utils = require("avante.utils")
 local AcpSessionSelector = require("avante.acp_session_selector")
 
+describe("ACP session selector request ownership", function()
+  local Config = require("avante.config")
+  local Avante = require("avante")
+  local Selector = require("avante.ui.selector")
+  local stubs, config, sidebars, original_tab, created_tab, owner, other, pending_list, picker, saves
+
+  before_each(function()
+    config = { provider = Config.provider, providers = Config.acp_providers, selector = Config.selector }
+    Config.provider = "test-acp"
+    Config.acp_providers = { ["test-acp"] = { command = "/bin/true" }, other = { command = "/bin/false" } }
+    Config.selector = { provider = "native", provider_opts = {} }
+    original_tab = vim.api.nvim_get_current_tabpage()
+    sidebars = vim.tbl_extend("force", {}, Avante.sidebars)
+    pending_list, picker, created_tab, other, saves = nil, nil, nil, nil, 0
+    owner = {
+      code = { bufnr = vim.api.nvim_get_current_buf() },
+      chat_history = { filename = "original.json" },
+      acp_client_generation = 0,
+      stopped = 0,
+      is_open = function() return true end,
+      stop_acp_client = function(self) self.stopped = self.stopped + 1 end,
+      switch_to_history_and_reconnect = function() end,
+    }
+    owner.acp_client = {
+      config = Config.acp_providers["test-acp"],
+      is_ready = function() return true end,
+      supports_load_session = function() return true end,
+      supports_list_sessions = function() return true end,
+      list_all_sessions = function(_, _, callback) pending_list = callback end,
+    }
+    Avante.sidebars[original_tab] = owner
+    stubs = {
+      stub(Utils.root, "get").returns("/tmp"),
+      stub(Path.history, "list").returns({}),
+      stub(Path.history, "get_latest_filename").returns("original.json"),
+      stub(Path.history, "new").invokes(function() return { filename = "import.json", messages = {} } end),
+      stub(Path.history, "save").invokes(function() saves = saves + 1 end),
+      stub(Selector, "new").invokes(function(_, opts)
+        picker = opts
+        return { open = function() end }
+      end),
+    }
+  end)
+
+  after_each(function()
+    for _, s in ipairs(stubs) do
+      s:revert()
+    end
+    if created_tab and vim.api.nvim_tabpage_is_valid(created_tab) then
+      vim.api.nvim_set_current_tabpage(created_tab)
+      vim.cmd("noautocmd tabclose!")
+    end
+    vim.api.nvim_set_current_tabpage(original_tab)
+    Avante.sidebars = sidebars
+    Config.provider, Config.acp_providers, Config.selector = config.provider, config.providers, config.selector
+  end)
+
+  local function change_context(kind)
+    if kind == "provider" then
+      Config.provider = "other"
+    elseif kind == "chat" then
+      owner.chat_history = { filename = "different.json" }
+    else
+      vim.cmd("noautocmd tabnew")
+      created_tab = vim.api.nvim_get_current_tabpage()
+      other = {
+        code = { bufnr = vim.api.nvim_get_current_buf() },
+        chat_history = { filename = "other-tab.json" },
+        stopped = 0,
+        is_open = function() return true end,
+        stop_acp_client = function(self) self.stopped = self.stopped + 1 end,
+        switch_to_history_and_reconnect = function() end,
+      }
+      Avante.sidebars[created_tab] = other
+    end
+  end
+
+  for _, stage in ipairs({ "listing", "selection" }) do
+    for _, changed in ipairs({ "tab", "provider", "chat" }) do
+      it("discards a " .. stage .. " callback after the " .. changed .. " changes", function()
+        AcpSessionSelector.open()
+        if stage == "listing" then change_context(changed) end
+        pending_list({ { sessionId = "listed-session", cwd = "/tmp" } }, nil)
+        local scheduled = false
+        vim.schedule(function() scheduled = true end)
+        assert.is_true(vim.wait(500, function() return scheduled end, 5))
+        if stage == "selection" then
+          assert.is_not_nil(picker)
+          change_context(changed)
+        end
+        if picker then picker.on_select({ "listed-session" }) end
+
+        assert.equals(0, saves)
+        assert.equals(0, owner.stopped)
+        assert.is_nil(owner.pending_acp_import)
+        if other then
+          assert.equals(0, other.stopped)
+          assert.is_nil(other.pending_acp_import)
+        end
+      end)
+    end
+  end
+end)
+
 describe("acp_session_selector", function()
   describe("format_updated_at", function()
     it("converts UTC timestamps using the offset in effect on that date", function()
@@ -87,16 +191,27 @@ describe("acp_session_selector", function()
     end)
 
     it("creates a chat for a session that isn't linked yet and resumes it in a fresh client", function()
-      AcpSessionSelector.resume(1, { sessionId = "s1", cwd = "/p", title = "Fix the build" })
+      AcpSessionSelector.resume(1, {
+        sessionId = "s1",
+        cwd = "/p",
+        title = "Fix the build",
+        updatedAt = "2026-07-01T12:00:00Z",
+      })
 
       assert.equals("s1", saved.acp_session_id)
+      assert.is_true(saved.acp_session_import_pending)
       assert.equals("Fix the build", saved.title)
+      local imported_at = os.date("%Y-%m-%d %H:%M:%S", 1782907200)
+      assert.equals(imported_at, saved.timestamp)
       assert.equals(1, sidebar.stopped)
       assert.equals("/p", saved.acp_session_cwd)
-      assert.same(
-        { session_id = "s1", filename = "8.json", created = true, previous_filename = "7.json" },
-        sidebar.pending_acp_import
-      )
+      assert.same({
+        session_id = "s1",
+        filename = "8.json",
+        created = true,
+        previous_filename = "7.json",
+        timestamp = imported_at,
+      }, sidebar.pending_acp_import)
       assert.equals(1, sidebar.switched)
     end)
 
@@ -107,6 +222,7 @@ describe("acp_session_selector", function()
       AcpSessionSelector.resume(1, { sessionId = "s1", cwd = "/p", title = "New title" })
 
       assert.equals(linked, saved)
+      assert.is_true(saved.acp_session_import_pending)
       assert.equals("New title", saved.title)
       assert.same({ "kept" }, saved.messages)
       assert.same({ session_id = "s1", filename = "3.json", created = false }, sidebar.pending_acp_import)
@@ -178,6 +294,9 @@ describe("acp_session_selector", function()
       end
       function client:supports_list_sessions()
         return self.agent_capabilities ~= nil and self.agent_capabilities.sessionCapabilities ~= nil
+      end
+      function client:supports_load_session()
+        return self.agent_capabilities ~= nil and self.agent_capabilities.loadSession == true
       end
       function client:list_all_sessions(_, callback)
         callback(opts.sessions or {}, opts.list_error and { message = opts.list_error } or nil)
@@ -280,15 +399,15 @@ describe("acp_session_selector", function()
       assert.truthy(preview:find("1.json", 1, true))
     end)
 
-    it("shows a partial list with a warning when listing stopped early", function()
+    it("reports a Rust pagination error without showing a partial list", function()
       open_with({
         capabilities = LISTING,
         sessions = { { sessionId = "a", cwd = "/p", title = "A" } },
-        list_error = "Session list incomplete: stopped after 50 pages",
+        list_error = "session list exceeded the pagination limit",
       })
 
-      assert.stub(Utils.warn).was_called(1)
-      assert.equals(1, #selector_opts.items)
+      assert.stub(Utils.error).was_called_with("Failed to list sessions: session list exceeded the pagination limit")
+      assert.is_nil(selector_opts)
     end)
 
     it("reuses the sidebar's client only when it was started with the same settings", function()
