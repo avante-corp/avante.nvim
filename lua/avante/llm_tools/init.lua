@@ -262,22 +262,167 @@ function M.copy_path(input, opts)
   )
 end
 
+local function join_delete_path(parent, name)
+  if parent:sub(-1) == "/" or parent:sub(-1) == "\\" then return parent .. name end
+  return parent .. package.config:sub(1, 1) .. name
+end
+
+-- Resolve symlinked ancestors while leaving the final component untouched,
+-- so a symlink argument is unlinked rather than followed.
+local function resolve_delete_path(path)
+  local parent = vim.uv.fs_realpath(vim.fs.dirname(path))
+  if not parent then return nil end
+  return join_delete_path(parent, vim.fs.basename(path))
+end
+
+-- Removes a file or directory tree using raw libuv calls.
+-- fs_lstat is used so symlinks are removed without following their targets.
+-- Like rm -rf, traversal descends into mounted directories and does not
+-- re-check gitignore rules for descendants of the selected path.
+local function remove_path(path)
+  local stat, stat_err, stat_errname = vim.uv.fs_lstat(path)
+  if not stat then
+    if stat_errname == "ENOENT" then return true end
+    return false, stat_err or ("Failed to stat: " .. path)
+  end
+  if stat.type ~= "directory" then
+    local ok, err, errname = vim.uv.fs_unlink(path)
+    if ok or errname == "ENOENT" then return true end
+    return false, err
+  end
+  local scandir, scan_err, scan_errname = vim.uv.fs_scandir(path)
+  if not scandir then
+    if scan_errname == "ENOENT" then return true end
+    return false, scan_err or ("Failed to read directory: " .. path)
+  end
+  while true do
+    local name, kind = vim.uv.fs_scandir_next(scandir)
+    if not name then
+      if kind then return false, kind end
+      break
+    end
+    local ok, err = remove_path(join_delete_path(path, name))
+    if not ok then return false, err end
+  end
+  local ok, err, errname = vim.uv.fs_rmdir(path)
+  if ok or errname == "ENOENT" then return true end
+  return false, err
+end
+
+-- Win32 strips trailing spaces/dots from each component, so ". " resolves to
+-- "." and ".. " to "..". Reject those components so checks and syscalls agree.
+local function check_windows_path_aliases(path)
+  if not Utils.is_win() then return true end
+  for part in path:gmatch("[^/\\]+") do
+    if part ~= "." and part ~= ".." and part:match("[ .]$") then
+      return false, "Refusing to delete a path with a Windows-aliased component: " .. part
+    end
+  end
+  return true
+end
+
+local function canonical_non_link(path)
+  local stat = vim.uv.fs_lstat(path)
+  if not stat or stat.type == "link" then return nil end
+  local real_path = vim.uv.fs_realpath(path)
+  return real_path and vim.fs.normalize(real_path) or nil
+end
+
+---Returns "equal", "ancestor", or nil, comparing raw and canonicalized
+---variants. Final symlinks are not canonicalized because deleting them only
+---unlinks the link.
+local function protected_relationship(path, root)
+  local candidates = { vim.fs.normalize(path) }
+  local canonical_path = canonical_non_link(path)
+  if canonical_path then table.insert(candidates, canonical_path) end
+  local roots = { vim.fs.normalize(root) }
+  local canonical_root = vim.uv.fs_realpath(root)
+  if canonical_root then table.insert(roots, vim.fs.normalize(canonical_root)) end
+
+  local ancestor = false
+  for _, candidate in ipairs(candidates) do
+    for _, protected in ipairs(roots) do
+      if candidate == protected then return "equal" end
+      if Helpers.is_path_within(protected, candidate) then ancestor = true end
+    end
+  end
+  return ancestor and "ancestor" or nil
+end
+
+local function contains_git_component(path)
+  path = vim.fs.normalize(path)
+  if Utils.is_win() then path = path:gsub("\\", "/") end
+  for part in path:gmatch("[^/]+") do
+    if part:lower() == ".git" then return true end
+  end
+  return false
+end
+
+local function protected_delete_root(path)
+  local project_root = Utils.get_project_root()
+  local project_relationship = protected_relationship(path, project_root)
+  if project_relationship == "equal" then return "Refusing to delete the project root: " .. path end
+  if project_relationship == "ancestor" then return "Refusing to delete a parent of the project root: " .. path end
+  local config_dir = vim.fn.stdpath("config")
+  local config_relationship = protected_relationship(path, config_dir)
+  if config_relationship == "equal" then return "Refusing to delete the Neovim config directory: " .. path end
+  if config_relationship == "ancestor" then
+    return "Refusing to delete a parent of the Neovim config directory: " .. path
+  end
+  if contains_git_component(path) then return "Refusing to delete Git metadata: " .. path end
+  local canonical_path = canonical_non_link(path)
+  if canonical_path and contains_git_component(canonical_path) then
+    return "Refusing to delete Git metadata: " .. path
+  end
+end
+
 ---@type AvanteLLMToolFunc<{ path: string }>
 function M.delete_path(input, opts)
   local on_log = opts.on_log
   local on_complete = opts.on_complete
-  local abs_path = Helpers.get_abs_path(input.path)
+  if type(input.path) ~= "string" or input.path == "" then return false, "path not provided" end
+  local requested_path = vim.fs.normalize(Helpers.get_abs_path(input.path))
+  local aliases_ok, alias_err = check_windows_path_aliases(requested_path)
+  if not aliases_ok then return false, alias_err end
+  -- Check before resolving: a symlinked `.git` ancestor would otherwise be
+  -- hidden by realpath before the metadata guard sees it.
+  if contains_git_component(requested_path) then
+    return false, "Refusing to delete Git metadata: " .. requested_path
+  end
+  local abs_path = resolve_delete_path(requested_path)
+  if not abs_path then return false, "Path not found: " .. requested_path end
+  local protected_err = protected_delete_root(abs_path)
+  if protected_err then return false, protected_err end
   if not Helpers.has_permission_to_access(abs_path) then return false, "No permission to access path: " .. abs_path end
-  if not Path:new(abs_path):exists() then return false, "Path not found: " .. abs_path end
+  if not vim.uv.fs_lstat(abs_path) then return false, "Path not found: " .. abs_path end
   if not on_complete then return false, "on_complete not provided" end
   Helpers.confirm("Are you sure you want to delete the path: " .. abs_path, function(ok, reason)
     if not ok then
       on_complete(false, "User declined, reason: " .. (reason or "unknown"))
       return
     end
-    if on_log then on_log("Deleting path: " .. abs_path) end
-    os.remove(abs_path)
-    on_complete(true, nil)
+    -- Re-resolve after confirmation in case an ancestor was replaced by a symlink.
+    local current_path = resolve_delete_path(requested_path)
+    if not current_path then
+      on_complete(false, "Path changed after confirmation: " .. requested_path)
+      return
+    end
+    if vim.fs.normalize(current_path) ~= vim.fs.normalize(abs_path) then
+      on_complete(false, "Path changed after confirmation: " .. requested_path)
+      return
+    end
+    protected_err = protected_delete_root(current_path)
+    if protected_err then
+      on_complete(false, protected_err)
+      return
+    end
+    if not Helpers.has_permission_to_access(current_path) then
+      on_complete(false, "No permission to access path: " .. current_path)
+      return
+    end
+    if on_log then on_log("Deleting path: " .. current_path) end
+    local success, err = remove_path(current_path)
+    on_complete(success == true, success and nil or err)
   end, nil, opts.session_ctx, "delete_path")
 end
 

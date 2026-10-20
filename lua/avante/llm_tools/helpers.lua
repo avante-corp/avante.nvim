@@ -142,16 +142,40 @@ function M.is_ignored(abs_path)
   return exit_code == 0
 end
 
+---Check whether path is root or inside it, using path-component boundaries.
+---@param path string
+---@param root string
+---@return boolean
+function M.is_path_within(path, root)
+  path = vim.fs.normalize(path)
+  root = vim.fs.normalize(root)
+  if root == "" then return false end
+  if path == root then return true end
+  root = root:gsub("/+$", "")
+  return path:sub(1, #root + 1) == root .. "/"
+end
+
+---Check whether path is inside an allowed root, including a canonicalized root.
+---@param path string
+---@param root string
+---@return boolean
+local function is_within_allowed_root(path, root)
+  if M.is_path_within(path, root) then return true end
+  local real_root = vim.uv.fs_realpath(root)
+  return real_root ~= nil and M.is_path_within(path, real_root)
+end
+
 ---Check if path belongs to allowed directories
 ---@param abs_path string
 ---@return boolean
 function M.has_permission_to_access(abs_path)
   if not Path:new(abs_path):is_absolute() then return false end
-  local project_root = Utils.get_project_root()
+  abs_path = vim.fs.normalize(abs_path)
+  local project_root = vim.fs.normalize(Utils.get_project_root())
   -- allow if inside project root OR inside user config dir
-  local config_dir = vim.fn.stdpath("config")
-  local in_project = abs_path:sub(1, #project_root) == project_root
-  local in_config = abs_path:sub(1, #config_dir) == config_dir
+  local config_dir = vim.fs.normalize(vim.fn.stdpath("config"))
+  local in_project = is_within_allowed_root(abs_path, project_root)
+  local in_config = is_within_allowed_root(abs_path, config_dir)
   local bypass_ignore = Config.behaviour and Config.behaviour.allow_access_to_git_ignored_files
   if not in_project and not in_config then return false end
   return bypass_ignore or not M.is_ignored(abs_path)
