@@ -51,7 +51,7 @@ define build_package
 $1-$2:
 	cargo build --release --no-default-features --features=$1 -p avante-$2 $(if $(CARGO_TARGET),--target $(CARGO_TARGET))
 	rm -f $(BUILD_DIR)/avante_$(shell echo $2 | tr - _).$(EXT)
-	cp $(TARGET_DIR)/libavante_$(shell echo $2 | tr - _).$(CARGO_EXT) $(BUILD_DIR)/avante_$(shell echo $2 | tr - _).$(EXT)
+	cp -f $(TARGET_DIR)/libavante_$(shell echo $2 | tr - _).$(CARGO_EXT) $(BUILD_DIR)/avante_$(shell echo $2 | tr - _).$(EXT)
 endef
 
 define build_targets

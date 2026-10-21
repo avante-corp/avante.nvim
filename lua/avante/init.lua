@@ -64,6 +64,7 @@
 --- - AvanteInputSubmitted: project-initialization prompt. `ev.data.request` contains the request string.
 --- - AvanteEditSubmitted: `ev.data.request` contains the request string.
 --- - AvanteLLMEscape: signals cancellation
+--- - AvanteLLMAnswered: fires once after an LLM answer is fully received successfully.
 --- - AvanteViewBufferUpdated: fires after the sidebar result buffer is updated
 ---   when a generation stops without an error, including cancellation.
 --- - AvanteConflictDetected: a parsed diff buffer contains conflict markers.
