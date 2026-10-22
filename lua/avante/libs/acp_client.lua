@@ -158,7 +158,11 @@ end
 ---@return avante.acp.ACPClient
 function ACPClient:new(config)
   if config.transport_type and config.transport_type ~= "stdio" then
-    error("The official ACP Rust process adapter only supports stdio transport")
+    error(
+      "The official ACP Rust process adapter only supports stdio transport (got "
+        .. tostring(config.transport_type)
+        .. ")"
+    )
   end
   return setmetatable({
     config = config,

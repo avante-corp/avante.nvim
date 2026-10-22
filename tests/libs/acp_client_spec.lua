@@ -776,6 +776,9 @@ describe("ACPClient native adapter", function()
   end
 
   it("rejects transports not supported by the official process adapter", function()
-    assert.has_error(function() ACPClient:new({ transport_type = "tcp" }) end)
+    assert.has_error(
+      function() ACPClient:new({ transport_type = "tcp" }) end,
+      "The official ACP Rust process adapter only supports stdio transport (got tcp)"
+    )
   end)
 end)
