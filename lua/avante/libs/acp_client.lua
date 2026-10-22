@@ -626,8 +626,8 @@ function ACPClient:connect(callback)
   end
 end
 
-function ACPClient:initialize(callback) self:connect(callback) end
-
+---Stop the client after closing every active session advertised by this connection.
+---@param callback? fun(err: avante.acp.ACPError|nil)
 function ACPClient:stop(callback)
   if callback then table.insert(self.stop_callbacks, callback) end
   if self.is_stopping then return end
