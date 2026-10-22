@@ -28,30 +28,34 @@ local default_permission_options = {
   { optionId = "reject_once", name = "Reject", kind = "reject_once" },
 }
 
----@param callback fun(option_id?: string)
+---@param callback fun(option_id: string)
+---@param cancel_callback fun()
 ---@param confirm_opts avante.ui.ConfirmOptions
-function M.confirm_inline(callback, confirm_opts)
+function M.confirm_inline(callback, cancel_callback, confirm_opts)
   local sidebar = confirm_opts.sidebar or require("avante").get()
   local items =
     ACPConfirmAdapter.generate_buttons_for_acp_options(confirm_opts.permission_options or default_permission_options)
 
-  if sidebar.permission_handler then sidebar.permission_handler(nil) end
+  if sidebar.permission_cancel_handler then sidebar.permission_cancel_handler() end
   local settled = false
   local handler
-  handler = function(id)
+  local function settle(action)
     if settled then return end
     settled = true
     if sidebar.permission_handler == handler then
-      sidebar.permission_button_options = nil
-      sidebar.permission_handler = nil
+      sidebar.permission_handler, sidebar.permission_cancel_handler, sidebar.permission_button_options = nil, nil, nil
     end
-    callback(id)
+    action()
     sidebar.scroll = true
     sidebar._history_cache_invalidated = true
     sidebar:update_content("")
   end
+  handler = function(id)
+    settle(function() callback(id) end)
+  end
   sidebar.permission_button_options = items
   sidebar.permission_handler = handler
+  sidebar.permission_cancel_handler = function() settle(cancel_callback) end
 end
 
 ---@param message string
@@ -85,10 +89,6 @@ function M.confirm(message, callback, confirm_opts, session_ctx, tool_name)
 
   if Config.behaviour.confirmation_ui_style == "inline_buttons" then
     M.confirm_inline(function(option_id)
-      if not option_id then
-        callback(false, M.CANCEL_TOKEN)
-        return
-      end
       for _, option in ipairs(confirm_opts.permission_options or default_permission_options) do
         if option.optionId == option_id then
           local allowed = option.kind == "allow_once" or option.kind == "allow_always"
@@ -100,7 +100,7 @@ function M.confirm(message, callback, confirm_opts, session_ctx, tool_name)
         end
       end
       callback(false)
-    end, confirm_opts)
+    end, function() callback(false, M.CANCEL_TOKEN) end, confirm_opts)
     return
   end
 

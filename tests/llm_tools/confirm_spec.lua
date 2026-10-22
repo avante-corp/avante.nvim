@@ -91,6 +91,20 @@ describe("tool confirmation callbacks", function()
     end)
   end
 
+  it("cancels a replaced inline confirmation without passing nil as an option ID", function()
+    local selected, cancelled
+    Helpers.confirm_inline(
+      function(option_id) selected = option_id end,
+      function() cancelled = true end,
+      { sidebar = owner }
+    )
+    Helpers.confirm_inline(function(option_id) selected = option_id end, function() end, { sidebar = owner })
+    owner.permission_handler("allow_once")
+
+    assert.is_true(cancelled)
+    assert.equals("allow_once", selected)
+  end)
+
   it("finishes a replaced popup from the same owner without answering the replacement", function()
     local first_result, second_result
     Helpers.confirm("first", function(ok, reason) first_result = { ok, reason } end, { sidebar = owner }, {})

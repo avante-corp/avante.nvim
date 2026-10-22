@@ -138,7 +138,8 @@ local SIDEBAR_CONTAINERS = {
 ---@field acp_client_generation integer Bumped whenever the ACP client is dropped, so a connection still in flight is discarded
 ---@field pending_acp_import avante.PendingAcpImport | nil
 ---@field post_render? fun(sidebar: avante.Sidebar)
----@field permission_handler fun(id?: string) | nil
+---@field permission_handler fun(id: string) | nil
+---@field permission_cancel_handler fun() | nil
 ---@field acp_last_auto_nav? number
 ---@field permission_button_options ({ id: string, icon: string|nil, name: string }[]) | nil
 ---@field expanded_message_uuids table<string, boolean>
@@ -2526,7 +2527,7 @@ function Sidebar:stop_acp_client()
   self.acp_client = nil
   local popup = require("avante.llm_tools.helpers").confirm_popups[self]
   if popup then popup:cancel() end
-  self.permission_handler, self.permission_button_options = nil, nil
+  self.permission_handler, self.permission_cancel_handler, self.permission_button_options = nil, nil, nil
   if client then pcall(client.stop, client) end
 end
 
