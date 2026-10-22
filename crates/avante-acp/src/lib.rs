@@ -591,7 +591,9 @@ impl EventQueue {
 }
 
 fn client_lock_error() -> LuaError {
-    LuaError::RuntimeError("ACP client state is poisoned; create a new client".to_string())
+    LuaError::RuntimeError(
+        "ACP client encountered an unrecoverable internal error; restart Avante".to_string(),
+    )
 }
 
 struct NativeClient {
