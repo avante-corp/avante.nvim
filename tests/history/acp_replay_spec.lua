@@ -9,58 +9,7 @@ local function summarize(messages)
   return vim.tbl_map(function(m) return { role = m.message.role, content = m.message.content } end, messages)
 end
 
-local function wrap(role, body) return "<" .. role .. ">" .. body .. "</" .. role .. ">" end
-
 describe("acp_replay", function()
-  describe("unwrap_avante_prompt", function()
-    it("returns the newest user message from a session continuation prompt", function()
-      local prompt = "[@main.py](file:///p/main.py)"
-        .. wrap("previous_user_message", "What was the code word?")
-        .. wrap("previous_user_message", "Remember pineapple")
-        .. "<system_context>Continuing from previous session with 2 recent user messages</system_context>"
-
-      assert.equals("What was the code word?", AcpReplay.unwrap_avante_prompt(prompt))
-    end)
-
-    it("returns the last user message from a session recovery prompt", function()
-      local prompt = wrap("previous_user_message", "Remember pineapple")
-        .. wrap("previous_assistant_message", "OK")
-        .. wrap("previous_user_message", "What was the code word?")
-        .. "<system_context>Continuing from previous ACP session with 3 recent messages preserved for context</system_context>"
-
-      assert.equals("What was the code word?", AcpReplay.unwrap_avante_prompt(prompt))
-    end)
-
-    it("recovers the request from a prompt that already contained nested wrappers", function()
-      local earlier = wrap("previous_user_message", "Remember pineapple")
-        .. "<system_context>Continuing from previous session with 1 recent user messages</system_context>"
-      local prompt = wrap("previous_user_message", "What was the code word?")
-        .. wrap("previous_user_message", earlier)
-        .. "<system_context>Continuing from previous session with 2 recent user messages</system_context>"
-
-      assert.equals("What was the code word?", AcpReplay.unwrap_avante_prompt(prompt))
-    end)
-
-    it("leaves other text alone, even with similar tags", function()
-      local text = "Explain " .. wrap("previous_user_message", "this") .. " please"
-      assert.equals(text, AcpReplay.unwrap_avante_prompt(text))
-      assert.equals("plain question", AcpReplay.unwrap_avante_prompt("plain question"))
-    end)
-
-    it("is applied to replayed user messages", function()
-      local prompt = wrap("previous_user_message", "What was it?")
-        .. "<system_context>Continuing from previous session with 1 recent user messages</system_context>"
-      local messages = AcpReplay.to_messages({
-        { sessionUpdate = "user_message_chunk", content = text(prompt:sub(1, 20)) },
-        { sessionUpdate = "user_message_chunk", content = text(prompt:sub(21)) },
-        { sessionUpdate = "agent_message_chunk", content = text(prompt) },
-      })
-
-      assert.equals("What was it?", messages[1].message.content)
-      assert.equals(prompt, messages[2].message.content)
-    end)
-  end)
-
   describe("is_conversation_update", function()
     it("accepts message, thought and tool call updates", function()
       for _, kind in ipairs({
@@ -82,6 +31,36 @@ describe("acp_replay", function()
   end)
 
   describe("to_messages", function()
+    it("rebuilds a long fragmented response without blocking for seconds", function()
+      local updates, expected = {}, string.rep("x", 1024)
+      for _ = 1, 4000 do
+        table.insert(updates, { sessionUpdate = "agent_message_chunk", content = text(expected) })
+      end
+      local started = vim.uv.hrtime()
+      local messages = AcpReplay.to_messages(updates)
+      local elapsed = (vim.uv.hrtime() - started) / 1e9
+      assert.equals(string.rep(expected, 4000), messages[1].message.content)
+      assert.is_true(elapsed < 1, "4 MiB replay took " .. elapsed .. " seconds")
+    end)
+
+    it("preserves text and thought boundaries across interleaved tool updates", function()
+      local messages = AcpReplay.to_messages({
+        { sessionUpdate = "tool_call", toolCallId = "t1", kind = "read", status = "in_progress" },
+        { sessionUpdate = "agent_message_chunk", content = text("First ") },
+        { sessionUpdate = "tool_call_update", toolCallId = "t1", title = "Still reading" },
+        { sessionUpdate = "agent_message_chunk", content = text("reply") },
+        { sessionUpdate = "agent_thought_chunk", content = text("Think ") },
+        { sessionUpdate = "tool_call_update", toolCallId = "t1", title = "Reading more" },
+        { sessionUpdate = "agent_thought_chunk", content = text("again") },
+        { sessionUpdate = "agent_message_chunk", content = text("Final ") },
+        { sessionUpdate = "agent_message_chunk", content = text("reply") },
+      })
+      assert.equals(4, #messages)
+      assert.equals("First reply", messages[2].message.content)
+      assert.same({ { type = "thinking", thinking = "Think again" } }, messages[3].message.content)
+      assert.equals("Final reply", messages[4].message.content)
+    end)
+
     it("merges consecutive chunks and alternates roles", function()
       local messages = AcpReplay.to_messages({
         { sessionUpdate = "user_message_chunk", content = text("Remember ") },
@@ -161,6 +140,21 @@ describe("acp_replay", function()
       assert.same({ role = "assistant", content = "Done" }, summarize({ messages[4] })[1])
     end)
 
+    it("imports SDK tool updates without deep-copying the update", function()
+      local update = { sessionUpdate = "tool_call", toolCallId = "t1", title = "Run", status = "completed" }
+      local deepcopy = vim.deepcopy
+      vim.deepcopy = function(value, ...)
+        if value == update then error("bad argument #2 to 'deepcopy' (nil or table expected)") end
+        return deepcopy(value, ...)
+      end
+
+      local ok, messages = pcall(AcpReplay.to_messages, { update })
+      vim.deepcopy = deepcopy
+
+      assert.is_true(ok)
+      assert.equals("t1", messages[1].uuid)
+    end)
+
     it("marks failed tool calls as errors", function()
       local messages = AcpReplay.to_messages({
         { sessionUpdate = "tool_call", toolCallId = "t1", title = "Run", status = "in_progress" },
@@ -190,14 +184,29 @@ describe("acp_replay", function()
       assert.equals("tool_result", messages[2].message.content[1].type)
     end)
 
-    it("keeps earlier tool output when an update has empty content", function()
+    it("replaces tool update fields, including empty content and object values", function()
       local output = { { type = "content", content = text("file contents") } }
       local messages = AcpReplay.to_messages({
-        { sessionUpdate = "tool_call", toolCallId = "t1", title = "Read", status = "pending", content = output },
-        { sessionUpdate = "tool_call_update", toolCallId = "t1", status = "completed", content = {} },
+        {
+          sessionUpdate = "tool_call",
+          toolCallId = "t1",
+          title = "Read",
+          status = "pending",
+          content = output,
+          rawInput = { path = "old.lua", stale = true },
+        },
+        {
+          sessionUpdate = "tool_call_update",
+          toolCallId = "t1",
+          status = "completed",
+          content = {},
+          rawInput = { path = "new.lua" },
+        },
       })
 
-      assert.same(output, messages[1].acp_tool_call.content)
+      assert.same({}, messages[1].acp_tool_call.content)
+      assert.same({ path = "new.lua" }, messages[1].acp_tool_call.rawInput)
+      assert.same({ path = "new.lua" }, messages[1].message.content[1].input)
     end)
 
     it("leaves no tool call running when the replay ends mid-call", function()

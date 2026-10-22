@@ -153,6 +153,14 @@
 ---
 ---Select an ACP-backed provider with |:AvanteSwitchProvider|.
 ---
+---Cancellation stops pending connection/session setup immediately. During a prompt,
+---the agent has two seconds to acknowledge cancellation before its connection is
+---terminated. Reconnecting to the same provider loads the saved session when the
+---agent supports session loading.
+---
+---The native stdio adapter rejects incoming ACP messages larger than 8 MiB. Slow
+---event consumption pauses reading from the agent until Neovim catches up.
+---
 ---You can also set avante options via `vim.g.avante`.
 ---
 ---@brief ]]
@@ -259,7 +267,6 @@ M.instructions_file = "avante.md"
 ---@field debug boolean
 --- will keep requests and responses on the filesystem. Check the logs to find their paths
 ---@field log_level vim.log.levels
----@field public session_recovery any TODO
 ---@field memory_summary_provider any TODO
 --- Avante.nvim provides two interaction modes:
 --- - *agentic* (default): Uses AI tools to automatically generate and apply code changes

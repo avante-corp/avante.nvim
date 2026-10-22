@@ -388,9 +388,12 @@ vim.g.avante_login = vim.g.avante_login
 ---
 ---@class AvanteACPProvider
 ---@field command string
----@field args string[]
----@field env table<string, string>
----@field auth_method string
+---@field args? string[]
+---@field env? table<string, string>
+---@field auth_method? string
+---@field transport_type? "stdio"
+---@field reconnect? boolean
+---@field max_reconnect_attempts? integer
 ---@field mcp_servers? avante.acp.McpServer[]
 ---@field additional_directories? string[] Additional absolute workspace roots for ACP sessions
 ---@field session_close_timeout? integer Maximum time to wait for session/close before stopping the agent
@@ -423,6 +426,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field get_tokens_usage? fun(): avante.LLMTokenUsage | nil
 ---
 ---@class AvanteGeneratePromptsOptions: AvanteTemplateOptions
+---@field acp_context? { cwd: string, provider: table } Submission-time execution context
 ---@field instructions? string
 ---@field mode? AvanteLlmMode
 ---@field provider AvanteProviderFunctor | AvanteBedrockProviderFunctor | nil
@@ -444,10 +448,14 @@ vim.g.avante_login = vim.g.avante_login
 ---
 ---@class AvanteLLMStreamOptions: AvanteGeneratePromptsOptions
 ---@field acp_client? avante.acp.ACPClient
+---@field acp_sidebar? avante.Sidebar Sidebar that owns the request and its permission UI
 ---@field on_save_acp_client? fun(client: avante.acp.ACPClient): boolean|nil Return false to discard the client and stop the request
 ---@field on_acp_config_change? fun(): nil
 ---@field just_connect_acp_client? boolean
 ---@field acp_session_id? string
+---@field protected _acp_session_recreated? boolean Prevents repeated session/new attempts for one prompt
+---@field acp_transient_client? boolean Stops a newly-created client when its request finishes without a persistent owner
+---@field acp_request? {finished: boolean, cancelled: boolean, cancel_autocmd?: integer, prompt_session_id?: string}
 ---@field acp_session_cwd? string Directory the ACP session belongs to; defaults to the project root
 ---@field on_save_acp_session_id? fun(session_id: string): nil
 ---@field on_acp_session_replay? fun(session_id: string, messages: avante.HistoryMessage[]): nil Set to receive the conversation an agent replays on session/load; a failed load then calls on_acp_session_load_error instead of starting a new session
@@ -543,6 +551,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field tokens_usage avante.LLMTokenUsage | nil
 ---@field acp_session_id string | nil
 ---@field acp_session_cwd string | nil Directory of an imported ACP session, used to load it
+---@field acp_session_import_pending boolean | nil Whether an imported session still needs its replay saved
 ---
 ---@class avante.ChatMemory
 ---@field content string

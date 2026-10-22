@@ -50,19 +50,6 @@ function M.format_updated_at(iso)
   return os.date("%Y-%m-%d %H:%M", epoch) --[[@as string]]
 end
 
----Whether the client was started for this provider exactly, so it lists the same account's sessions
----@param client avante.acp.ACPClient
----@param acp_provider table
----@return boolean
-local function is_client_for_provider(client, acp_provider)
-  local config = client.config
-  return config ~= nil
-    and config.command == acp_provider.command
-    and vim.deep_equal(config.args, acp_provider.args)
-    and vim.deep_equal(config.env, acp_provider.env)
-    and vim.deep_equal(config.mcp_servers, acp_provider.mcp_servers)
-end
-
 -- Sidebar states while a request is in progress
 local BUSY_STATES = {
   ["generating"] = true,
@@ -79,7 +66,7 @@ local BUSY_STATES = {
 ---@param callback fun(client: avante.acp.ACPClient, release: fun())
 local function with_client(sidebar, acp_provider, callback)
   local client = sidebar and sidebar.acp_client
-  if client and client:is_ready() and is_client_for_provider(client, acp_provider) then
+  if client and client:is_ready() and ACPClient.is_same_process_config(client.config, acp_provider) then
     callback(client, function() end)
     return
   end
@@ -131,8 +118,13 @@ function M.resume(bufnr, session)
     history = Path.history.new(bufnr)
     history.acp_session_id = session.sessionId
   end
+  history.acp_session_import_pending = true
   if session.title and session.title ~= "" then history.title = session.title end
   if session.cwd and session.cwd ~= "" then history.acp_session_cwd = session.cwd end
+  local updated_at = M.parse_timestamp(session.updatedAt)
+  if updated_at then
+    history.timestamp = os.date("%Y-%m-%d %H:%M:%S", updated_at) --[[@as string]]
+  end
   Path.history.save(bufnr, history)
 
   if not sidebar then
@@ -151,6 +143,7 @@ function M.resume(bufnr, session)
     filename = history.filename,
     created = created,
     previous_filename = created and previous_filename or nil,
+    timestamp = updated_at and history.timestamp or nil,
   }
 
   if sidebar:is_open() then
@@ -162,7 +155,8 @@ end
 
 ---List the current ACP provider's sessions for this project and resume the selected one
 function M.open()
-  local acp_provider = Config.acp_providers[Config.provider]
+  local provider = Config.provider
+  local acp_provider = vim.deepcopy(Config.acp_providers[provider])
   if not acp_provider then
     Utils.warn("The current provider is not an ACP provider")
     return
@@ -172,27 +166,41 @@ function M.open()
   local bufnr = sidebar and vim.api.nvim_buf_is_valid(sidebar.code.bufnr) and sidebar.code.bufnr
     or vim.api.nvim_get_current_buf()
   local cwd = Utils.root.get({ buf = bufnr })
+  local tab = vim.api.nvim_get_current_tabpage()
+  local history = sidebar and sidebar.chat_history
+  local generation = sidebar and sidebar.acp_client_generation
+  local session_id = history and history.acp_session_id
+  local function is_current()
+    return vim.api.nvim_get_current_tabpage() == tab
+      and require("avante").get(false) == sidebar
+      and vim.api.nvim_buf_is_valid(bufnr)
+      and Config.provider == provider
+      and vim.deep_equal(Config.acp_providers[provider], acp_provider)
+      and (not sidebar or (sidebar.chat_history == history and sidebar.acp_client_generation == generation))
+      and (not history or history.acp_session_id == session_id)
+  end
 
   with_client(sidebar, acp_provider, function(client, release)
-    local capabilities = client.agent_capabilities
-    if not (capabilities and capabilities.loadSession == true and client:supports_list_sessions()) then
+    if not is_current() then
       release()
-      Utils.warn(Config.provider .. " does not support listing and resuming sessions")
+      return
+    end
+    if not (client:supports_load_session() and client:supports_list_sessions()) then
+      release()
+      Utils.warn(provider .. " does not support listing and resuming sessions")
       return
     end
 
     client:list_all_sessions(cwd, function(sessions, err)
       release()
       vim.schedule(function()
-        if err and #sessions == 0 then
+        if not is_current() then return end
+        if err then
           Utils.error("Failed to list sessions: " .. (err.message or tostring(err)))
           return
         end
-        if err then
-          Utils.warn("Showing the first " .. #sessions .. " sessions: " .. (err.message or tostring(err)))
-        end
         if #sessions == 0 then
-          Utils.info("No " .. Config.provider .. " sessions found for this project")
+          Utils.info("No " .. provider .. " sessions found for this project")
           return
         end
 
@@ -220,9 +228,10 @@ function M.open()
         Selector:new({
           provider = Config.selector.provider,
           provider_opts = Config.selector.provider_opts,
-          title = Config.provider .. " sessions (* = already in avante history)",
+          title = provider .. " sessions (* = already in avante history)",
           items = items,
           on_select = function(item_ids)
+            if not is_current() then return end
             if not item_ids or #item_ids == 0 then return end
             local session = by_id[item_ids[1]]
             if session then M.resume(bufnr, session) end

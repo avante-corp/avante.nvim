@@ -100,12 +100,30 @@ describe("llm._load_acp_session_and_continue", function()
     assert.is_nil(client.loads[1].opts)
   end)
 
-  it("still starts a new session when a normal reopen fails to load", function()
-    local client = fake_client(replay, { code = -32603, message = "Session not found" })
+  it("still starts a new session when a normal reopen cannot find the saved session", function()
+    local client = fake_client(replay, {
+      kind = "session_not_found",
+      code = -32603,
+      message = "Session not found",
+    })
 
     llm._load_acp_session_and_continue({ just_connect_acp_client = true }, client, "s1")
 
     assert.stub(create_stub).was_called(1)
+  end)
+
+  it("reports an internal load failure instead of replacing the saved session", function()
+    local load_error = { kind = "internal", code = -32603, message = "agent unavailable" }
+    local client = fake_client(replay, load_error)
+    local stopped
+
+    llm._load_acp_session_and_continue({
+      just_connect_acp_client = true,
+      on_stop = function(result) stopped = result end,
+    }, client, "s1")
+
+    assert.same({ reason = "error", error = load_error }, stopped)
+    assert.stub(create_stub).was_not_called()
   end)
 
   it("passes the provider's MCP servers and project root to session/load", function()

@@ -1388,19 +1388,25 @@ end
 function M.read_file_from_buf_or_disk(filepath)
   local abs_path = (filepath:sub(1, 7) == "term://" or M.is_absolute_path(filepath)) and filepath
     or vim.fs.joinpath(M.get_project_root(), filepath)
-  --- Lookup if the file is loaded in a buffer
-  local ok, bufnr = pcall(vim.fn.bufnr, abs_path)
-  if ok then
-    if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
-      -- If buffer exists and is loaded, get buffer content
-      local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-      return lines, nil, nil
+  local stat, stat_err, stat_errname = vim.uv.fs_stat(abs_path)
+  if stat and stat.type ~= "file" then return {}, "Cannot read a non-regular file: " .. filepath, nil end
+
+  local function file_identity(path)
+    if path:sub(1, 7) == "term://" then return path end
+    return vim.uv.fs_realpath(path) or fn.resolve(M.abspath(path))
+  end
+  local identity = file_identity(abs_path)
+  -- bufnr(string) interprets patterns and can match a different file outside the requested directory.
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(bufnr) then
+      local name = vim.api.nvim_buf_get_name(bufnr)
+      if name ~= "" and file_identity(name) == identity then
+        return vim.api.nvim_buf_get_lines(bufnr, 0, -1, false), nil, nil
+      end
     end
   end
 
-  local stat, stat_err, stat_errname = vim.uv.fs_stat(abs_path)
   if not stat then return {}, stat_err, stat_errname end
-  if stat.type == "directory" then return {}, "Cannot read a directory as file" .. filepath, nil end
 
   -- Fallback: read file from disk
   local file, open_err = io.open(abs_path, "r")
@@ -1562,8 +1568,9 @@ function M.llm_tool_param_fields_to_json_schema(fields)
 end
 
 ---Return available "/commands"
+---@param sidebar? avante.Sidebar
 ---@return AvanteSlashCommand[]
-function M.get_commands()
+function M.get_commands(sidebar)
   local Config = require("avante.config")
   local builtin_commands = require("avante.slashcommands").get_builtin_commands()
 
@@ -1579,6 +1586,25 @@ function M.get_commands()
     if not seen[command.name] then
       table.insert(commands, command)
       seen[command.name] = true
+    end
+  end
+
+  sidebar = sidebar or require("avante").get(false)
+  local client = sidebar and sidebar.acp_client
+  if
+    client
+    and client:is_ready()
+    and require("avante.libs.acp_client").is_same_process_config(client.config, Config.acp_providers[Config.provider])
+  then
+    local session_id = sidebar.chat_history and sidebar.chat_history.acp_session_id
+    for _, command in ipairs(client.session_commands and client.session_commands[session_id] or {}) do
+      if not seen[command.name] then
+        table.insert(
+          commands,
+          { name = command.name, description = command.description, details = command.description }
+        )
+        seen[command.name] = true
+      end
     end
   end
 

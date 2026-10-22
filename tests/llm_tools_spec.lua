@@ -9,18 +9,18 @@ local glob = require("avante.llm_tools.glob")
 local view = require("avante.llm_tools.view")
 local bash = require("avante.llm_tools.bash")
 
-LlmToolHelpers.confirm = function(_msg, cb) return cb(true) end
-LlmToolHelpers.already_in_context = function(_path) return false end
-
 describe("llm_tools", function()
-  local test_dir = "/tmp/test_llm_tools"
-  local test_file = test_dir .. "/test.txt"
+  local test_dir, test_file
 
   before_each(function()
     Config.setup()
+    test_dir = vim.fn.tempname()
+    test_file = test_dir .. "/test.txt"
+    stub(LlmToolHelpers, "confirm", function(_msg, cb) return cb(true) end)
+    stub(LlmToolHelpers, "already_in_context", function() return false end)
     -- 创建测试目录和文件
     os.execute("mkdir -p " .. test_dir)
-    os.execute(string.format("cd %s; git init -b main", test_dir))
+    vim.fn.system({ "git", "init", "-q", "-b", "main", test_dir })
     local file = io.open(test_file, "w")
     if not file then error("Failed to create test file") end
     file:write("test content")
@@ -46,9 +46,11 @@ describe("llm_tools", function()
 
   after_each(function()
     -- 清理测试目录
-    os.execute("rm -rf " .. test_dir)
+    vim.fn.delete(test_dir, "rf")
     -- 恢复 mock
     Utils.get_project_root:revert()
+    LlmToolHelpers.confirm:revert()
+    LlmToolHelpers.already_in_context:revert()
   end)
 
   describe("web search tools", function()
@@ -343,72 +345,106 @@ describe("llm_tools", function()
   end)
 
   describe("python", function()
-    it("should execute Python code and return output", function()
-      LlmTools.python({
-        path = ".",
-        code = "print('Hello from Python')",
-      }, {
+    local response, command, command_opts
+
+    before_each(function()
+      response = { code = 0, stdout = "", stderr = "" }
+      command, command_opts = nil, nil
+      local executable = vim.fn.executable
+      stub(vim.fn, "executable", function(name)
+        if name == "docker" then return 1 end
+        return executable(name)
+      end)
+      local system = vim.system
+      stub(vim, "system", function(cmd, opts, callback)
+        if cmd[1] ~= "docker" then return system(cmd, opts, callback) end
+        command, command_opts = cmd, opts
+        callback(response)
+      end)
+    end)
+
+    after_each(function()
+      vim.system:revert()
+      vim.fn.executable:revert()
+    end)
+
+    local function run_python(input)
+      local completed, result, err
+      local immediate_result, immediate_err = LlmTools.python(input, {
         session_ctx = {},
-        on_complete = function(result, err)
-          assert.is_nil(err)
-          assert.equals("Hello from Python\n", result)
+        on_complete = function(output, error)
+          completed, result, err = true, output, error
         end,
       })
+      if immediate_err then return immediate_result, immediate_err end
+      assert.is_true(vim.wait(1000, function() return completed end, 1), "Python callback did not run")
+      return result, err
+    end
+
+    it("should execute Python code and return output", function()
+      response.stdout = "Hello from Python\n"
+      local result, err = run_python({
+        path = ".",
+        code = "print('Hello from Python')",
+      })
+      assert.is_nil(err)
+      assert.equals("Hello from Python\n", result)
+      assert.same({
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        test_dir .. ":" .. test_dir,
+        "-w",
+        test_dir,
+        "python:3.14-slim-bookworm",
+        "python",
+        "-c",
+        "print('Hello from Python')",
+      }, command)
+      assert.same({ text = true, cwd = test_dir }, command_opts)
     end)
 
     it("should handle Python errors", function()
-      LlmTools.python({
+      response.code, response.stderr = 1, "NameError: name 'undefined_variable' is not defined"
+      local result, err = run_python({
         path = ".",
         code = "print(undefined_variable)",
-      }, {
-        session_ctx = {},
-        on_complete = function(result, err)
-          assert.is_nil(result)
-          assert.truthy(err)
-          assert.truthy(err:find("Error"))
-        end,
       })
+      assert.is_nil(result)
+      assert.equals("Error: " .. response.stderr, err)
     end)
 
     it("should respect path permissions", function()
-      LlmTools.python({
+      local result, err = run_python({
         path = "../outside_project",
         code = "print('test')",
-      }, {
-        session_ctx = {},
-        on_complete = function(result, err)
-          assert.is_nil(result)
-          assert.truthy(err:find("No permission to access path"))
-        end,
       })
+      assert.is_nil(result)
+      assert.truthy(err:find("No permission to access path"))
+      assert.is_nil(command)
     end)
 
     it("should handle non-existent paths", function()
-      LlmTools.python({
+      local result, err = run_python({
         path = "non_existent_dir",
         code = "print('test')",
-      }, {
-        session_ctx = {},
-        on_complete = function(result, err)
-          assert.is_nil(result)
-          assert.truthy(err:find("Path not found"))
-        end,
       })
+      assert.is_nil(result)
+      assert.truthy(err:find("Path not found"))
+      assert.is_nil(command)
     end)
 
     it("should support custom container image", function()
-      os.execute("docker image rm python:3.12-slim")
-      LlmTools.python({
+      response.stdout = "Hello from custom container\n"
+      local result, err = run_python({
         path = ".",
         code = "print('Hello from custom container')",
         container_image = "python:3.12-slim",
-      }, {
-        session_ctx = {},
-        on_complete = function(result, err)
-          assert.is_nil(err)
-          assert.equals("Hello from custom container\n", result)
-        end,
       })
+      assert.is_nil(err)
+      assert.equals("Hello from custom container\n", result)
+      assert.equals("python:3.12-slim", command[8])
     end)
   end)
 

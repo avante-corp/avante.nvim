@@ -139,6 +139,8 @@ local SIDEBAR_CONTAINERS = {
 ---@field pending_acp_import avante.PendingAcpImport | nil
 ---@field post_render? fun(sidebar: avante.Sidebar)
 ---@field permission_handler fun(id: string) | nil
+---@field permission_cancel_handler fun() | nil
+---@field acp_last_auto_nav? number
 ---@field permission_button_options ({ id: string, icon: string|nil, name: string }[]) | nil
 ---@field expanded_message_uuids table<string, boolean>
 ---@field tool_message_positions table<string, [integer, integer]>
@@ -154,6 +156,7 @@ Sidebar.__index = Sidebar
 ---@field filename string The chat the session is imported into
 ---@field created boolean Whether the chat was created for this import
 ---@field previous_filename? string Chat to return to if a newly created chat's session can't be loaded
+---@field timestamp? string Last activity time reported by session/list
 
 ---@param acp_client avante.acp.ACPClient | nil
 ---@param provider avante.ProviderName
@@ -164,6 +167,24 @@ local function get_acp_config_options(acp_client, provider)
   if not acp_client.config or acp_client.config.command ~= acp_provider.command then return {} end
   if not vim.deep_equal(acp_client.config.args, acp_provider.args) then return {} end
   return acp_client.config_options
+end
+
+---@param sidebar avante.Sidebar
+---@param message avante.HistoryMessage
+---@param timestamp? string
+local function set_user_message_metadata(sidebar, message, timestamp)
+  if not message.is_user_submission then return end
+  message.provider = Config.provider
+  if timestamp then message.timestamp = timestamp end
+  if Config.acp_providers[Config.provider] then
+    for _, opt in ipairs(get_acp_config_options(sidebar.acp_client, Config.provider)) do
+      local current_value = opt.currentValue
+      if opt.category == "model" and type(current_value) == "string" then message.model = current_value end
+      if opt.category == "mode" and type(current_value) == "string" then message.mode = current_value end
+    end
+  else
+    message.model = Config.get_provider_config(Config.provider).model
+  end
 end
 
 ---@class avante.CodeState
@@ -296,6 +317,7 @@ function Sidebar:open(opts)
     -- preconnecting, otherwise session/load replays the old conversation into
     -- the new chat (new_chat() only runs after open() returns).
     if opts.new_chat and self.chat_history then self.chat_history.acp_session_id = nil end
+    self:resume_pending_acp_import()
     self:handle_submit("")
   end
 
@@ -2293,21 +2315,90 @@ function Sidebar:get_content_between_separators(position)
   return content, start_line
 end
 
+local function delete_acp_session(sidebar, stream_cancelled, callback)
+  sidebar.acp_client_generation = sidebar.acp_client_generation + 1
+  local client = sidebar.acp_client
+  sidebar.acp_client = nil
+  if not client then
+    callback({ message = "ACP client is not connected; the remote session was not deleted" })
+    return
+  end
+
+  if client.config then client.config.handlers = {} end
+
+  local stopped = false
+  local completed = false
+  local function stop_client()
+    if stopped then return end
+    stopped = true
+    pcall(client.stop, client)
+  end
+
+  local function finish(err)
+    if completed then return end
+    completed = true
+    stop_client()
+    callback(err)
+  end
+
+  local session_id = sidebar.chat_history.acp_session_id
+  if not session_id or session_id == "" then
+    finish(nil)
+    return
+  end
+
+  if not stream_cancelled then pcall(client.cancel_session, client, session_id) end
+  local function close_unsupported_session(delete_err)
+    local ok = pcall(client.close_session, client, session_id, function() finish(delete_err) end)
+    if not ok then finish(delete_err) end
+  end
+  local ok = pcall(client.delete_session, client, session_id, function(err)
+    if err and err.kind == "unsupported" then
+      close_unsupported_session(err)
+    else
+      finish(err)
+    end
+  end)
+  if not ok then finish({ message = "Failed to delete ACP session" }) end
+end
+
 function Sidebar:clear_history(args, cb)
   self.current_state = nil
-  if next(self.chat_history) ~= nil then
-    self.chat_history.messages = {}
-    self.chat_history.entries = {}
-    self.chat_history.acp_session_id = nil
-    Path.history.save(self.code.bufnr, self.chat_history)
-    self._history_cache_invalidated = true
-    self:reload_chat_history()
-    self:update_content_with_history()
-    self:update_content(
-      "Chat history cleared",
-      { focus = false, scroll = false, callback = function() self:focus_input() end }
-    )
-    if cb then cb(args) end
+  local chat_history = self.chat_history
+  if chat_history and next(chat_history) ~= nil then
+    local code_bufnr = self.code.bufnr
+    local stream_cancelled = self.is_generating == true
+    if stream_cancelled then Llm.cancel_inflight_request() end
+    local function clear_local_history()
+      chat_history.messages = {}
+      chat_history.entries = {}
+      chat_history.acp_session_id = nil
+      Path.history.save(code_bufnr, chat_history)
+      if self.chat_history == chat_history then
+        self._history_cache_invalidated = true
+        self:reload_chat_history()
+        self:update_content_with_history()
+        self:update_content(
+          "Chat history cleared",
+          { focus = false, scroll = false, callback = function() self:focus_input() end }
+        )
+      end
+      if cb then cb(args) end
+    end
+
+    local session_id = chat_history.acp_session_id
+    if self.acp_client or (session_id and session_id ~= "") then
+      delete_acp_session(self, stream_cancelled, function(err)
+        if err then
+          local message = type(err) == "table" and err.message or tostring(err)
+          Utils.error("Couldn't clear ACP session: " .. (message or "unknown error"))
+          return
+        end
+        clear_local_history()
+      end)
+    else
+      clear_local_history()
+    end
   else
     self:update_content(
       "Chat history is already empty",
@@ -2430,9 +2521,36 @@ end
 ---A connection still in flight is discarded when it completes.
 function Sidebar:stop_acp_client()
   self.acp_client_generation = self.acp_client_generation + 1
+  self.pending_acp_import = nil
+  self.is_generating = false
   local client = self.acp_client
   self.acp_client = nil
+  local popup = require("avante.llm_tools.helpers").confirm_popups[self]
+  if popup then popup:cancel() end
+  self.permission_handler, self.permission_cancel_handler, self.permission_button_options = nil, nil, nil
   if client then pcall(client.stop, client) end
+end
+
+---Reload an ACP session whose imported replay was interrupted before being saved.
+function Sidebar:resume_pending_acp_import()
+  local history = self.chat_history
+  if
+    self.pending_acp_import
+    or not history
+    or history.acp_session_import_pending ~= true
+    or not history.acp_session_id
+    or history.acp_session_id == ""
+  then
+    return
+  end
+
+  self:stop_acp_client()
+  self.pending_acp_import = {
+    session_id = history.acp_session_id,
+    filename = history.filename,
+    created = false,
+    timestamp = history.timestamp,
+  }
 end
 
 ---Show the latest chat history and reconnect the ACP agent for it
@@ -2444,7 +2562,10 @@ function Sidebar:switch_to_history_and_reconnect()
   self:update_content_with_history()
   self:create_todos_container()
   self:initialize_token_count()
-  if Config.acp_providers[Config.provider] then self:handle_submit("") end
+  if Config.acp_providers[Config.provider] then
+    self:resume_pending_acp_import()
+    self:handle_submit("")
+  end
 end
 
 ---@param import avante.PendingAcpImport
@@ -2462,7 +2583,9 @@ function Sidebar:finish_acp_import(import, session_id, messages)
     return
   end
 
+  chat_history.acp_session_import_pending = nil
   if #messages == 0 then
+    Path.history.save(self.code.bufnr, chat_history)
     if not import.created then
       Utils.warn("The agent returned no conversation for this session; kept the chat as it was")
     end
@@ -2471,6 +2594,9 @@ function Sidebar:finish_acp_import(import, session_id, messages)
 
   -- The agent's copy of the session is the source of truth, so re-importing picks up
   -- anything added outside avante
+  for _, message in ipairs(messages) do
+    set_user_message_metadata(self, message, import.timestamp)
+  end
   chat_history.messages = messages
   chat_history.entries = {}
   chat_history.todos = {}
@@ -2491,6 +2617,15 @@ function Sidebar:fail_acp_import(import, err)
   self.pending_acp_import = nil
   Utils.error("Couldn't resume the ACP session: " .. ((err and err.message) or "unknown error"))
   self:stop_acp_client()
+  local chat_history = self.chat_history
+  if
+    chat_history
+    and chat_history.filename == import.filename
+    and chat_history.acp_session_id == import.session_id
+  then
+    chat_history.acp_session_import_pending = nil
+    Path.history.save(self.code.bufnr, chat_history)
+  end
   if not import.created then return end
 
   local showing_import = self.chat_history ~= nil and self.chat_history.filename == import.filename
@@ -2541,17 +2676,7 @@ function Sidebar:add_history_messages(messages, opts)
   local history_messages = History.get_history_messages(self.chat_history)
   messages = vim.islist(messages) and messages or { messages }
   for _, message in ipairs(messages) do
-    if message.is_user_submission then
-      message.provider = Config.provider
-      if Config.acp_providers[Config.provider] then
-        for _, opt in ipairs(get_acp_config_options(self.acp_client, Config.provider)) do
-          if opt.category == "model" then message.model = opt.currentValue end
-          if opt.category == "mode" then message.mode = opt.currentValue end
-        end
-      else
-        message.model = Config.get_provider_config(Config.provider).model
-      end
-    end
+    set_user_message_metadata(self, message)
     local idx = nil
     for idx_, message_ in ipairs(history_messages) do
       if message_.uuid == message.uuid then
@@ -2914,7 +3039,7 @@ function Sidebar:handle_submit(request)
       self:update_content("Invalid command", { focus = false, scroll = false })
       return
     end
-    local cmds = Utils.get_commands()
+    local cmds = Utils.get_commands(self)
     ---@type AvanteSlashCommand
     local cmd = vim.iter(cmds):filter(function(cmd) return cmd.name == command end):totable()[1]
     if cmd then
@@ -2938,6 +3063,18 @@ function Sidebar:handle_submit(request)
   end
 
   -- Process shortcut replacements
+  local chat_history = assert(self.chat_history, "Chat history must be initialized before submitting")
+  local acp_client_generation = self.acp_client_generation
+  local code_bufnr = self.code.bufnr
+  local acp_provider = Config.acp_providers[Config.provider]
+  local acp_context = acp_provider
+    and {
+      cwd = Utils.root.get({ buf = code_bufnr }),
+      provider = vim.deepcopy(acp_provider),
+    }
+  local function is_current_request()
+    return self.chat_history == chat_history and self.acp_client_generation == acp_client_generation
+  end
   local new_content, has_shortcuts = Utils.extract_shortcuts(request)
   if has_shortcuts then request = new_content end
 
@@ -2985,10 +3122,13 @@ function Sidebar:handle_submit(request)
   local function on_start(_) end
 
   ---@param messages avante.HistoryMessage[]
-  local function on_messages_add(messages) self:add_history_messages(messages) end
+  local function on_messages_add(messages)
+    if is_current_request() then self:add_history_messages(messages) end
+  end
 
   ---@param state avante.GenerateState
   local function on_state_change(state)
+    if not is_current_request() then return end
     self:clear_state()
     self.current_state = state
     self:render_state()
@@ -2999,6 +3139,7 @@ function Sidebar:handle_submit(request)
   ---@param log string
   ---@param state AvanteLLMToolUseState
   local function on_tool_log(tool_id, tool_name, log, state)
+    if not is_current_request() then return end
     if state == "generating" then on_state_change("tool calling") end
     local tool_use_message = History.Helpers.get_tool_use_message(tool_id, self.chat_history.messages)
     if not tool_use_message then
@@ -3019,6 +3160,7 @@ function Sidebar:handle_submit(request)
   end
 
   local function set_tool_use_store(tool_id, key, value)
+    if not is_current_request() then return end
     local tool_use_message = History.Helpers.get_tool_use_message(tool_id, self.chat_history.messages)
     if tool_use_message then
       local tool_use_store = tool_use_message.tool_use_store or {}
@@ -3030,6 +3172,7 @@ function Sidebar:handle_submit(request)
 
   ---@type AvanteLLMStopCallback
   local function on_stop(stop_opts)
+    if not is_current_request() then return end
     self.is_generating = false
 
     pcall(function()
@@ -3062,6 +3205,7 @@ function Sidebar:handle_submit(request)
     })
 
     vim.defer_fn(function()
+      if not is_current_request() then return end
       if Utils.is_valid_container(self.containers.result, true) and Config.behaviour.jump_result_buffer_on_finish then
         api.nvim_set_current_win(self.containers.result.winid)
       end
@@ -3082,9 +3226,7 @@ function Sidebar:handle_submit(request)
   end
 
   self:get_generate_prompts_options(request, function(generate_prompts_options)
-    -- Captured so callbacks that arrive after a chat switch still update the chat they belong to
-    local chat_history = self.chat_history --[[@as avante.ChatHistory]]
-    local acp_client_generation = self.acp_client_generation
+    if not is_current_request() then return end
     local acp_import = self.pending_acp_import
     if not (request == "" and acp_import and acp_import.session_id == chat_history.acp_session_id) then
       acp_import = nil
@@ -3101,49 +3243,65 @@ function Sidebar:handle_submit(request)
       on_state_change = on_state_change,
       acp_client = self.acp_client,
       on_save_acp_client = function(client)
-        if self.acp_client_generation ~= acp_client_generation then
+        if not is_current_request() then
           pcall(client.stop, client)
           return false
         end
         self.acp_client = client
         return true
       end,
-      on_acp_config_change = vim.schedule_wrap(function() self:render_result() end),
+      on_acp_config_change = vim.schedule_wrap(function()
+        if is_current_request() then self:render_result() end
+      end),
       acp_session_id = chat_history.acp_session_id,
       acp_session_cwd = chat_history.acp_session_cwd,
       on_save_acp_session_id = function(session_id)
+        if not is_current_request() then return end
         chat_history.acp_session_id = session_id
-        Path.history.save(self.code.bufnr, chat_history)
+        Path.history.save(code_bufnr, chat_history)
       end,
       on_acp_session_replay = acp_import
-        and function(session_id, messages) self:finish_acp_import(acp_import, session_id, messages) end,
-      on_acp_session_load_error = acp_import and function(_, err) self:fail_acp_import(acp_import, err) end,
+        and function(session_id, messages)
+          if is_current_request() then self:finish_acp_import(acp_import, session_id, messages) end
+        end,
+      on_acp_session_load_error = acp_import and function(_, err)
+        if is_current_request() then self:fail_acp_import(acp_import, err) end
+      end,
       set_tool_use_store = set_tool_use_store,
-      get_history_messages = function(opts) return self:get_history_messages_for_api(opts) end,
+      get_history_messages = function(opts)
+        if is_current_request() then return self:get_history_messages_for_api(opts) end
+        return chat_history.messages
+      end,
       get_todos = function()
-        local history = Path.history.load(self.code.bufnr)
+        if not is_current_request() then return chat_history.todos end
+        local history = Path.history.load(code_bufnr, chat_history.filename)
         return history.todos
       end,
-      update_todos = function(todos) self:update_todos(todos) end,
+      update_todos = function(todos)
+        if is_current_request() then self:update_todos(todos) end
+      end,
       session_ctx = {},
       ---@param usage avante.LLMTokenUsage
       update_tokens_usage = function(usage)
+        if not is_current_request() then return end
         if not usage then return end
         if usage.completion_tokens == nil then return end
         if usage.prompt_tokens == nil then return end
         self.chat_history.tokens_usage = usage
         self:save_history()
       end,
-      get_tokens_usage = function() return self.chat_history.tokens_usage end,
+      get_tokens_usage = function() return chat_history.tokens_usage end,
     })
 
     ---@param pending_compaction_history_messages avante.HistoryMessage[]
     local function on_memory_summarize(pending_compaction_history_messages)
-      local history_memory = self.chat_history.memory
+      if not is_current_request() then return end
+      local history_memory = chat_history.memory
       Llm.summarize_memory(
         history_memory and history_memory.content,
         pending_compaction_history_messages,
         function(memory)
+          if not is_current_request() then return end
           if memory then
             self.chat_history.memory = memory
             Path.history.save(self.code.bufnr, self.chat_history)
@@ -3156,6 +3314,8 @@ function Sidebar:handle_submit(request)
     end
 
     stream_options.on_memory_summarize = on_memory_summarize
+    stream_options.acp_sidebar = self
+    stream_options.acp_context = acp_context
 
     if request ~= "" then
       self.is_generating = true
@@ -3399,6 +3559,8 @@ function Sidebar:render(opts)
   if self.code.bufnr and api.nvim_buf_is_valid(self.code.bufnr) then
     -- reset states when buffer is closed
     api.nvim_buf_attach(self.code.bufnr, false, {
+      -- File reloads must keep the active chat and its request callbacks attached.
+      on_reload = function() end,
       on_detach = function(_, _)
         vim.schedule(function()
           if not self.code.winid or not api.nvim_win_is_valid(self.code.winid) then return end

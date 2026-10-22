@@ -114,10 +114,12 @@ end
 function M.cleanup_all_acp_clients()
   Utils.debug("Cleaning up all ACP clients...")
   local pending = {}
+  local wait_timeout = 600
   for client_id, client in pairs(M.acp_clients) do
     if client and client.stop then
       Utils.debug("Stopping ACP client: " .. client_id)
       pending[client] = true
+      wait_timeout = math.max(wait_timeout, client.config.session_close_timeout + 100)
       local ok = pcall(function()
         client:stop(function() pending[client] = nil end)
       end)
@@ -129,12 +131,23 @@ function M.cleanup_all_acp_clients()
   end
 
   -- Give session/close responses a bounded chance to arrive before Vim tears down the event loop.
-  if next(pending) ~= nil then vim.wait(600, function() return next(pending) == nil end, 10) end
+  if next(pending) ~= nil then vim.wait(wait_timeout, function() return next(pending) == nil end, 10) end
   for client in pairs(pending) do
     if client.force_stop then pcall(client.force_stop, client) end
   end
   M.acp_clients = {}
   Utils.debug("All ACP clients cleaned up")
+end
+
+function M._cleanup_tab(tab)
+  local sidebar = M.sidebars[tab]
+  local selection = M.selections[tab]
+  if sidebar then
+    sidebar:stop_acp_client()
+    sidebar:reset()
+  end
+  if selection then selection:delete_autocmds() end
+  if tab ~= nil then M.sidebars[tab] = nil end
 end
 
 local H = {}
@@ -372,14 +385,7 @@ function H.autocmds()
   api.nvim_create_autocmd("TabClosed", {
     group = H.augroup,
     pattern = "*",
-    callback = function(ev)
-      local tab = tonumber(ev.file)
-      local s = M.sidebars[tab]
-      local sl = M.selections[tab]
-      if s then s:reset() end
-      if sl then sl:delete_autocmds() end
-      if tab ~= nil then M.sidebars[tab] = nil end
-    end,
+    callback = function(ev) M._cleanup_tab(tonumber(ev.file)) end,
   })
 
   -- Fix Issue #2749: Cleanup ACP processes on Neovim exit
