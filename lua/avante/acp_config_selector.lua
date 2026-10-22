@@ -45,7 +45,7 @@ function M.open(category, prompt_label)
     if not is_current() then return end
     local client = sidebar.acp_client
     if not client or not client.config_options or not has_options() then
-      Utils.warn("No ACP config options available")
+      Utils.warn("No ACP config options available for " .. provider)
       return
     end
     local session_id = history and history.acp_session_id
