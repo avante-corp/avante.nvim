@@ -90,8 +90,11 @@
 ---@field on_error? fun(error: table)
 ---@field on_state_change? fun(state: string)
 
+---@class avante.acp.ClientConfig : AvanteACPProvider
+---@field handlers? ACPHandlers
+
 ---@class avante.acp.ACPClient
----@field config table
+---@field config avante.acp.ClientConfig
 ---@field connection_state "disconnected"|"connecting"|"ready"|"error"
 ---@field native userdata|table|nil
 ---@field native_generation integer
@@ -155,6 +158,7 @@ local function native_config(self)
   }
 end
 
+---@param config avante.acp.ClientConfig
 ---@return avante.acp.ACPClient
 function ACPClient:new(config)
   if config.transport_type and config.transport_type ~= "stdio" then

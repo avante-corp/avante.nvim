@@ -388,9 +388,9 @@ vim.g.avante_login = vim.g.avante_login
 ---
 ---@class AvanteACPProvider
 ---@field command string
----@field args string[]
----@field env table<string, string>
----@field auth_method string
+---@field args? string[]
+---@field env? table<string, string>
+---@field auth_method? string
 ---@field transport_type? "stdio"
 ---@field reconnect? boolean
 ---@field max_reconnect_attempts? integer
