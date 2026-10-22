@@ -154,7 +154,7 @@ local function native_config(self)
     authMethod = self.config.auth_method,
     readTextFile = self.config.handlers and self.config.handlers.on_read_file ~= nil,
     writeTextFile = self.config.handlers and self.config.handlers.on_write_file ~= nil,
-    sessionCloseTimeoutMs = self.config.session_close_timeout or 500,
+    sessionCloseTimeoutMs = self.config.session_close_timeout,
   }
 end
 
@@ -168,6 +168,7 @@ function ACPClient:new(config)
         .. ")"
     )
   end
+  config = vim.tbl_extend("force", config, { session_close_timeout = config.session_close_timeout or 500 })
   return setmetatable({
     config = config,
     connection_state = "disconnected",
@@ -642,7 +643,7 @@ function ACPClient:stop(callback)
     if self.is_stopping and self.native_generation == generation then
       finish_stop(self, create_error("timeout", "Timed out stopping ACP client"))
     end
-  end, (self.config.session_close_timeout or 500) + 1000)
+  end, self.config.session_close_timeout + 1000)
 end
 
 function ACPClient:force_stop()

@@ -119,7 +119,7 @@ function M.cleanup_all_acp_clients()
     if client and client.stop then
       Utils.debug("Stopping ACP client: " .. client_id)
       pending[client] = true
-      wait_timeout = math.max(wait_timeout, ((client.config and client.config.session_close_timeout) or 500) + 100)
+      wait_timeout = math.max(wait_timeout, client.config.session_close_timeout + 100)
       local ok = pcall(function()
         client:stop(function() pending[client] = nil end)
       end)

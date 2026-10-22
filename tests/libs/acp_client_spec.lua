@@ -479,6 +479,15 @@ describe("ACPClient native adapter", function()
     assert.same({}, ACPClient._slice_lines(lines, 2, 0))
   end)
 
+  it("defaults the session close timeout without mutating the caller config", function()
+    local config = { command = "agent", handlers = {} }
+
+    local client = ACPClient:new(config)
+
+    assert.equals(500, client.config.session_close_timeout)
+    assert.is_nil(config.session_close_timeout)
+  end)
+
   it("compares every setting that affects a reused ACP client", function()
     local config = {
       command = "agent",

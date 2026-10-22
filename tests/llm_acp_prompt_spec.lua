@@ -525,7 +525,7 @@ describe("llm._continue_stream_acp", function()
     client._native_module = { api_version = 3, new = function() return native end }
     client._start_polling = function() end
     acp_new_stub = stub(ACPClient, "new").invokes(function(_, config)
-      client.config = config
+      client.config.handlers = config.handlers
       return client
     end)
     local stopped = {}
