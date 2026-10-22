@@ -56,31 +56,21 @@ function M.write_atomically(filepath, content)
   if not fd then return nil, "Failed to create temporary file: " .. tostring(open_err) end
 
   local function fail(message)
-    if fd then
-      pcall(uv.fs_close, fd)
-      fd = nil
-    end
     pcall(uv.fs_unlink, temp_path)
     return nil, tostring(message)
   end
 
-  local offset = 0
-  while offset < #content do
-    local written, write_err = uv.fs_write(fd, content:sub(offset + 1), offset)
-    if not written then return fail("Failed to write temporary file: " .. tostring(write_err)) end
-    if written == 0 then return fail("Failed to write temporary file: wrote zero bytes") end
-    offset = offset + written
-  end
+  local close_ok, close_err = uv.fs_close(fd)
+  if not close_ok then return fail("Failed to close temporary file: " .. tostring(close_err)) end
+
+  local write_ok, write_result = pcall(fn.writefile, content, temp_path, "s")
+  if not write_ok then return fail("Failed to write temporary file: " .. tostring(write_result)) end
+  if write_result ~= 0 then return fail("Failed to write temporary file") end
 
   if stat then
     local chmod_ok, chmod_err = uv.fs_chmod(temp_path, stat.mode)
     if not chmod_ok then return fail("Failed to preserve file permissions: " .. tostring(chmod_err)) end
   end
-  local sync_ok, sync_err = uv.fs_fsync(fd)
-  if not sync_ok then return fail("Failed to sync temporary file: " .. tostring(sync_err)) end
-  local close_ok, close_err = uv.fs_close(fd)
-  fd = nil
-  if not close_ok then return fail("Failed to close temporary file: " .. tostring(close_err)) end
 
   local rename_ok, rename_err = uv.fs_rename(temp_path, filepath)
   if not rename_ok then return fail("Failed to replace file: " .. tostring(rename_err)) end

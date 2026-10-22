@@ -16,10 +16,11 @@ describe("File", function()
   -- Mock vim API
   local api_mock
   local uv_mock
-  local readfile
+  local readfile, writefile
 
   before_each(function()
     readfile = vim.fn.readfile
+    writefile = vim.fn.writefile
     -- Setup mocks
     api_mock = mock(vim.api, true)
     uv_mock = mock(vim.uv, true)
@@ -27,6 +28,7 @@ describe("File", function()
 
   after_each(function()
     vim.fn.readfile = readfile
+    vim.fn.writefile = writefile
     -- Clean up mocks
     mock.revert(api_mock)
     mock.revert(uv_mock)
@@ -86,12 +88,11 @@ describe("File", function()
       uv_mock.os_getpid.returns(123)
       uv_mock.hrtime.returns(456)
       uv_mock.fs_open.returns(7)
-      uv_mock.fs_write.returns(#test_content)
-      uv_mock.fs_fsync.returns(true)
       uv_mock.fs_close.returns(true)
       uv_mock.fs_chmod.returns(true)
       uv_mock.fs_rename.returns(true)
       uv_mock.fs_unlink.returns(true)
+      vim.fn.writefile = stub().returns(0)
     end)
 
     it("replaces the destination only after the temporary file is durable", function()
@@ -100,10 +101,9 @@ describe("File", function()
       assert.is_true(ok)
       assert.is_nil(err)
       assert.stub(uv_mock.fs_open).was_called_with("test.txt.avante-123-456-1", "wx", 33188)
-      assert.stub(uv_mock.fs_write).was_called_with(7, test_content, 0)
-      assert.stub(uv_mock.fs_fsync).was_called_with(7)
       assert.stub(uv_mock.fs_close).was_called_with(7)
       assert.stub(uv_mock.fs_chmod).was_called_with("test.txt.avante-123-456-1", 33188)
+      assert.stub(vim.fn.writefile).was_called_with(test_content, "test.txt.avante-123-456-1", "s")
       assert.stub(uv_mock.fs_rename).was_called_with("test.txt.avante-123-456-1", test_file)
     end)
 
@@ -135,7 +135,7 @@ describe("File", function()
     end)
 
     it("leaves the destination untouched when writing the temporary file fails", function()
-      uv_mock.fs_write.returns(nil, "disk full")
+      vim.fn.writefile.invokes(function() error("disk full") end)
 
       local ok, err = File.write_atomically(test_file, test_content)
 
