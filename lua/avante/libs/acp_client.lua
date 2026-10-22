@@ -583,6 +583,8 @@ function ACPClient:_handle_event(event)
   end
 end
 
+---Start the ACP client.
+---@param callback? fun(err: avante.acp.ACPError|nil)
 function ACPClient:connect(callback)
   callback = callback or function() end
   if self.connection_state == "ready" then
