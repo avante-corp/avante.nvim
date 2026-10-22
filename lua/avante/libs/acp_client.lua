@@ -1,4 +1,16 @@
 ---@mod avante-acp Agent Client Protocol support
+---
+---@brief [[
+---
+---Avante supports the Agent Client Protocol (ACP) through the official Rust SDK.
+---ACP standardizes communication between editors and AI agents for sessions,
+---streamed responses, and tool calls. See
+---https://agentclientprotocol.com/overview/introduction.
+---
+---The native Rust module handles protocol messages and agent process lifecycle;
+---this Lua client handles UI, history, permission, and buffer integration.
+---@brief ]]
+---@see avante-config
 
 ---@class avante.acp.EnvVariable
 ---@field name string
