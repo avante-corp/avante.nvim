@@ -310,7 +310,9 @@ local function operation_error(err) return create_error("internal", (tostring(er
 local function start_operation(self, method, callback, ...)
   callback = callback or function() end
   if self.connection_state ~= "ready" or self.is_stopping or not self.native then
-    callback(nil, create_error("invalid_request", "ACP client is not ready"))
+    local message = self.is_stopping and "ACP client is stopping"
+      or ("ACP client is not ready (state: " .. self.connection_state .. ")")
+    callback(nil, create_error("invalid_request", message))
     return
   end
   local native_method = self.native[method]
