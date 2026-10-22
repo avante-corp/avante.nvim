@@ -44,7 +44,7 @@ describe("ACPClient native adapter", function()
       native[name] = function(self, ...) table.insert(self.calls, { method = name, args = { ... } }) end
     end
     client.native = native
-    client.state = "ready"
+    client.connection_state = "ready"
     return client, native
   end
 
@@ -124,7 +124,7 @@ describe("ACPClient native adapter", function()
     defer_stub:revert()
     assert.same(fatal, request_error)
     assert.equals(replacement, client.native)
-    assert.equals("connecting", client.state)
+    assert.equals("connecting", client.connection_state)
     assert.stub(replacement.stop).was_not_called()
   end)
 
@@ -153,7 +153,7 @@ describe("ACPClient native adapter", function()
 
   it("does not fail a new operation started by a fatal connection callback", function()
     local client = ready_client()
-    client.state = "connecting"
+    client.connection_state = "connecting"
     local replacement = { start = function() end, stop = stub(), prompt = function() return { operationId = 1 } end }
     client._native_module = { api_version = 3, new = function() return replacement end }
     client._start_polling = function() end
@@ -185,7 +185,7 @@ describe("ACPClient native adapter", function()
       on_state_change = function() error("state render failed") end,
       on_error = function(err) reported = err end,
     })
-    client.state = "connecting"
+    client.connection_state = "connecting"
     local connected = false
     table.insert(client.connect_callbacks, function() connected = true end)
     native.poll = function() return { { type = "state_changed", state = "ready" } } end
@@ -193,7 +193,7 @@ describe("ACPClient native adapter", function()
     client:_poll_events()
 
     assert.is_true(connected)
-    assert.equals("ready", client.state)
+    assert.equals("ready", client.connection_state)
     assert.matches("state render failed", reported.message)
   end)
 
@@ -219,7 +219,7 @@ describe("ACPClient native adapter", function()
 
     assert.same(fatal, request_error)
     assert.same({}, client.callbacks)
-    assert.equals("error", client.state)
+    assert.equals("error", client.connection_state)
     assert.same({ method = "stop", args = {} }, native.calls[2])
   end)
 
@@ -268,6 +268,7 @@ describe("ACPClient native adapter", function()
     client:_handle_event({ type = "initialized", supportsLoadSession = true, supportsListSessions = false })
     client:_handle_event({ type = "state_changed", state = "ready" })
     local started = replacement.started
+    local connection_state_during_restore = client.connection_state
     local ready_before_restore = client:is_ready()
     local restore_call = replacement.calls[1]
     client:_handle_event({ type = "operation_completed", operationId = 1, result = {} })
@@ -275,6 +276,7 @@ describe("ACPClient native adapter", function()
     defer_stub:revert()
 
     assert.is_true(started)
+    assert.equals("ready", connection_state_during_restore)
     assert.is_false(ready_before_restore)
     assert.same({
       "s1",
@@ -286,7 +288,7 @@ describe("ACPClient native adapter", function()
 
   it("stops after session restoration fails even when the error handler throws", function()
     local client, native = ready_client({ on_error = function() error("error UI failed") end })
-    client.state = "connecting"
+    client.connection_state = "connecting"
     client.reconnect_pending = true
     client.active_session_id = "s1"
     client.active_session_setup = {
@@ -324,7 +326,7 @@ describe("ACPClient native adapter", function()
     defer_stub:revert()
     assert.stub(connect_stub).was_not_called()
     connect_stub:revert()
-    assert.equals("disconnected", client.state)
+    assert.equals("disconnected", client.connection_state)
     assert.is_true(client.stop_requested)
   end)
 
@@ -572,7 +574,7 @@ describe("ACPClient native adapter", function()
     client:force_stop()
 
     assert.same({ method = "force_stop", args = {} }, native.calls[1])
-    assert.equals("disconnected", client.state)
+    assert.equals("disconnected", client.connection_state)
     assert.is_nil(client.native)
     assert.equals(1, disposed)
   end)
@@ -591,7 +593,7 @@ describe("ACPClient native adapter", function()
 
   it("finishes a pending connection when stopped", function()
     local client = ready_client()
-    client.state = "connecting"
+    client.connection_state = "connecting"
     local connect_error
     table.insert(client.connect_callbacks, function(err) connect_error = err end)
 
@@ -652,7 +654,7 @@ describe("ACPClient native adapter", function()
       client:_handle_event({ type = "operation_completed", operationId = 1, result = { stopReason = "end_turn" } })
 
       assert.equals(replacement, client.native)
-      assert.equals("ready", client.state)
+      assert.equals("ready", client.connection_state)
       assert.same({ stopReason = "end_turn" }, completed)
       assert.is_nil(failure)
       assert.stub(replacement.stop).was_not_called()
@@ -681,7 +683,7 @@ describe("ACPClient native adapter", function()
     assert.equals(replacement, native_after_stale_watchdog)
     assert.is_true(still_stopping)
     assert.is_nil(client.native)
-    assert.equals("disconnected", client.state)
+    assert.equals("disconnected", client.connection_state)
   end)
 
   it("does not send a stale responder callback to a replacement client", function()
@@ -730,7 +732,7 @@ describe("ACPClient native adapter", function()
 
     client:connect(function(err) actual = err end)
 
-    assert.equals("error", client.state)
+    assert.equals("error", client.connection_state)
     assert.equals("internal", actual.kind)
     assert.matches("Incompatible avante_acp native module", actual.message)
     assert.matches("rebuild or reinstall", actual.message)

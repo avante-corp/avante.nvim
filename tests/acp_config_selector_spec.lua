@@ -87,7 +87,7 @@ describe("ACP configuration selector ownership", function()
   it("waits for a pending session load before deciding the agent has no model options", function()
     local options = client.config_options
     client = ACPClient:new({ command = "/bin/true", handlers = {} })
-    client.state = "ready"
+    client.connection_state = "ready"
     client.native = { load_session = function() return { operationId = 1 } end }
     client:load_session("original-session", "/tmp", {}, function() end)
     owner.acp_client = client

@@ -82,7 +82,7 @@ describe("ACP native integration", function()
   local function stop(client)
     local err = operation("ACP shutdown", function(done) client:stop(done) end)
     assert.is_nil(err)
-    assert.equals("disconnected", client.state)
+    assert.equals("disconnected", client.connection_state)
   end
 
   before_each(function()
@@ -92,9 +92,9 @@ describe("ACP native integration", function()
 
   after_each(function()
     for _, client in ipairs(clients) do
-      if client.state ~= "disconnected" or client.native then
+      if client.connection_state ~= "disconnected" or client.native then
         client:stop()
-        vim.wait(3000, function() return client.state == "disconnected" and client.native == nil end, 10)
+        vim.wait(3000, function() return client.connection_state == "disconnected" and client.native == nil end, 10)
       end
     end
     for _, ws in ipairs(workspaces) do
@@ -574,7 +574,7 @@ describe("ACP native integration", function()
     assert.equals("cancelled", prompt_err.kind)
     assert.is_nil(client.active_session_id)
     assert.is_true(
-      vim.wait(3500, function() return client.native == nil and client.state == "disconnected" end, 10),
+      vim.wait(3500, function() return client.native == nil and client.connection_state == "disconnected" end, 10),
       "an unanswered prompt reply must release its SDK connection within the close grace period"
     )
     assert.is_not_nil(fatal_error)
@@ -713,7 +713,7 @@ describe("ACP native integration", function()
     wait_for("ignored cancellation", function() return vim.fn.filereadable(ws.scenario_marker) == 1 end)
 
     assert.is_true(
-      vim.wait(5000, function() return prompt_calls > 0 and client.state == "disconnected" end, 10),
+      vim.wait(5000, function() return prompt_calls > 0 and client.connection_state == "disconnected" end, 10),
       "cancel must terminate the unresponsive agent within its grace period"
     )
     assert.equals(1, prompt_calls)
@@ -785,7 +785,7 @@ describe("ACP native integration", function()
     client:_start_polling()
     assert.is_true(vim.wait(3000, function() return stopped end, 10), "stopping must unblock the worker")
     assert.is_nil(stop_err)
-    assert.equals("disconnected", client.state)
+    assert.equals("disconnected", client.connection_state)
     assert.is_nil(client.native)
     assert.equals(1, prompt_calls)
     assert.equals("cancelled", prompt_err.kind)
@@ -801,7 +801,7 @@ describe("ACP native integration", function()
     local prompt_err
     client:send_prompt("s1", { { type = "text", text = "oversized" } }, function(_, err) prompt_err = err end)
     assert.is_true(
-      vim.wait(3000, function() return prompt_err ~= nil and client.state == "disconnected" end, 10),
+      vim.wait(3000, function() return prompt_err ~= nil and client.connection_state == "disconnected" end, 10),
       "an oversized frame must terminate the connection promptly"
     )
     assert.matches("frame exceeds 8 MiB", prompt_err.message)
@@ -837,7 +837,7 @@ describe("ACP native integration", function()
     assert.equals(1, stop_calls)
     assert.equals(1, prompt_calls)
     assert.is_not_nil(prompt_err)
-    assert.equals("disconnected", client.state)
+    assert.equals("disconnected", client.connection_state)
     assert.is_nil(client.native)
   end)
 
@@ -900,7 +900,7 @@ describe("ACP native integration", function()
       "prompt before clean exit",
       function(done) client:send_prompt("s1", { { type = "text", text = "finish" } }, done) end
     )
-    wait_for("clean agent exit", function() return client.state == "disconnected" end)
+    wait_for("clean agent exit", function() return client.connection_state == "disconnected" end)
     assert.is_nil(prompt_err)
     assert.equals("end_turn", result.stopReason)
     assert.equals(257, #updates)
@@ -931,10 +931,10 @@ describe("ACP native integration", function()
     ws.process_pid = assert(tonumber(vim.fn.readfile(ws.scenario_marker)[1]))
     client:cancel_session("s1")
     -- Let the writer observe EPIPE before releasing the remaining stdout.
-    vim.wait(100, function() return client.state == "disconnected" end, 10)
+    vim.wait(100, function() return client.connection_state == "disconnected" end, 10)
     vim.fn.writefile({ "release" }, ws.output_gate)
 
-    wait_for("closed-stdin agent exit", function() return client.state == "disconnected" end)
+    wait_for("closed-stdin agent exit", function() return client.connection_state == "disconnected" end)
     assert.equals(1, prompt_calls)
     assert.is_nil(prompt_err)
     assert.equals("end_turn", prompt_result.stopReason)
@@ -956,7 +956,7 @@ describe("ACP native integration", function()
     wait_for("hanging agent stdin closed", function() return vim.fn.filereadable(ws.scenario_marker) == 1 end)
     ws.process_pid = assert(tonumber(vim.fn.readfile(ws.scenario_marker)[1]))
     client:cancel_session("s1")
-    vim.wait(100, function() return client.state == "disconnected" end, 10)
+    vim.wait(100, function() return client.connection_state == "disconnected" end, 10)
 
     local stop_calls = 0
     client:stop(function() stop_calls = stop_calls + 1 end)
@@ -970,7 +970,7 @@ describe("ACP native integration", function()
     )
     assert.equals(1, stop_calls)
     assert.equals(1, prompt_calls)
-    assert.equals("disconnected", client.state)
+    assert.equals("disconnected", client.connection_state)
     assert.is_nil(client.native)
   end)
 
@@ -988,7 +988,7 @@ describe("ACP native integration", function()
       function(done) client:send_prompt("s1", { { type = "text", text = "fail" } }, done) end
     )
     assert.is_not_nil(prompt_err)
-    wait_for("nonzero agent exit", function() return client.state == "disconnected" end)
+    wait_for("nonzero agent exit", function() return client.connection_state == "disconnected" end)
     assert.is_not_nil(fatal_error)
     assert.matches("fixture%-stderr%-before%-exit%-23", fatal_error.message)
   end)
@@ -1007,7 +1007,7 @@ describe("ACP native integration", function()
       function(done) client:send_prompt("s1", { { type = "text", text = "fail" } }, done) end
     )
     assert.is_not_nil(prompt_err)
-    wait_for("delayed process exit", function() return client.state == "disconnected" end)
+    wait_for("delayed process exit", function() return client.connection_state == "disconnected" end)
     assert.is_not_nil(fatal_error)
     assert.matches("fixture%-stderr%-after%-stdout%-close", fatal_error.message)
   end)
@@ -1025,7 +1025,7 @@ describe("ACP native integration", function()
       function(done) client:send_prompt("s1", { { type = "text", text = "fail with stderr" } }, done) end
     )
     assert.is_not_nil(prompt_err)
-    wait_for("stderr burst process exit", function() return client.state == "disconnected" end)
+    wait_for("stderr burst process exit", function() return client.connection_state == "disconnected" end)
     assert.is_not_nil(fatal_error)
     assert.matches("fixture%-stderr%-after%-stdout%-close", fatal_error.message)
     assert.matches("23", fatal_error.message)

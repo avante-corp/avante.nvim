@@ -92,7 +92,7 @@
 
 ---@class avante.acp.ACPClient
 ---@field config table
----@field state string
+---@field connection_state "disconnected"|"connecting"|"ready"|"error"
 ---@field native userdata|table|nil
 ---@field native_generation integer
 ---@field callbacks table<integer, fun(result: table|nil, err: avante.acp.ACPError|nil)>
@@ -133,9 +133,9 @@ local function load_native()
   error("Failed to load avante_acp native module: " .. tostring(native))
 end
 
-local function set_state(self, state)
-  if self.state == state then return end
-  self.state = state
+local function set_connection_state(self, state)
+  if self.connection_state == state then return end
+  self.connection_state = state
   local handler = self.config.handlers and self.config.handlers.on_state_change
   if handler then
     local ok, err = pcall(handler, state)
@@ -162,7 +162,7 @@ function ACPClient:new(config)
   end
   return setmetatable({
     config = config,
-    state = "disconnected",
+    connection_state = "disconnected",
     native = nil,
     native_generation = 0,
     callbacks = {},
@@ -278,7 +278,7 @@ local function finish_stop(self, err)
   self.restoring_session = false
   self.config_options = nil
   self.is_stopping = false
-  set_state(self, "disconnected")
+  set_connection_state(self, "disconnected")
   local failure = err or create_error("cancelled", "ACP client stopped")
   for _, callback in ipairs(connecting) do
     pcall(callback, failure)
@@ -300,7 +300,7 @@ local function operation_error(err) return create_error("internal", (tostring(er
 
 local function start_operation(self, method, callback, ...)
   callback = callback or function() end
-  if self.state ~= "ready" or self.is_stopping or not self.native then
+  if self.connection_state ~= "ready" or self.is_stopping or not self.native then
     callback(nil, create_error("invalid_request", "ACP client is not ready"))
     return
   end
@@ -379,7 +379,7 @@ local function finish_ready(self)
   local session_id = self.reconnect_pending and self.active_session_id or nil
   local setup = session_id and self.active_session_setup or nil
   self.restoring_session = setup ~= nil
-  set_state(self, "ready")
+  set_connection_state(self, "ready")
   if not setup then
     self.reconnect_pending = false
     self.reconnect_count = 0
@@ -501,7 +501,7 @@ function ACPClient:_handle_event(event)
   end
   if event.type == "state_changed" then
     if event.state == "connecting" then
-      set_state(self, "connecting")
+      set_connection_state(self, "connecting")
     elseif event.state == "ready" then
       finish_ready(self)
     elseif event.state == "disconnected" then
@@ -510,7 +510,7 @@ function ACPClient:_handle_event(event)
       else
         self.native = nil
         self:_stop_polling()
-        set_state(self, "disconnected")
+        set_connection_state(self, "disconnected")
         if self.native then return end
         if should_reconnect(self) then
           self.reconnect_count = self.reconnect_count + 1
@@ -518,7 +518,7 @@ function ACPClient:_handle_event(event)
           local generation = self.native_generation
           vim.defer_fn(function()
             if
-              self.state == "disconnected"
+              self.connection_state == "disconnected"
               and self.reconnect_pending
               and not self.stop_requested
               and self.native_generation == generation
@@ -553,7 +553,7 @@ function ACPClient:_handle_event(event)
     local native, generation = self.native, self.native_generation
     local connecting, operations = self.connect_callbacks, self.callbacks
     self.connect_callbacks, self.callbacks = {}, {}
-    set_state(self, "error")
+    set_connection_state(self, "error")
     for _, callback in ipairs(connecting) do
       pcall(callback, event.error)
     end
@@ -574,14 +574,14 @@ end
 
 function ACPClient:connect(callback)
   callback = callback or function() end
-  if self.state == "ready" then
+  if self.connection_state == "ready" then
     callback(nil)
     return
   end
   table.insert(self.connect_callbacks, callback)
-  if self.state ~= "disconnected" and self.state ~= "error" then return end
+  if self.connection_state ~= "disconnected" and self.connection_state ~= "error" then return end
   self.stop_requested = false
-  set_state(self, "connecting")
+  set_connection_state(self, "connecting")
   local ok, err = pcall(function()
     local native = self._native_module or load_native()
     if native.api_version ~= NATIVE_API_VERSION then
@@ -604,7 +604,7 @@ function ACPClient:connect(callback)
     self.connect_callbacks = {}
     self.native = nil
     self:_stop_polling()
-    set_state(self, "error")
+    set_connection_state(self, "error")
     local failure = create_error("internal", tostring(err))
     for _, pending in ipairs(callbacks) do
       pcall(pending, failure)
@@ -758,8 +758,10 @@ end
 
 function ACPClient:cancel_session(session_id) send_native(self, "cancel", session_id) end
 
+---Whether the client can accept a new operation.
+---@return boolean
 function ACPClient:is_ready()
-  return self.state == "ready"
+  return self.connection_state == "ready"
     and not self.is_stopping
     and not self.restoring_session
     and self.pending_session_operations == 0

@@ -24,7 +24,7 @@ describe("ACPClient sessions", function()
       operation(name)
     end
     client.native = native
-    client.state = "ready"
+    client.connection_state = "ready"
     return client, native
   end
 

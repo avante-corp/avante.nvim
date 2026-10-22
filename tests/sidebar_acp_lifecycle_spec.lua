@@ -232,7 +232,7 @@ describe("Sidebar ACP request lifecycle", function()
     replace(Utils, "error")
     replace(Utils.root, "get", function() return "/tmp" end)
     local client = ACPClient:new({ command = "agent", handlers = {} })
-    client.state = "ready"
+    client.connection_state = "ready"
     client.native = { load_session = function() return { operationId = 1 } end, stop = function() end }
     local import = { session_id = "s1", filename = "old.json", created = false }
     local sidebar, _, callbacks = submit({ request = "", import = import, client = client })
