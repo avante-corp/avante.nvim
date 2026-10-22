@@ -18,7 +18,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch};
 
 const NATIVE_API_VERSION: u32 = 3;
 const DEFAULT_SESSION_CLOSE_TIMEOUT_MS: u64 = 500;
-const MAX_PENDING_EVENTS: usize = 4_096;
+const MAX_PENDING_EVENTS: usize = 1_024;
 const MAX_PENDING_EVENT_BYTES: usize = 8 * 1024 * 1024;
 const TIMEOUT_ERROR_CODE: i32 = -32001;
 
