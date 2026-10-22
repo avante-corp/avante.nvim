@@ -317,7 +317,7 @@ local function start_operation(self, method, callback, ...)
   end
   local native_method = self.native[method]
   if type(native_method) ~= "function" then
-    callback(nil, create_error("internal", "Native ACP method is unavailable: " .. method))
+    callback(nil, create_error("internal", "ACP client implementation is missing method: " .. method))
     return
   end
   local ok, start = pcall(native_method, self.native, ...)
@@ -326,7 +326,7 @@ local function start_operation(self, method, callback, ...)
     return
   end
   if type(start) ~= "table" then
-    callback(nil, create_error("internal", "Native ACP method returned an invalid operation result"))
+    callback(nil, create_error("internal", "ACP client implementation returned an invalid result: " .. method))
     return
   end
   if start.error then
@@ -334,7 +334,7 @@ local function start_operation(self, method, callback, ...)
     return
   end
   if type(start.operationId) ~= "number" then
-    callback(nil, create_error("internal", "Native ACP method did not return an operation ID"))
+    callback(nil, create_error("internal", "ACP client implementation did not return an operation ID: " .. method))
     return
   end
   self.callbacks[start.operationId] = callback
