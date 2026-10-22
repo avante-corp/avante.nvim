@@ -945,7 +945,8 @@ avante.Sidebar                                                  *avante.Sidebar*
         {acp_client_generation}      (integer)                                                                                              Bumped whenever the ACP client is dropped, so a connection still in flight is discarded
         {pending_acp_import}         (avante.PendingAcpImport|nil)
         {post_render?}               (fun(sidebar:avante.Sidebar))
-        {permission_handler}         (fun(id?:string)|nil)
+        {permission_handler}         (fun(id:string)|nil)
+        {permission_cancel_handler}  (fun()|nil)
         {acp_last_auto_nav?}         (number)
         {permission_button_options}  ({id:string,icon:string|nil,name:string}[]|nil)
         {expanded_message_uuids}     (table<string,boolean>)
@@ -2883,6 +2884,15 @@ M.post({url}, {opts?})                                  *avante-utils-curl.post*
 ==============================================================================
 Agent Client Protocol support                                       *avante-acp*
 
+
+Avante supports the Agent Client Protocol (ACP) through the official Rust SDK.
+ACP standardizes communication between editors and AI agents for sessions,
+streamed responses, and tool calls. See
+https://agentclientprotocol.com/overview/introduction.
+
+The native Rust module handles protocol messages and agent process lifecycle;
+this Lua client handles UI, history, permission, and buffer integration.
+
 avante.acp.EnvVariable                                  *avante.acp.EnvVariable*
 
     Fields: ~
@@ -2977,36 +2987,23 @@ ACPHandlers                                                        *ACPHandlers*
         {on_state_change?}        (fun(state:string))
 
 
+avante.acp.ClientConfig : AvanteACPProvider            *avante.acp.ClientConfig*
+
+    Fields: ~
+        {handlers?}  (ACPHandlers)
+
+
 avante.acp.ACPClient                                      *avante.acp.ACPClient*
 
     Fields: ~
-        {config}                      (table)
-        {state}                       (string)
-        {native}                      (userdata|table|nil)
-        {native_generation}           (integer)
-        {callbacks}                   (table<integer,fun(result:table|nil,err:avante.acp.ACPError|nil)>)
-        {connect_callbacks}           (fun(err:avante.acp.ACPError|nil)[])
-        {stop_callbacks}              (fun(err:avante.acp.ACPError|nil)[])
-        {session_replay_handlers}     (table<string,fun(update:table):boolean>)
-        {loading_sessions}            (table<string,table>)
-        {pending_session_operations}  (integer)
-        {session_commands}            (table<string,{name:string,description?:string}[]>)
-        {poll_timer}                  (any)
-        {reconnect_count}             (integer)
-        {stop_requested}              (boolean)
-        {is_stopping}                 (boolean)
-        {supports_load}               (boolean)
-        {supports_list}               (boolean)
-        {active_session_id}           (string|nil)
-        {active_session_setup}        (table|nil)
-        {reconnect_pending}           (boolean)
-        {restoring_session}           (boolean)
-        {config_options}              (avante.acp.ConfigOption[]|nil)
-        {on_dispose?}                 (fun())
-        {update_request_context?}     (fun(opts:AvanteLLMStreamOptions))
+        {config}            (avante.acp.ClientConfig)
+        {connection_state}  ()
 
 
-ACPClient:new()                                                 *avante-acp:new*
+ACPClient:new({config})                                         *avante-acp:new*
+
+    Parameters: ~
+        {config}  (avante.acp.ClientConfig)
 
     Returns: ~
         (avante.acp.ACPClient)
@@ -3030,13 +3027,18 @@ ACPClient:_stop_polling()                             *avante-acp:_stop_polling*
 ACPClient:_handle_event()                             *avante-acp:_handle_event*
 
 
-ACPClient:connect()                                         *avante-acp:connect*
+ACPClient:connect({callback?})                              *avante-acp:connect*
+    Start the ACP client.
+
+    Parameters: ~
+        {callback?}  (fun(err:avante.acp.ACPError|nil))
 
 
-ACPClient:initialize()                                   *avante-acp:initialize*
+ACPClient:stop({callback?})                                    *avante-acp:stop*
+    Stop the client after closing every active session advertised by this connection.
 
-
-ACPClient:stop()                                               *avante-acp:stop*
+    Parameters: ~
+        {callback?}  (fun(err:avante.acp.ACPError|nil))
 
 
 ACPClient:force_stop()                                   *avante-acp:force_stop*
@@ -3084,6 +3086,10 @@ ACPClient:cancel_session()                           *avante-acp:cancel_session*
 
 
 ACPClient:is_ready()                                       *avante-acp:is_ready*
+    Whether the client can accept a new operation.
+
+    Returns: ~
+        (boolean)
 
 
 ==============================================================================
