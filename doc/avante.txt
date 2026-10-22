@@ -3058,9 +3058,17 @@ ACPClient:delete_session()                           *avante-acp:delete_session*
 
 
 ACPClient:supports_load_session()             *avante-acp:supports_load_session*
+    Whether the agent supports session/load.
+
+    Returns: ~
+        (boolean)
 
 
 ACPClient:supports_list_sessions()           *avante-acp:supports_list_sessions*
+    Whether the agent supports session/list.
+
+    Returns: ~
+        (boolean)
 
 
 ACPClient:list_all_sessions()                     *avante-acp:list_all_sessions*

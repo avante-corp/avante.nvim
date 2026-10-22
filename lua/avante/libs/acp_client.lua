@@ -746,7 +746,12 @@ function ACPClient:delete_session(session_id, callback)
   end, session_id)
 end
 
+---Whether the agent supports session/load.
+---@return boolean
 function ACPClient:supports_load_session() return self.supports_load end
+
+---Whether the agent supports session/list.
+---@return boolean
 function ACPClient:supports_list_sessions() return self.supports_list end
 
 function ACPClient:list_all_sessions(cwd, callback)
