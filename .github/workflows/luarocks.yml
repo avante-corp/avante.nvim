@@ -2,11 +2,15 @@ name: Push to luarocks.org
 
 on:
   push:
-    tags:
-      - '*'
-  release:
-    types:
-      - created
+    # to upload dev version
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  #   tags:
+  #     - '*'
+  # release:
+  #   types:
+  #     - created
 
 jobs:
   luarocks-upload:
@@ -17,12 +21,13 @@ jobs:
         with:
           fetch-depth: 0 # Required to count the commits
       - name: Get Version
-        run: echo "LUAROCKS_VERSION=$(git describe --abbrev=0 --tags)" >> "$GITHUB_ENV"
+        run: |
+          echo "LUAROCKS_VERSION=$(git describe --abbrev=0 --tags)" >> "$GITHUB_ENV"
+          echo "GITHUB_SHA_OVERRIDE=2162ad121610bc3f7402fced50058427b6d6fa0e" >> "$GITHUB_ENV"
       - name: LuaRocks Upload
-        uses: nvim-neorocks/luarocks-tag-release@v8
+        uses: nvim-neorocks/luarocks-tag-release@v9
         env:
           LUAROCKS_API_KEY: ${{ secrets.LUAROCKS_API_KEY }}
         with:
-          template: avante.nvim-scm-1.rockspec
-          version: ${{ env.LUAROCKS_VERSION }}
-          summary: USED_AS_TEMPLATE
+          version: dev
+          # version: ${{ env.LUAROCKS_VERSION }}

@@ -3,7 +3,7 @@
 set -e
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-AVANTE_ROCKSPEC="$SCRIPT_DIR/../avante.nvim-scm-1.rockspec"
+AVANTE_ROCKSPEC="$SCRIPT_DIR/../avante.nvim-dev-1.rockspec"
 
 # Optional integrations needed to resolve their types during Lua typechecking.
 OPTIONAL_DEPS=(
