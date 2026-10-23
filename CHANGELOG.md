@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.6](https://github.com/avante-corp/avante.nvim/compare/v0.4.5...v0.4.6) (2026-10-23)
+
+
+### Continuous Integration
+
+* **luarocks:** adapt to new workflow ([efc5c02](https://github.com/avante-corp/avante.nvim/commit/efc5c02272af25416ae5c8f1f4b1b10fd45b5305))
+
 ## [0.4.5](https://github.com/avante-corp/avante.nvim/compare/v0.4.4...v0.4.5) (2026-10-23)
 
 
