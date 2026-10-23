@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.4](https://github.com/avante-corp/avante.nvim/compare/v0.4.3...v0.4.4) (2026-10-23)
+
+
+### Continuous Integration
+
+* trigger luarocks action ([1f90c3b](https://github.com/avante-corp/avante.nvim/commit/1f90c3b5e1c6b23c74b540540dfa255ebaf29005))
+
 ## [0.4.3](https://github.com/avante-corp/avante.nvim/compare/v0.4.2...v0.4.3) (2026-10-20)
 
 
