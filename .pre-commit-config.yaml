@@ -1,4 +1,4 @@
-exclude: ^doc/avante\.txt$
+exclude: '^(doc/avante\.txt|lux\.lock)$'
 
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks

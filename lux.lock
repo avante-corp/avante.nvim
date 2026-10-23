@@ -1,0 +1,127 @@
+{
+  "version": "2.0.0",
+  "dependencies": {
+    "rocks": {
+      "1e84e815ef0357ffeaed0439e88488077491335126903697dd20dbbfd6958a90": {
+        "name": "mega.cmdparse",
+        "version": "1.2.1-1",
+        "dependencies": [
+          "392c069ca7154cb446b52b0f9c6be33de04e6a6f0a7c9ff762b30c5b9db1bdc7"
+        ],
+        "constraint": "*",
+        "source": "luarocks_rockspec+https://luarocks.org/",
+        "source_url": {
+          "type": "url",
+          "url": "https://github.com/ColinKennedy/mega.cmdparse/archive/v1.2.1.zip"
+        },
+        "hashes": {
+          "rockspec": "sha256-Sxv1T9sPpnZMg8iAk0H+xYLkR6mBFKkUd3/k+RW+xpw=",
+          "source": "sha256-FHcRXIAgLJRn43SedMlMaTKdHR7ypsaKXr2AKNsBjIk="
+        }
+      },
+      "392c069ca7154cb446b52b0f9c6be33de04e6a6f0a7c9ff762b30c5b9db1bdc7": {
+        "name": "mega.logging",
+        "version": "1.1.6-1",
+        "constraint": ">=1.1.1, <2.0",
+        "source": "luarocks_rockspec+https://luarocks.org/",
+        "source_url": {
+          "type": "url",
+          "url": "https://github.com/ColinKennedy/mega.logging/archive/v1.1.6.zip"
+        },
+        "hashes": {
+          "rockspec": "sha256-b/UNBHzASov3C1Tp3B43NfCtejHOBc3FjYNZHAndRu0=",
+          "source": "sha256-xz8Btm9bYc+VR5jcgdzVSmnhFaVzi7pj6NkoBXd0FFQ="
+        }
+      },
+      "4e9592a499c9ced4f8ce366db9db7d9c0dd1424ea8d4c8c16c1550ea3a61a696": {
+        "name": "say",
+        "version": "1.4.1-3",
+        "constraint": ">=1.4.0",
+        "source": "luarocks_rockspec+https://luarocks.org/",
+        "source_url": {
+          "type": "git",
+          "url": "https://github.com/lunarmodules/say.git",
+          "ref": "v1.4.1"
+        },
+        "hashes": {
+          "rockspec": "sha256-WFKt1iWeyjO9A8SG0KUX8tkS9JvMqoVM8CKBUguuK0Y=",
+          "source": "sha256-IjNkK1leVtYgbEjUqguVMjbdW+0BHAOCE0pazrVuF50="
+        }
+      },
+      "8fb02fc1e59ed9496808598b001604d99916eab2389a295eb2fce1dfc908ded5": {
+        "name": "plenary.nvim",
+        "version": "0.1.4-1",
+        "dependencies": [
+          "acdfde00d122aac481c18c906d483478bb536741beb025becc11782a075d125b"
+        ],
+        "constraint": "*",
+        "source": "luarocks_rockspec+https://luarocks.org/",
+        "source_url": {
+          "type": "url",
+          "url": "https://github.com/nvim-lua/plenary.nvim/archive/v0.1.4.zip"
+        },
+        "hashes": {
+          "rockspec": "sha256-0EdepFBCsLc5D7HJKX66yMw/NbIgCmQib/+yqpJ9FFE=",
+          "source": "sha256-cJ2EfkbTOiEJ8IPVnoO77alXynBv+nJ2ql/vfYOTSJI="
+        }
+      },
+      "ab21306be092c7e14df47f0f373574fd619ffea35c8bffe302b14d35f4b391bb": {
+        "name": "luarocks",
+        "version": "3.13.0-1",
+        "constraint": ">=3.11.1, <4.0.0",
+        "binaries": [
+          "luarocks-admin",
+          "luarocks"
+        ],
+        "source": "luarocks_rockspec+https://luarocks.org/",
+        "source_url": {
+          "type": "git",
+          "url": "https://github.com/luarocks/luarocks",
+          "ref": "v3.13.0"
+        },
+        "hashes": {
+          "rockspec": "sha256-tHRZzjXj8bLc9X8TPPe7efM7fEeY8PGd0odkiXe78M4=",
+          "source": "sha256-3/5zVtIvdANOoFmnwlZz9MU+ka6JMr7o7v5cWPl+eNg="
+        }
+      },
+      "acdfde00d122aac481c18c906d483478bb536741beb025becc11782a075d125b": {
+        "name": "luassert",
+        "version": "1.9.0-1",
+        "dependencies": [
+          "4e9592a499c9ced4f8ce366db9db7d9c0dd1424ea8d4c8c16c1550ea3a61a696"
+        ],
+        "source": "luarocks_rockspec+https://luarocks.org/",
+        "source_url": {
+          "type": "git",
+          "url": "https://github.com/lunarmodules/luassert.git",
+          "ref": "v1.9.0"
+        },
+        "hashes": {
+          "rockspec": "sha256-rTPvF/GK/jMnH/q4wbwTCGBFELWh+JcvHeOCFAbIf64=",
+          "source": "sha256-jjdB95Vr5iVsh5T7E84WwZMW6/5H2k2R/ny2VBs2l3I="
+        }
+      },
+      "c3d396d177a4f51ddba1d9461d3378cf2df32d74d52b98b1843556d1a48d81be": {
+        "name": "nui.nvim",
+        "version": "0.4.0-1",
+        "constraint": "*",
+        "source": "luarocks_rockspec+https://luarocks.org/",
+        "source_url": {
+          "type": "git",
+          "url": "https://github.com/MunifTanjim/nui.nvim.git",
+          "ref": "0.4.0"
+        },
+        "hashes": {
+          "rockspec": "sha256-Ll8j93K9whJlooWPl7hTYryqHUlDFZYsLTCevJg6SC8=",
+          "source": "sha256-SJc9nfV6cnBKYwRWsv0iHy+RbET8frNV85reICf+pt8="
+        }
+      }
+    },
+    "entrypoints": {
+      "luarocks": "ab21306be092c7e14df47f0f373574fd619ffea35c8bffe302b14d35f4b391bb",
+      "mega.cmdparse": "1e84e815ef0357ffeaed0439e88488077491335126903697dd20dbbfd6958a90",
+      "nui.nvim": "c3d396d177a4f51ddba1d9461d3378cf2df32d74d52b98b1843556d1a48d81be",
+      "plenary.nvim": "8fb02fc1e59ed9496808598b001604d99916eab2389a295eb2fce1dfc908ded5"
+    }
+  }
+}
