@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.5](https://github.com/avante-corp/avante.nvim/compare/v0.4.4...v0.4.5) (2026-10-23)
+
+
+### Continuous Integration
+
+* restore missing version from rockspec ([6155a52](https://github.com/avante-corp/avante.nvim/commit/6155a52516bfa7bec3ac383d89af1f5d63b9e877))
+
 ## [0.4.4](https://github.com/avante-corp/avante.nvim/compare/v0.4.3...v0.4.4) (2026-10-23)
 
 
