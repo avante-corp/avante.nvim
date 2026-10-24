@@ -23,11 +23,12 @@ jobs:
       - name: Get Version
         run: |
           echo "LUAROCKS_VERSION=$(git describe --abbrev=0 --tags)" >> "$GITHUB_ENV"
-          echo "GITHUB_SHA_OVERRIDE=2162ad121610bc3f7402fced50058427b6d6fa0e" >> "$GITHUB_ENV"
       - name: LuaRocks Upload
-        uses: nvim-neorocks/luarocks-tag-release@v9
+        # work around safety that prevents push on PRs
+        # https://github.com/lumen-oss/luarocks-tag-release/issues/1039
+        uses: teto/luarocks-tag-release@v9
         env:
-          LUAROCKS_API_KEY: ${{ secrets.LUAROCKS_API_KEY }}
+          LUX_API_KEY: ${{ secrets.LUX_API_KEY }}
         with:
           version: dev
           # version: ${{ env.LUAROCKS_VERSION }}
