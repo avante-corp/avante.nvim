@@ -106,9 +106,9 @@ function M.build(opts)
     if obj.code == 0 then
       local output = obj.stdout
 
-      Utils.debug({ "build output:", output })
+      Utils.debug({ "build succeeded:", output })
     else
-      Utils.error({ "build error (stderr):", obj.stderr })
+      Utils.error({ "build failed (stderr):", obj.stderr })
     end
   end)
   if not ok then Utils.error("Failed to run the build command: " .. cmd_str .. "\n" .. job_or_err, { once = true }) end
