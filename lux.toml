@@ -3,7 +3,7 @@ lua = "== 5.1"
 
 [source]
 url = "https://github.com/avante-corp/avante.nvim/archive/$(REF).zip"
-dev = "git+https://github.com/avante-corp/avante.nvim.git"
+dev = "https://github.com/avante-corp/avante.nvim/archive/main.zip"
 
 [description]
 summary = "Use your Neovim like using Cursor AI IDE!"
