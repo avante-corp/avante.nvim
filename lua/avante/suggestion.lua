@@ -346,6 +346,11 @@ function Suggestion:show()
       buf_lines_count = buf_lines_count + 1
     end
 
+    -- The buffer may have been padded above, so refresh the snapshot taken
+    -- earlier: current_lines[i] would otherwise be nil for the padded rows
+    -- and crash the highlight loop with "attempt to get length of local 'old_line'".
+    current_lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
+
     if virt_text_win_col > 0 or start_row - 2 < 0 then
       api.nvim_buf_set_extmark(bufnr, SUGGESTION_NS, start_row - 1, 0, extmark)
     else
