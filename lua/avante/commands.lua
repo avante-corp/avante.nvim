@@ -5,6 +5,8 @@
 --- Commands
 ---
 ---                                                     *:Avante*
+--- :Avante resume
+---         Open a picker for previous chat sessions.
 --- :Avante rag start
 ---         Start the configured RAG service and index the current project.
 --- :Avante rag stop
@@ -46,7 +48,7 @@
 ---
 ---                                                     *:AvanteHistory*
 --- :AvanteHistory
----         Open a picker for previous chat sessions.
+---         Deprecated alias for :Avante resume. Shows a deprecation warning.
 ---
 ---                                                     *:AvanteClear*
 --- :AvanteClear [history|cache]
@@ -156,6 +158,9 @@ function M.setup()
   local cmdparse = require("mega.cmdparse")
   local parser = cmdparse.ParameterParser.new({ name = "Avante", help = "Avante commands" })
   local subparsers = parser:add_subparsers({ destination = "command" })
+  subparsers
+    :add_parser({ name = "resume", help = "Open a picker for previous chat sessions" })
+    :set_execute(function() require("avante.api").select_history() end)
   local rag = subparsers:add_parser({ name = "rag", help = "Manage and query the RAG service" })
   local actions = rag:add_subparsers({ destination = "rag_command" })
 

@@ -730,6 +730,8 @@ Commands (:AvanteAsk,...)                                      *avante-commands*
  Commands
 
                                                      *:Avante*
+ :Avante resume
+         Open a picker for previous chat sessions.
  :Avante rag start
          Start the configured RAG service and index the current project.
  :Avante rag stop
@@ -771,7 +773,7 @@ Commands (:AvanteAsk,...)                                      *avante-commands*
 
                                                      *:AvanteHistory*
  :AvanteHistory
-         Open a picker for previous chat sessions.
+         Deprecated alias for :Avante resume. Shows a deprecation warning.
 
                                                      *:AvanteClear*
  :AvanteClear [history|cache]

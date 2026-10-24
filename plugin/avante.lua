@@ -276,8 +276,11 @@ end, {
   desc = "avante: deprecated alias for :Avante acp modes",
   nargs = 0,
 })
-api.nvim_create_user_command("AvanteHistory", function() require("avante.api").select_history() end, {
-  desc = "avante: show histories",
+api.nvim_create_user_command("AvanteHistory", function()
+  Utils.warn("AvanteHistory is deprecated. Use :Avante resume instead.")
+  vim.cmd("Avante resume")
+end, {
+  desc = "avante: deprecated alias for :Avante resume",
   nargs = 0,
 })
 api.nvim_create_user_command("AvanteStop", function() require("avante.api").stop() end, {
