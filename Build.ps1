@@ -29,6 +29,9 @@ function Build-FromSource($feature) {
     $targetTokenizerFile = "avante_tokenizers.dll"
     $targetTemplatesFile = "avante_templates.dll"
     $targetRepoMapFile = "avante_repo_map.dll"
+
+    Move-LockedDlls -TargetDir $BuildDir
+
     Copy-Item (Join-Path $SCRIPT_DIR "target\release\avante_tokenizers.dll") (Join-Path $BuildDir $targetTokenizerFile)
     Copy-Item (Join-Path $SCRIPT_DIR "target\release\avante_templates.dll") (Join-Path $BuildDir $targetTemplatesFile)
     Copy-Item (Join-Path $SCRIPT_DIR "target\release\avante_repo_map.dll") (Join-Path $BuildDir $targetRepoMapFile)
@@ -94,8 +97,31 @@ function Download-Prebuilt($feature, $tag) {
     if (-not (Test-Path $TARGET_DIR)) {
         New-Item -ItemType Directory -Path $TARGET_DIR | Out-Null
     }
+
+    Move-LockedDlls -TargetDir $TARGET_DIR
+
     Expand-Archive -Path $TempFile -DestinationPath $TARGET_DIR -Force
     Remove-Item $TempFile
+}
+
+function Move-LockedDlls {
+    param (
+        [string]$TargetDir
+    )
+
+    $dlls = Get-ChildItem -Path $TargetDir -Filter "*.dll" -File -ErrorAction SilentlyContinue
+
+    foreach ($dll in $dlls) {
+        $oldName = "$($dll.FullName).old"
+
+        # Unlock existing DLLs to prevent file lock errors before overwriting
+        if (Test-Path $oldName) {
+            Remove-Item -Path $oldName -Force -ErrorAction SilentlyContinue
+        }
+
+        # Unlock existing DLLs before extracting the zip archive
+        Rename-Item -Path $dll.FullName -NewName "$($dll.Name).old" -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Main {
@@ -169,6 +195,9 @@ function Main {
             Save-Tag $latestTag
         } else {
             cargo build --release --features=$Version
+
+            Move-LockedDlls -TargetDir "lua"
+
             Get-ChildItem -Path "target/release/avante_*.dll" | ForEach-Object {
                 Copy-Item $_.FullName "lua/$($_.Name)"
             }
