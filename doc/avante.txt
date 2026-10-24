@@ -1503,6 +1503,7 @@ Built-in slash commands available in the Avante input buffer.
  - `/init`: initialize AGENTS.md based on the current project
  - `/clear`: clear chat history
  - `/new`: start a new chat
+ - `/resume`: open a picker for previous chat sessions
  - `/compact`: compact history messages
  - `/model`: select model
  - `/lines <start>-<end> <question>`: ask about specific lines

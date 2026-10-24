@@ -10,6 +10,7 @@
 --- - `/init`: initialize AGENTS.md based on the current project
 --- - `/clear`: clear chat history
 --- - `/new`: start a new chat
+--- - `/resume`: open a picker for previous chat sessions
 --- - `/compact`: compact history messages
 --- - `/model`: select model
 --- - `/lines <start>-<end> <question>`: ask about specific lines
@@ -42,6 +43,11 @@ local builtin_commands = {
     description = "New chat",
     details = "New chat",
     name = "new",
+  },
+  {
+    description = "Resume a previous chat session",
+    details = "Open a picker for previous chat sessions",
+    name = "resume",
   },
   {
     description = "Compact history messages to save tokens",
@@ -84,6 +90,10 @@ local callbacks = {
   end,
   clear = function(sidebar, args, cb) sidebar:clear_history(args, cb) end,
   new = function(sidebar, args, cb) sidebar:new_chat(args, cb) end,
+  resume = function(_, _, cb)
+    vim.cmd("Avante resume")
+    if cb then cb("") end
+  end,
   compact = function(sidebar, args, cb) sidebar:compact_history_messages(args, cb) end,
   init = function(sidebar, args, cb) sidebar:init_current_project(args, cb) end,
   lines = function(_, args, cb)
