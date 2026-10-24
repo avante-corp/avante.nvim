@@ -1044,7 +1044,7 @@ The following key bindings are available for use with `avante.nvim`:
 | Command                            | Description                                                                                                 | Examples                                            |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
 | `:AvanteAsk [question] [position]` | Ask AI about your code. Optional `position` set window position and `ask` enable/disable direct asking mode | `:AvanteAsk position=right Refactor this code here` |
-| `:AvanteBuild`                     | Build dependencies for the project                                                                          |                                                     |
+| `:AvanteBuild [source=true\|false] [--version {version}]` | Build dependencies; version defaults to `lua/avante/version.lua`. Use `--help` for details. | `:AvanteBuild --version v0.4.3` |
 | `:AvanteChat`                      | Start a chat session with AI about your codebase. Default is `ask`=false                                    |                                                     |
 | `:AvanteChatNew`                   | Start a new chat session. The current chat can be re-opened with the chat session selector                  |                                                     |
 | `:Avante resume`                   | Opens a picker for your previous chat sessions (`:AvanteHistory` is a deprecated alias)                      |                                                     |

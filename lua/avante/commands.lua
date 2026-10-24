@@ -61,6 +61,7 @@
 ---         Build dependencies for the project.
 ---         The release version defaults to lua/avante/version.lua.
 ---         Accepts versions with or without a leading v.
+---         Use :AvanteBuild --help for generated help.
 ---
 ---                                                     *:AvanteEdit*
 --- :[range]AvanteEdit [instruction]
@@ -160,6 +161,29 @@ end
 ---Register the top-level Avante command.
 function M.setup()
   local cmdparse = require("mega.cmdparse")
+  local build = cmdparse.ParameterParser.new({ name = "AvanteBuild", help = "Build Avante dependencies" })
+  build:add_parameter({
+    name = "source",
+    required = false,
+    choices = { "source=true", "source=false" },
+    default = "source=false",
+    help = "Build locally with cargo instead of downloading prebuilt libraries",
+  })
+  build:add_parameter({
+    name = "--version",
+    default = require("avante.version"),
+    help = "Release version to download (e.g., 'v0.4.3' or '0.5.0')",
+  })
+  build:set_execute(
+    function(data)
+      require("avante.api").build({
+        source = data.namespace.source == "source=true",
+        version = data.namespace.version,
+      })
+    end
+  )
+  cmdparse.create_user_command(build, nil, { desc = "avante: build dependencies" })
+
   local parser = cmdparse.ParameterParser.new({ name = "Avante", help = "Avante commands" })
   local subparsers = parser:add_subparsers({ destination = "command" })
   subparsers

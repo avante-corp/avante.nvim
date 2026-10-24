@@ -643,7 +643,7 @@ M.build({opts?})                                              *avante-api.build*
     Blocking as it waits for cargo to finish
 
     Parameters: ~
-        {opts?}  ({source:boolean})
+        {opts?}  ({source?:boolean,version?:string})
 
 
 AskOptions                                                          *AskOptions*
@@ -796,6 +796,7 @@ Commands (:AvanteAsk,...)                                      *avante-commands*
          Build dependencies for the project.
          The release version defaults to lua/avante/version.lua.
          Accepts versions with or without a leading v.
+         Use :AvanteBuild --help for generated help.
 
                                                      *:AvanteEdit*
  :[range]AvanteEdit [instruction]
