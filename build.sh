@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 
 set -e
+# Usage: ./build.sh [tag] [repository_url]
+REMOTE_URL="${2:-https://github.com/avante-corp/avante.nvim}"
 
-REMOTE_URL="${1:-https://github.com/avante-corp/avante.nvim}"
+release_version="${1}"
+latest_tag="v${release_version#v}"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 
@@ -55,34 +58,12 @@ LUA_VERSION="${LUA_VERSION:-luajit}"
 # Set the artifact name pattern
 ARTIFACT_NAME_PATTERN="avante_lib-$PLATFORM-$ARCH-$LUA_VERSION"
 
-test_command() {
-  command -v "$1" >/dev/null 2>&1
-}
-
 if [ ! -d "$TARGET_DIR" ]; then
   mkdir -p "$TARGET_DIR"
 fi
 
-release_version="${2:-$(sed -n 's/^return "\([^"]*\)".*/\1/p' "${SCRIPT_DIR}/lua/avante/version.lua")}"
-latest_tag="v${release_version#v}"
-built_tag="$(cat "${TARGET_DIR}/.tag" 2>/dev/null || true)"
 
-save_tag() {
-  echo "$latest_tag" > "${TARGET_DIR}/.tag"
-}
+# Get the artifact download URL
+ARTIFACT_URL="$REMOTE_URL/releases/download/$latest_tag/avante_lib-$PLATFORM-$ARCH-$LUA_VERSION.tar.gz"
 
-if [[ "$latest_tag" = "$built_tag" && -n "$latest_tag" ]]; then
-  echo "Local build is up to date $latest_tag. No download needed."
-elif [[ "$latest_tag" != "$built_tag" && -n "$latest_tag" ]]; then
-  echo "Local build is out of date $built_tag. Downloading $latest_tag."
-
-  # Get the artifact download URL
-  ARTIFACT_URL="$REMOTE_URL/releases/download/$latest_tag/avante_lib-$PLATFORM-$ARCH-$LUA_VERSION.tar.gz"
-
-  mkdir -p "$TARGET_DIR"
-
-  curl -L "$ARTIFACT_URL" | tar -zxv -C "$TARGET_DIR"
-  save_tag
-else
-  echo "No latest tag found. Run ':AvanteBuild source=true'."
-fi
+curl -L "$ARTIFACT_URL" | tar -zxv -C "$TARGET_DIR"

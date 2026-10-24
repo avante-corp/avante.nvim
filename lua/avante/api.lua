@@ -81,7 +81,6 @@ function M.build(opts)
     } or {
       "bash",
       string.format("%s/build.sh", build_directory),
-      "https://github.com/avante-corp/avante.nvim.git",
       version,
     }
   elseif os_name == "windows" then
