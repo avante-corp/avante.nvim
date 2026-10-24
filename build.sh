@@ -2,17 +2,7 @@
 
 set -e
 
-REMOTE_URL="${1:-https://github.com/avante-corp/avante.nvim.git}"
-
-if [[ "$REMOTE_URL" == *"github.com"* ]]; then
-  tmp="${REMOTE_URL#*github.com[:/]}"
-  tmp="${tmp%.git}"
-  REPO_OWNER="${tmp%/*}"
-  REPO_NAME="${tmp#*/}"
-else
-  REPO_OWNER="avante-corp"
-  REPO_NAME="avante.nvim"
-fi
+REMOTE_URL="${1:-https://github.com/avante-corp/avante.nvim}"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 
@@ -95,7 +85,7 @@ elif [[ "$latest_tag" != "$built_tag" && -n "$latest_tag" ]]; then
   echo "Local build is out of date $built_tag. Downloading latest $latest_tag."
 
   # Get the artifact download URL
-  ARTIFACT_URL="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$latest_tag/avante_lib-$PLATFORM-$ARCH-$LUA_VERSION.tar.gz"
+  ARTIFACT_URL="$REMOTE_URL/releases/download/$latest_tag/avante_lib-$PLATFORM-$ARCH-$LUA_VERSION.tar.gz"
 
   mkdir -p "$TARGET_DIR"
 
