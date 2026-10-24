@@ -261,8 +261,9 @@ vim.api.nvim_create_autocmd(
     callback = function(ev)
       local name, kind = ev.data.spec.name, ev.data.kind
       if name == 'avante.nvim' and (kind == 'install' or kind == 'update') then
-        -- Use `./build.sh` to use prebuilt libraries
+        -- compile avante rust libraries yourself
         vim.system({ 'make' }, { cwd = ev.data.path }):wait()
+        -- or restart neovim and call `:AvanteBuild` to download prebuilt libraries
       end
     end
   }
