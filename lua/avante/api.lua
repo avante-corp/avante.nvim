@@ -57,9 +57,10 @@ end
 ---Command to install the necessary rust libraries
 ---Defaults to download the libraries but passing `source=true` will force a local build via cargo
 ---Blocking as it waits for cargo to finish
----@param opts? {source: boolean}
+---@param opts? {source?: boolean, version?: string}
 function M.build(opts)
   opts = opts or { source = true }
+  local version = opts.version or require("avante.version")
   local dirname = Utils.trim(string.sub(debug.getinfo(1).source, 2, #"/init.lua" * -1), { suffix = "/" })
   local git_root = vim.fs.find(".git", { path = dirname, upward = true })[1]
   local build_directory = git_root and vim.fn.fnamemodify(git_root, ":h") or (dirname .. "/../../")
@@ -77,7 +78,12 @@ function M.build(opts)
       "sh",
       "-c",
       string.format("make -C %s", build_directory),
-    } or { "sh", string.format("%s/build.sh", build_directory) }
+    } or {
+      "bash",
+      string.format("%s/build.sh", build_directory),
+      "https://github.com/avante-corp/avante.nvim.git",
+      version,
+    }
   elseif os_name == "windows" then
     build_directory = to_windows_path(build_directory)
     cmd = {
@@ -86,8 +92,8 @@ function M.build(opts)
       "Bypass",
       "-File",
       string.format("%s\\Build.ps1", build_directory),
-      "-WorkingDirectory",
-      build_directory,
+      "-ReleaseVersion",
+      version,
       "-BuildFromSource",
       string.format("%s", opts.source == true and "true" or "false"),
     }

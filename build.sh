@@ -59,20 +59,12 @@ test_command() {
   command -v "$1" >/dev/null 2>&1
 }
 
-fetch_remote_tags() {
-  git ls-remote --tags "$REMOTE_URL" | cut -f2 | sed 's|refs/tags/||' | while read -r tag; do
-    if ! git rev-parse "$tag" >/dev/null 2>&1; then
-      git fetch "$REMOTE_URL" "refs/tags/$tag:refs/tags/$tag"
-    fi
-  done
-}
-
 if [ ! -d "$TARGET_DIR" ]; then
   mkdir -p "$TARGET_DIR"
 fi
 
-fetch_remote_tags
-latest_tag="$(git tag -l 'v*' --sort=-version:refname --no-column | head -n1 || true)"
+release_version="${2:-$(sed -n 's/^return "\([^"]*\)".*/\1/p' "${SCRIPT_DIR}/lua/avante/version.lua")}"
+latest_tag="v${release_version#v}"
 built_tag="$(cat "${TARGET_DIR}/.tag" 2>/dev/null || true)"
 
 save_tag() {
@@ -82,7 +74,7 @@ save_tag() {
 if [[ "$latest_tag" = "$built_tag" && -n "$latest_tag" ]]; then
   echo "Local build is up to date $latest_tag. No download needed."
 elif [[ "$latest_tag" != "$built_tag" && -n "$latest_tag" ]]; then
-  echo "Local build is out of date $built_tag. Downloading latest $latest_tag."
+  echo "Local build is out of date $built_tag. Downloading $latest_tag."
 
   # Get the artifact download URL
   ARTIFACT_URL="$REMOTE_URL/releases/download/$latest_tag/avante_lib-$PLATFORM-$ARCH-$LUA_VERSION.tar.gz"

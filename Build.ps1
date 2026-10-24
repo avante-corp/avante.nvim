@@ -1,6 +1,7 @@
 param (
     [string]$Version = "luajit",
-    [string]$BuildFromSource = "false"
+    [string]$BuildFromSource = "false",
+    [string]$ReleaseVersion = ""
 )
 
 $Build = [System.Convert]::ToBoolean($BuildFromSource)
@@ -74,7 +75,7 @@ function Download-Prebuilt($feature, $tag) {
 
     if ((Test-Command "gh") -and (Test-GHAuth)) {
         write-host "Using GitHub CLI to download artifacts..."
-        gh release download $latestTag --repo "$REPO_OWNER/$REPO_NAME" --pattern "*$ARTIFACT_NAME_PATTERN*" --output $TempFile --clobber
+        gh release download $tag --repo "$REPO_OWNER/$REPO_NAME" --pattern "*$ARTIFACT_NAME_PATTERN*" --output $TempFile --clobber
     } else {
       # Get the artifact download URL
           $RELEASE = Invoke-RestMethod -Uri "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/tags/$tag"
@@ -106,52 +107,11 @@ function Main {
         Write-Host "Building for $Version..."
         Build-FromSource $Version
     } else {
-        function Test-GitTagLocal($tag) {
-            try {
-                $null = git rev-parse $tag 2>$null
-                return $true
-            } catch {
-                return $false
-            }
+        if ([string]::IsNullOrWhiteSpace($ReleaseVersion)) {
+            $versionFile = Get-Content (Join-Path $PSScriptRoot "lua/avante/version.lua") -Raw
+            $ReleaseVersion = [regex]::Match($versionFile, 'return "([^"]+)"').Groups[1].Value
         }
-
-        function Sync-GitTag($remoteUrl, $tagRef) {
-            try {
-                git fetch $remoteUrl "$tagRef`:$tagRef" 2>$null
-            } catch {
-                # Ignore individual fetch failures
-            }
-        }
-
-        function Fetch-RemoteTags {
-            try {
-                $tags = git ls-remote --tags $remoteUrl 2>$null | Select-String "refs/tags/v"
-                if ($null -eq $tags) { return }
-
-                foreach ($line in $tags) {
-                    $parts = ($line.ToString() -split "\s+")
-                    if ($parts.Length -lt 2) { continue }
-
-                    $tagRef = $parts[1]
-                    $tag = $tagRef -replace "^refs/tags/", ""
-
-                    if (-not (Test-GitTagLocal $tag)) {
-                        Sync-GitTag $remoteUrl $tagRef
-                    }
-                }
-            } catch {
-                # Ignore tag fetching errors
-            }
-        }
-
-        Fetch-RemoteTags
-
-        $latestTag = $null
-        try {
-            $latestTag = git tag --sort=-version:refname | Where-Object { $_ -like "v*" } | Select-Object -First 1
-        } catch {
-            $latestTag = $null
-        }
+        $latestTag = "v" + ($ReleaseVersion -replace '^v', '')
 
         $builtTag = if (Test-Path "lua/.tag") {
             Get-Content "lua/.tag"

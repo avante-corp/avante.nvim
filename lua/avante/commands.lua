@@ -57,8 +57,10 @@
 ---         Clear the current chat history or Avante cache.
 ---
 ---                                                     *:AvanteBuild*
---- :AvanteBuild [source=true|false]
+--- :AvanteBuild [source=true|false] [--version {version}]
 ---         Build dependencies for the project.
+---         The release version defaults to lua/avante/version.lua.
+---         Accepts versions with or without a leading v.
 ---
 ---                                                     *:AvanteEdit*
 --- :[range]AvanteEdit [instruction]

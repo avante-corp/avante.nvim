@@ -116,7 +116,27 @@ api.nvim_create_user_command("AvanteToggle", function() require("avante").toggle
   nargs = 0,
 })
 api.nvim_create_user_command("AvanteBuild", function(opts)
-  local args = Utils.parse_args(opts.fargs)
+  local fargs = {}
+  local version
+  local i = 1
+  while i <= #opts.fargs do
+    local arg = opts.fargs[i]
+    if arg == "--version" then
+      i = i + 1
+      version = opts.fargs[i]
+      if not version or version == "" or version:sub(1, 1) == "-" then
+        error('AvanteBuild: --version requires a release version (e.g.: "v0.4.3"')
+      end
+    elseif arg:match("^%-%-version=") then
+      version = arg:sub(#"--version=" + 1)
+      if version == "" then error("AvanteBuild: --version requires a release version") end
+    else
+      table.insert(fargs, arg)
+    end
+    i = i + 1
+  end
+  local args = Utils.parse_args(fargs)
+  args.version = version or require("avante.version")
 
   if args.source == nil then args.source = false end
 
@@ -124,7 +144,7 @@ api.nvim_create_user_command("AvanteBuild", function(opts)
 end, {
   desc = "avante: build dependencies",
   nargs = "*",
-  complete = function(_, _, _) return { "source=true", "source=false" } end,
+  complete = function(_, _, _) return { "source=true", "source=false", "--version" } end,
 })
 api.nvim_create_user_command(
   "AvanteEdit",
