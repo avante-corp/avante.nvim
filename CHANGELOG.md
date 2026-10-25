@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.7](https://github.com/avante-corp/avante.nvim/compare/v0.4.6...v0.4.7) (2026-10-25)
+
+
+### Miscellaneous Chores
+
+* fixed version in lockfile ([7b6b44a](https://github.com/avante-corp/avante.nvim/commit/7b6b44a3d7859ae734305ab86663503ab7b15be9))
+
 ## [0.4.6](https://github.com/avante-corp/avante.nvim/compare/v0.4.5...v0.4.6) (2026-10-23)
 
 
