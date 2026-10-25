@@ -10,9 +10,9 @@ describe("provider persistence", function()
       provider = provider,
       providers = {
         jedha = {
+          __inherited_from = "openai",
           model = "jedha-model",
           api_key_name = "",
-          parse_curl_args = function() end,
           setup = function() end,
         },
       },

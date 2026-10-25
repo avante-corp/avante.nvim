@@ -35,11 +35,3 @@
 "provider: vertex":
   - changed-files:
       - any-glob-to-any-file: lua/avante/providers/vertex.lua
-
-"provider: vertex-claude":
-  - changed-files:
-      - any-glob-to-any-file: lua/avante/providers/vertex_claude.lua
-
-"provider: watsonx-code-assistant":
-  - changed-files:
-      - any-glob-to-any-file: lua/avante/providers/watsonx_code_assistant.lua

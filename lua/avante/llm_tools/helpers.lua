@@ -6,9 +6,6 @@ local ACPConfirmAdapter = require("avante.ui.acp_confirm_adapter")
 local M = {}
 
 M.CANCEL_TOKEN = "__CANCELLED__"
-
--- Track cancellation state
-M.is_cancelled = false
 ---@type table<avante.Sidebar, avante.ui.Confirm>
 M.confirm_popups = {}
 
@@ -166,19 +163,42 @@ function M.is_ignored(abs_path)
   return exit_code == 0
 end
 
+-- Resolve the existing parent too when checking a path that will be created.
+---@param path string
+---@return string?
+local function resolve_path(path)
+  local real_path, _, errname = vim.uv.fs_realpath(path)
+  if real_path then return vim.fs.normalize(real_path, { expand_env = false }) end
+  if errname ~= "ENOENT" or vim.uv.fs_lstat(path) then return nil end
+  local parent = vim.fs.dirname(path)
+  if not parent or parent == path then return nil end
+  local real_parent = resolve_path(parent)
+  if not real_parent then return nil end
+  local resolved = vim.fs.normalize(vim.fs.joinpath(real_parent, vim.fs.basename(path)), { expand_env = false })
+  if resolved ~= path then return resolve_path(resolved) end
+  return resolved
+end
+
 ---Check if path belongs to allowed directories
 ---@param abs_path string
 ---@return boolean
 function M.has_permission_to_access(abs_path)
   if not Path:new(abs_path):is_absolute() then return false end
-  local project_root = Utils.get_project_root()
-  -- allow if inside project root OR inside user config dir
-  local config_dir = vim.fn.stdpath("config")
-  local in_project = abs_path:sub(1, #project_root) == project_root
-  local in_config = abs_path:sub(1, #config_dir) == config_dir
+  local real_path = resolve_path(abs_path)
+  if not real_path then return false end
+  local function inside(root)
+    local real_root = resolve_path(root)
+    if not real_root then return false end
+    local path = real_path
+    if Utils.path.is_win() then
+      path, real_root = path:lower(), real_root:lower()
+    end
+    local prefix = real_root:sub(-1) == "/" and real_root or real_root .. "/"
+    return path == real_root or path:sub(1, #prefix) == prefix
+  end
+  if not inside(Utils.get_project_root()) and not inside(vim.fn.stdpath("config")) then return false end
   local bypass_ignore = Config.behaviour and Config.behaviour.allow_access_to_git_ignored_files
-  if not in_project and not in_config then return false end
-  return bypass_ignore or not M.is_ignored(abs_path)
+  return bypass_ignore or not M.is_ignored(abs_path) and (real_path == abs_path or not M.is_ignored(real_path))
 end
 
 ---@param path string
