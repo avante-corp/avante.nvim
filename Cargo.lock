@@ -51,7 +51,7 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "avante-html2md"
-version = "0.2.0"
+version = "0.4.7"
 dependencies = [
  "htmd",
  "html2md",
@@ -61,7 +61,7 @@ dependencies = [
 
 [[package]]
 name = "avante-repo-map"
-version = "0.2.0"
+version = "0.4.7"
 dependencies = [
  "cc",
  "minijinja",
@@ -89,7 +89,7 @@ dependencies = [
 
 [[package]]
 name = "avante-templates"
-version = "0.2.0"
+version = "0.4.7"
 dependencies = [
  "minijinja",
  "mlua",
@@ -98,7 +98,7 @@ dependencies = [
 
 [[package]]
 name = "avante-tokenizers"
-version = "0.2.0"
+version = "0.4.7"
 dependencies = [
  "dirs 6.0.0",
  "hf-hub 0.4.1",
