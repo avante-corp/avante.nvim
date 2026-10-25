@@ -44,10 +44,8 @@
 ---     providers = {
 ---       claude = {
 ---         endpoint = "https://api.anthropic.com",
----         model = "claude-sonnet-4-20250514",
----         timeout = 30000,
+---         model = "claude-sonnet-5-5",
 ---         extra_request_body = {
----           temperature = 0.75,
 ---           max_tokens = 20480,
 ---         },
 ---       },
@@ -183,10 +181,14 @@ local Utils = require("avante.utils")
 local function copilot_use_response_api(opts)
   local model = opts and opts.model
   return type(model) == "string"
-    and (model:match("^gpt%-[56][%.%-]") ~= nil or model:match("gpt%-%d+%.?%d*%-codex") ~= nil)
+    and (
+      model:match("^gpt%-[56]$") ~= nil
+      or model:match("^gpt%-[56][%.%-]") ~= nil
+      or model:match("^gpt%-%d+%.?%d*%-codex") ~= nil
+    )
 end
 
----@alias avante.ProviderName "claude" | "openai" | "azure" | "gemini" | "vertex" | "cohere" | "copilot" | "bedrock" | "ollama" | "watsonx_code_assistant" | "mistral" | string
+---@alias avante.ProviderName "claude" | "openai" | "azure" | "gemini" | "vertex" | "cohere" | "copilot" | "bedrock" | "ollama" | "mistral" | string
 
 ---@class avante.file_selector.IParams
 ---@field public title      string
@@ -421,18 +423,16 @@ M._defaults = {
   providers = {
     ---@type AvanteSupportedProvider
     openai = {
+      dialect = "openai",
       endpoint = "https://api.openai.com/v1",
-      model = "gpt-4o",
-      timeout = 30000,
-      context_window = 128000, -- Number of tokens to send to the model for context
+      model = "gpt-6-luna",
+      context_window = 128000, -- Context window used to trigger local compaction
       use_response_api = copilot_use_response_api, -- Automatically switch GPT-5 and GPT-6 models to the Response API
-      support_previous_response_id = true, -- OpenAI Response API supports previous_response_id for stateful conversations
+      support_previous_response_id = false,
       extra_request_body = {
-        temperature = 0.75,
         max_completion_tokens = 16384, -- Increase this to include reasoning tokens (for reasoning models). For Response API, will be converted to max_output_tokens
-        reasoning_effort = "medium", -- low|medium|high, only used for reasoning models. For Response API, this will be converted to reasoning.effort
+        reasoning_effort = "medium", -- none|minimal|low|medium|high|xhigh|max; Responses converts this to reasoning.effort
         -- background = false, -- Response API only: set to true to start a background task
-        -- NOTE: previous_response_id is automatically managed by the provider for tool calling - don't set manually
       },
     },
     ---@type AvanteSupportedProvider
@@ -440,20 +440,17 @@ M._defaults = {
       __inherited_from = "openai",
       endpoint = "https://api.cerebras.ai/v1",
       model = "gpt-oss-120b",
-      timeout = 30000,
       api_key_name = "CEREBRAS_API_KEY",
     },
     ---@type AvanteSupportedProvider
     copilot = {
       endpoint = "https://api.githubcopilot.com",
-      model = "gpt-4o-2024-11-20",
+      model = "gpt-6-luna",
       proxy = nil, -- [protocol://]host[:port] Use this proxy
       allow_insecure = false, -- Allow insecure server connections
-      timeout = 30000, -- Timeout in milliseconds
-      context_window = 64000, -- Number of tokens to send to the model for context
+      context_window = 64000, -- Context window used to trigger local compaction
       use_response_api = copilot_use_response_api, -- Automatically switch GPT-5 and GPT-6 models to the Response API
-      support_previous_response_id = false, -- Copilot doesn't support previous_response_id, must send full history
-      -- NOTE: Copilot doesn't support previous_response_id, always sends full conversation history including tool_calls
+      support_previous_response_id = false,
       -- NOTE: Responses doesn't support frequency_penalty or presence_penalty
       extra_request_body = {
         -- temperature is not supported by Response API for reasoning models
@@ -463,49 +460,43 @@ M._defaults = {
     ---@type AvanteAzureProvider
     azure = {
       endpoint = "", -- example: "https://<your-resource-name>.openai.azure.com"
-      deployment = "", -- Azure deployment name (e.g., "gpt-4o", "my-gpt-4o-deployment")
+      deployment = "", -- Azure deployment name (e.g., "my-gpt-6-deployment")
       api_version = "2024-12-01-preview",
-      timeout = 30000, -- Timeout in milliseconds, increase this for reasoning models
       extra_request_body = {
         temperature = 0.75,
         max_completion_tokens = 16384, -- Increase this toinclude reasoning tokens (for reasoning models); but too large default value will not fit for some models (e.g. gpt-5-chat supports at most 16384 completion tokens)
-        reasoning_effort = "medium", -- low|medium|high, only used for reasoning models
+        reasoning_effort = "medium", -- none|minimal|low|medium|high|xhigh|max, only used for reasoning models
       },
     },
-    ---@type AvanteAnthropicProvider
+    ---@type AvanteSupportedProvider
     claude = {
       endpoint = "https://api.anthropic.com",
-      auth_type = "api",
-      model = "claude-sonnet-4-5-20250929",
-      timeout = 30000, -- Timeout in milliseconds
-      context_window = 200000,
+      model = "claude-sonnet-5-5",
+      context_window = 200000, -- Context window used to trigger local compaction
       extra_request_body = {
-        temperature = 0.75,
         max_tokens = 64000,
       },
     },
     ---@type AvanteSupportedProvider
     deepseek = {
       __inherited_from = "openai",
+      dialect = "deepseek",
       endpoint = "https://api.deepseek.com",
-      timeout = 30000,
-      model = "deepseek-chat",
+      model = "deepseek-flash",
+      context_window = 1048576,
+      use_response_api = true,
+      support_previous_response_id = false,
       api_key_name = "DEEPSEEK_API_KEY",
     },
     ---@type AvanteSupportedProvider
     ---@diagnostic disable-next-line: missing-fields
     bedrock = {
-      model = "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+      model = "us.anthropic.claude-sonnet-4-6",
       model_names = {
-        "anthropic.claude-3-5-sonnet-20241022-v2:0",
-        "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-        "us.anthropic.claude-opus-4-20250514-v1:0",
-        "us.anthropic.claude-opus-4-1-20250805-v1:0",
-        "us.anthropic.claude-sonnet-4-20250514-v1:0",
+        "us.anthropic.claude-sonnet-4-6",
+        "us.anthropic.claude-opus-4-8",
       },
-      timeout = 30000, -- Timeout in milliseconds
       extra_request_body = {
-        temperature = 0.75,
         max_tokens = 20480,
       },
       aws_region = "", -- AWS region to use for authentication and bedrock API
@@ -515,9 +506,7 @@ M._defaults = {
     gemini = {
       endpoint = "https://generativelanguage.googleapis.com/v1beta/models",
       model = "gemini-3.6-flash",
-      timeout = 30000, -- Timeout in milliseconds
       context_window = 1048576,
-      use_ReAct_prompt = true,
       extra_request_body = {
         generationConfig = {
           temperature = 0.75,
@@ -526,11 +515,8 @@ M._defaults = {
     },
     ---@type AvanteSupportedProvider
     vertex = {
-      endpoint = "https://aiplatform.googleapis.com/v1/projects/PROJECT_ID/locations/LOCATION/publishers/google/models",
-      model = "gemini-1.5-flash-002",
-      timeout = 30000, -- Timeout in milliseconds
+      model = "gemini-3.8-flash",
       context_window = 1048576,
-      use_ReAct_prompt = true,
       extra_request_body = {
         generationConfig = {
           temperature = 0.75,
@@ -541,7 +527,6 @@ M._defaults = {
     cohere = {
       endpoint = "https://api.cohere.com/v2",
       model = "command-r-plus-08-2024",
-      timeout = 30000, -- Timeout in milliseconds
       extra_request_body = {
         temperature = 0.75,
         max_tokens = 20480,
@@ -550,51 +535,27 @@ M._defaults = {
     ---@type AvanteSupportedProvider
     ollama = {
       endpoint = "http://127.0.0.1:11434",
-      timeout = 30000, -- Timeout in milliseconds
-      use_ReAct_prompt = true,
       extra_request_body = {
+        keep_alive = "5m",
         options = {
           temperature = 0.75,
           num_ctx = 20480,
-          keep_alive = "5m",
         },
       },
     },
     openrouter = {
       __inherited_from = "openai",
+      dialect = "openrouter",
       endpoint = "https://openrouter.ai/api/v1",
-      timeout = 30000,
       api_key_name = "OPENROUTER_API_KEY",
       model = "openrouter/free",
-    },
-    ---@type AvanteSupportedProvider
-    watsonx_code_assistant = {
-      endpoint = "https://api.dataplatform.cloud.ibm.com/v2/wca/core/chat/text/generation",
-      model = "granite-8b-code-instruct",
-      timeout = 30000, -- Timeout in milliseconds
-      extra_request_body = {
-        -- Additional watsonx-specific parameters can be added here
-      },
-    },
-
-    ---@type AvanteSupportedProvider
-    vertex_claude = {
-      endpoint = "https://LOCATION-aiplatform.googleapis.com/v1/projects/PROJECT_ID/locations/LOCATION/publishers/anthropic/models",
-      model = "claude-3-5-sonnet-v2@20241022",
-      timeout = 30000, -- Timeout in milliseconds
-      extra_request_body = {
-        temperature = 0.75,
-        max_tokens = 20480,
-      },
     },
     ---@type AvanteSupportedProvider
     ["claude-haiku"] = {
       __inherited_from = "claude",
       endpoint = "https://api.anthropic.com",
-      model = "claude-3-5-haiku-20241022",
-      timeout = 30000, -- Timeout in milliseconds
+      model = "claude-haiku-4-5-20251001",
       extra_request_body = {
-        temperature = 0.75,
         max_tokens = 8192,
       },
     },
@@ -602,27 +563,21 @@ M._defaults = {
     ["claude-opus"] = {
       __inherited_from = "claude",
       endpoint = "https://api.anthropic.com",
-      model = "claude-3-opus-20240229",
-      timeout = 30000, -- Timeout in milliseconds
+      model = "claude-opus-4-8",
       extra_request_body = {
-        temperature = 0.75,
         max_tokens = 20480,
       },
-    },
-    ["openai-gpt-4o-mini"] = {
-      __inherited_from = "openai",
-      model = "gpt-4o-mini",
     },
     aihubmix = {
       __inherited_from = "openai",
       endpoint = "https://aihubmix.com/v1",
-      model = "gpt-4o-2024-11-20",
+      model = "gpt-6-luna",
       api_key_name = "AIHUBMIX_API_KEY",
     },
     ["aihubmix-claude"] = {
       __inherited_from = "claude",
       endpoint = "https://aihubmix.com",
-      model = "claude-3-7-sonnet-20250219",
+      model = "claude-sonnet-5-5",
       api_key_name = "AIHUBMIX_API_KEY",
     },
     morph = {
@@ -633,18 +588,25 @@ M._defaults = {
     },
     moonshot = {
       __inherited_from = "openai",
+      dialect = "moonshot",
       endpoint = "https://api.moonshot.ai/v1",
-      model = "kimi-k2-0711-preview",
+      model = "kimi-k3",
+      context_window = 1048576,
       api_key_name = "MOONSHOT_API_KEY",
+      extra_request_body = {
+        reasoning_effort = "high",
+      },
     },
     xai = {
       __inherited_from = "openai",
+      dialect = "xai",
       endpoint = "https://api.x.ai/v1",
-      model = "grok-code-fast-1",
+      model = "grok-4.7",
       api_key_name = "XAI_API_KEY",
     },
     glm = {
       __inherited_from = "openai",
+      dialect = "zai",
       endpoint = "https://open.bigmodel.cn/api/coding/paas/v4",
       model = "GLM-4.7",
       api_key_name = "GLM_API_KEY",
@@ -657,6 +619,7 @@ M._defaults = {
     },
     mistral = {
       __inherited_from = "openai",
+      dialect = "mistral",
       endpoint = "https://api.mistral.ai/v1",
       model = "mistral-large-latest",
       api_key_name = "MISTRAL_API_KEY",

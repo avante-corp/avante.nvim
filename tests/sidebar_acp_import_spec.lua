@@ -425,7 +425,9 @@ describe("Sidebar ACP import", function()
 
   describe("discard_acp_import_chat", function()
     it("keeps a created chat that already has messages", function()
-      stored["5.json"] = { messages = { "something the user added" } }
+      stored["5.json"] = {
+        messages = { require("avante.history.message"):new("user", "something the user added") },
+      }
       local sidebar = fake_sidebar({})
 
       sidebar:discard_acp_import_chat({ session_id = "s1", filename = "5.json", created = true })

@@ -86,3 +86,9 @@ jobs:
         run: >-
           nix develop .#ci --command make acp-integration-test
           CARGO_TARGET="${{ matrix.rust_target }}"
+
+      - name: Run LLM native integration tests
+        if: runner.os != 'Windows' && matrix.feature == 'luajit'
+        run: >-
+          nix develop .#ci --command make llm-integration-test
+          CARGO_TARGET="${{ matrix.rust_target }}"

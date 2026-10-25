@@ -26,6 +26,7 @@ RUST_PACKAGES := $(notdir $(patsubst %/Cargo.toml,%,$(wildcard crates/*/Cargo.to
 export AVANTE_RUNTIME_TEST_DIR ?= $(CURDIR)/target/tests
 export DEPS_PATH ?= $(AVANTE_RUNTIME_TEST_DIR)/deps
 ACP_INTEGRATION_DIR := $(AVANTE_RUNTIME_TEST_DIR)/acp-integration
+LLM_INTEGRATION_DIR := $(AVANTE_RUNTIME_TEST_DIR)/llm-integration
 
 RAG_SERVICE_VERSION ?= 0.0.11
 RAG_SERVICE_IMAGE := quay.io/yetoneful/avante-rag-service:$(RAG_SERVICE_VERSION)
@@ -130,6 +131,13 @@ acp-integration-test:
 	AVANTE_ACP_TEST_AGENT="$(ACP_INTEGRATION_DIR)/stdio-agent" \
 		AVANTE_ACP_TEST_NATIVE_DIR="$(ACP_INTEGRATION_DIR)" \
 		./scripts/run-luatest.sh tests/integration/acp_native_spec.lua
+
+.PHONY: llm-integration-test
+llm-integration-test:
+	mkdir -p "$(LLM_INTEGRATION_DIR)"
+	cp "$(TARGET_DIR)/libavante_llm.$(CARGO_EXT)" "$(LLM_INTEGRATION_DIR)/avante_llm.$(EXT)"
+	AVANTE_LLM_TEST_NATIVE_DIR="$(LLM_INTEGRATION_DIR)" \
+		./scripts/run-luatest.sh tests/integration/llm_native_spec.lua
 
 # upgrade / pin CI actions
 .PHONY: upgrade-actions

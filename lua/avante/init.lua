@@ -491,8 +491,7 @@ function M.toggle_sidebar(opts)
   if not sidebar then
     M._init(api.nvim_get_current_tabpage())
     ---@cast opts SidebarOpenOptions
-    M.current.sidebar:open(opts)
-    return true
+    return M.current.sidebar:open(opts) ~= false
   end
 
   return sidebar:toggle(opts)
@@ -511,7 +510,7 @@ function M.open_sidebar(opts)
   local sidebar = M.get()
   if not sidebar then M._init(api.nvim_get_current_tabpage()) end
   ---@cast opts SidebarOpenOptions
-  M.current.sidebar:open(opts)
+  return M.current.sidebar:open(opts)
 end
 
 function M.close_sidebar()
