@@ -22,8 +22,10 @@ LUA_VERSIONS := luajit lua51
 BUILD_DIR := lua
 TARGET_LIBRARY ?= all
 
-export AVANTE_RUNTIME_TEST_DIR ?= $(CURDIR)/target/tests
+export AVANTE_RUNTIME_TEST_DIR ?= $(or $(TMPDIR),/tmp)/avante.nvim-tests/runtime
+export DEPS_PATH ?= $(AVANTE_RUNTIME_TEST_DIR)/deps
 ACP_INTEGRATION_DIR := $(AVANTE_RUNTIME_TEST_DIR)/acp-integration
+LLM_INTEGRATION_DIR := $(AVANTE_RUNTIME_TEST_DIR)/llm-integration
 
 RAG_SERVICE_VERSION ?= 0.0.11
 RAG_SERVICE_IMAGE := quay.io/yetoneful/avante-rag-service:$(RAG_SERVICE_VERSION)
@@ -32,7 +34,7 @@ all: luajit
 
 define make_definitions
 ifeq ($(TARGET_LIBRARY), all)
-$1: $(BUILD_DIR)/libAvanteTokenizers-$1.$(EXT) $(BUILD_DIR)/libAvanteTemplates-$1.$(EXT) $(BUILD_DIR)/libAvanteRepoMap-$1.$(EXT) $(BUILD_DIR)/libAvanteHtml2md-$1.$(EXT) $(BUILD_DIR)/libAvanteAcp-$1.$(EXT)
+$1: $(BUILD_DIR)/libAvanteTokenizers-$1.$(EXT) $(BUILD_DIR)/libAvanteTemplates-$1.$(EXT) $(BUILD_DIR)/libAvanteRepoMap-$1.$(EXT) $(BUILD_DIR)/libAvanteHtml2md-$1.$(EXT) $(BUILD_DIR)/libAvanteAcp-$1.$(EXT) $(BUILD_DIR)/libAvanteLlm-$1.$(EXT)
 else ifeq ($(TARGET_LIBRARY), tokenizers)
 $1: $(BUILD_DIR)/libAvanteTokenizers-$1.$(EXT)
 else ifeq ($(TARGET_LIBRARY), templates)
@@ -43,8 +45,10 @@ else ifeq ($(TARGET_LIBRARY), html2md)
 $1: $(BUILD_DIR)/libAvanteHtml2md-$1.$(EXT)
 else ifeq ($(TARGET_LIBRARY), acp)
 $1: $(BUILD_DIR)/libAvanteAcp-$1.$(EXT)
+else ifeq ($(TARGET_LIBRARY), llm)
+$1: $(BUILD_DIR)/libAvanteLlm-$1.$(EXT)
 else
-	$$(error TARGET_LIBRARY must be one of all, tokenizers, templates, repo-map, html2md, acp)
+	$$(error TARGET_LIBRARY must be one of all, tokenizers, templates, repo-map, html2md, acp, llm)
 endif
 endef
 
@@ -63,6 +67,7 @@ $(BUILD_DIR)/libAvanteTemplates-$1.$(EXT): $(BUILD_DIR) $1-templates
 $(BUILD_DIR)/libAvanteRepoMap-$1.$(EXT): $(BUILD_DIR) $1-repo-map
 $(BUILD_DIR)/libAvanteHtml2md-$1.$(EXT): $(BUILD_DIR) $1-html2md
 $(BUILD_DIR)/libAvanteAcp-$1.$(EXT): $(BUILD_DIR) $1-acp
+$(BUILD_DIR)/libAvanteLlm-$1.$(EXT): $(BUILD_DIR) $1-llm
 endef
 
 $(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),tokenizers)))
@@ -70,6 +75,7 @@ $(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version)
 $(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),repo-map)))
 $(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),html2md)))
 $(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),acp)))
+$(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),llm)))
 $(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_targets,$(lua_version))))
 
 $(BUILD_DIR):
@@ -148,6 +154,14 @@ acp-integration-test:
 		AVANTE_ACP_TEST_NATIVE_DIR="$(ACP_INTEGRATION_DIR)" \
 		./scripts/run-luatest.sh tests/integration/acp_native_spec.lua
 
+.PHONY: llm-integration-test
+llm-integration-test:
+	cargo build --release --no-default-features --features=luajit -p avante-llm $(if $(CARGO_TARGET),--target $(CARGO_TARGET))
+	mkdir -p "$(LLM_INTEGRATION_DIR)"
+	cp "$(TARGET_DIR)/libavante_llm.$(CARGO_EXT)" "$(LLM_INTEGRATION_DIR)/avante_llm.$(EXT)"
+	AVANTE_LLM_TEST_NATIVE_DIR="$(LLM_INTEGRATION_DIR)" \
+		./scripts/run-luatest.sh tests/integration/llm_native_spec.lua
+
 # upgrade / pin CI actions
 .PHONY: upgrade-actions
 upgrade-actions:
@@ -155,7 +169,7 @@ upgrade-actions:
 
 .PHONY: setup-deps
 setup-deps:
-	./scripts/setup-deps.sh clone "$(AVANTE_RUNTIME_TEST_DIR)/deps"
+	./scripts/setup-deps.sh clone "$(DEPS_PATH)"
 	./scripts/setup-deps.sh generate-luarc "$(AVANTE_RUNTIME_TEST_DIR)/luarc.json"
 
 .PHONY: lint

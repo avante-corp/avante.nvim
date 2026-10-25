@@ -13,7 +13,6 @@
 --- - `copilot`
 --- - `bedrock`
 --- - `ollama`
---- - `watsonx_code_assistant`
 --- - `mistral`
 --- - ...
 --- Please refer to the provider's help section under the tag avante-providers-NAME
@@ -34,9 +33,19 @@ local Utils = require("avante.utils")
 ---@field mistral AvanteProviderFunctor
 ---@field ollama AvanteProviderFunctor
 ---@field openai AvanteProviderFunctor
----@field vertex_claude AvanteProviderFunctor
----@field watsonx_code_assistant AvanteProviderFunctor
 local M = {}
+
+local supported_protocols = {
+  openai = true,
+  claude = true,
+  azure = true,
+  gemini = true,
+  vertex = true,
+  cohere = true,
+  ollama = true,
+  bedrock = true,
+  copilot = true,
+}
 
 ---@class EnvironmentHandler
 local E = {}
@@ -179,16 +188,22 @@ M = setmetatable(M, {
       local ok, module = pcall(require, "avante.providers." .. k)
       if ok then
         provider_config = Utils.deep_extend_with_metatable("force", module, provider_config)
-      elseif provider_config.parse_curl_args == nil then
+      else
         error(
           string.format(
-            'The configuration of your provider "%s" is incorrect, missing the `__inherited_from` attribute or a custom `parse_curl_args` function. Please fix your provider configuration. For more details, see: https://github.com/avante-corp/avante.nvim/wiki/Custom-providers',
+            'The configuration of provider "%s" must set `__inherited_from`; custom `parse_curl_args` functions are no longer used. See: https://github.com/avante-corp/avante.nvim/wiki/Custom-providers',
             k
           )
         )
       end
     end
 
+    local protocol = rawget(provider_config, "__inherited_from") or k
+    if not supported_protocols[protocol] then
+      error(string.format('Provider "%s" uses unsupported protocol "%s"', k, protocol), 2)
+    end
+    provider_config._name = k
+    provider_config._protocol = protocol
     t[k] = provider_config
 
     if rawget(t[k], "parse_api_key") == nil then t[k].parse_api_key = function() return E.parse_envvar(t[k]) end end
@@ -270,14 +285,14 @@ function M.refresh(provider_name)
   Utils.info("Switch to provider: " .. provider_name, { once = true, title = "Avante" })
 end
 
----@param opts AvanteProvider | AvanteSupportedProvider | AvanteAnthropicProvider | AvanteProviderFunctor | AvanteBedrockProviderFunctor
+---@param opts AvanteProvider | AvanteSupportedProvider | AvanteProviderFunctor | AvanteBedrockProviderFunctor
 ---@return AvanteDefaultBaseProvider provider_opts
 ---@return table<string, any> request_body
 function M.parse_config(opts)
   local provider_opts = {}
 
   for key, value in pairs(opts) do
-    if key ~= "extra_request_body" then provider_opts[key] = value end
+    if key ~= "extra_request_body" and key ~= "_name" and key ~= "_protocol" then provider_opts[key] = value end
   end
 
   ---@type table<string, any>
@@ -300,6 +315,17 @@ function M.resolve_use_response_api(provider_conf, ctx)
     return result == true
   end
   return value == true
+end
+
+---@param provider_conf AvanteDefaultBaseProvider | nil
+---@param ctx any
+---@param protocol? AvanteNativeLLMProtocol
+---@return "chat" | "responses" | nil
+function M.resolve_api_route(provider_conf, ctx, protocol)
+  if not provider_conf then return nil end
+  protocol = protocol or provider_conf._protocol or provider_conf._name
+  if protocol ~= "openai" and protocol ~= "azure" and protocol ~= "copilot" then return nil end
+  return M.resolve_use_response_api(provider_conf, ctx) and "responses" or "chat"
 end
 
 ---@param provider_name avante.ProviderName

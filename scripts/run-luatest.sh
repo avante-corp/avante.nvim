@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-DEST_DIR="${AVANTE_RUNTIME_TEST_DIR:-$PWD/target/tests}"
+DEST_DIR="${AVANTE_RUNTIME_TEST_DIR:-${TMPDIR:-/tmp}/avante.nvim-tests/runtime}"
+export DEPS_PATH="${DEPS_PATH:-$DEST_DIR/deps}"
 NVIM_TEST_HOME="$DEST_DIR/nvim"
 
 log() {

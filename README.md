@@ -187,19 +187,15 @@ For building binary if you wish to build from source, then `cargo` is required. 
     providers = {
       claude = {
         endpoint = "https://api.anthropic.com",
-        model = "claude-sonnet-4-20250514",
-        timeout = 30000, -- Timeout in milliseconds
-          extra_request_body = {
-            temperature = 0.75,
-            max_tokens = 20480,
-          },
+        model = "claude-sonnet-5-5",
+        extra_request_body = {
+          max_tokens = 20480,
+        },
       },
       moonshot = {
         endpoint = "https://api.moonshot.ai/v1",
-        model = "kimi-k2-0711-preview",
-        timeout = 30000, -- Timeout in milliseconds
+        model = "kimi-k3",
         extra_request_body = {
-          temperature = 0.75,
           max_tokens = 32768,
         },
       },
@@ -514,10 +510,8 @@ _See [config.lua#L9](./lua/avante/config.lua) for the up to date full default co
   providers = {
     claude = {
       endpoint = "https://api.anthropic.com",
-      auth_type = "api", -- Set to "max" to sign in with Claude Pro/Max subscription
-      model = "claude-3-5-sonnet-20241022",
+      model = "claude-sonnet-5-5",
       extra_request_body = {
-        temperature = 0.75,
         max_tokens = 4096,
       },
     },
@@ -888,24 +882,18 @@ Here's a complete blink.cmp configuration example with all Avante sources:
 
 ## Usage
 
-### Using Claude Pro/Max Subscription
-To login with your Claude subscription, set the **auth_type** of the Claude provider entry in your config to "max", re-open Neovim then the authentication process will start in your browser. Once logged in and authorized, a code will show that needs to be copied into the prompt in Neovim, which should then give access to use your subscription with Avante.
-
-You may need to run `AvanteSwitchProvider claude` to initiate the authentication if you previously had a different provider selected.
-
-```lua
--- Providers = { ...
-
-  claude = {
-    -- ...
-    auth_type = "max",
-  },
-
-```
-
 ### Basic Functionality
 
 Given its early stage, `avante.nvim` currently supports the following basic functionalities:
+
+Each completed conversation turn shows reported token usage, including tool-call continuations, separated from the reply by a blank line.
+The Usage heading is followed by Total, Input, Output, Cached, and Reasoning on separate lines.
+Total is uncached input + output, and Input excludes cached reads, matching Codex's counting convention.
+Cached includes the cache hit rate (cached / total input) to two decimal places when all requests report both counters and total input is greater than zero.
+Cache writes are not shown separately; reasoning is included in output tokens.
+Missing counters show `not reported`; counters available for only some requests show `(partial)`.
+Uncached input and Total require cache-read counts; partial totals include only requests with all required counters.
+The summary is saved in chat history and excluded from subsequent model input.
 
 > [!IMPORTANT]
 >
@@ -965,13 +953,13 @@ Given its early stage, `avante.nvim` currently supports the following basic func
 >
 > ```lua
 > bedrock = {
->   model = "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+>   model = "us.anthropic.claude-sonnet-4-6",
 >   aws_profile = "bedrock",
 >   aws_region = "us-east-1",
 > },
 > ```
 >
-> Note: Bedrock requires the [AWS CLI](https://aws.amazon.com/cli/) to be installed on your system.
+> Bedrock authentication is handled by the AWS Rust SDK. Profiles, environment credentials, IAM roles, SSO, explicit `BEDROCK_KEYS`, and Bedrock bearer tokens are supported without invoking the AWS CLI.
 
 1. Open a code file in Neovim.
 2. Use the `:AvanteAsk` command to query the AI about the code.
@@ -1161,6 +1149,22 @@ This approach ensures that the apply model can quickly and accurately merge your
 
 </details>
 
+## Native LLM Transport
+
+In agentic mode, selected files are sent as paths when the `view` tool is available; the model reads their current contents as needed, including unsaved buffer edits. Selected code snippets are sent directly. Legacy mode and providers without the `view` tool continue to receive full file contents.
+
+All direct inference uses [Rig](https://github.com/0xPlaygrounds/rig) in Rust. Lua passes the Avante provider identity, internally derived protocol, credentials, semantic messages, tools, and generation options. Rust maps that protocol to the Rig provider, constructs `CompletionRequest` values, and owns endpoint selection, request serialization, and response decoding. Custom providers select a built-in provider implementation through `__inherited_from`; OpenAI-compatible providers may also set `dialect` to a Rig registry name such as `mistral`. Provider-specific generation fields are forwarded through Rig's `additional_params`. There is no curl or handwritten inference protocol fallback.
+
+Compatibility with Rig 0.45 is isolated in `crates/avante-llm/src/rig_compat.rs`. Azure Responses routing, Gemini v1 endpoints and header authentication, Vertex streaming, and some generation options still need local workarounds; their comments state when upstream support can replace them. Sampling and typed generation options follow Rig's provider catalog through `ModelSpec::fit`; unlisted models follow the provider encoder's behavior. Building from source requires Rust 1.97.1 or newer. Claude and Bedrock defaults omit `temperature` so enabling thinking does not inherit an incompatible sampling value.
+
+The native path supports OpenAI-compatible Chat Completions and Responses providers, Azure OpenAI, Anthropic API keys, Gemini, Cohere, Ollama, Copilot, AWS Bedrock, and Gemini on Vertex AI. Bedrock proxies use the AWS SDK transport. Vertex AI rejects endpoint overrides, extra headers, proxies, and insecure-TLS settings because its SDK transport does not expose those controls. ACP remains a separate mode and continues to use the official ACP Rust SDK.
+
+HTTP providers use a 30-second connection timeout and a 120-second read idle timeout. Each successful read resets the idle timeout, so an active stream has no total time limit. Bedrock and Vertex AI use their SDK timeout policies. When `dual_boost.timeout` expires, both reference streams are cancelled and the request reports an error; late results are ignored.
+
+Upgrading from the Lua transport requires rebuilding the native libraries (`make`). Custom providers must use `__inherited_from`; Lua request builders, stream parsers, and ReAct tool emulation are no longer supported. The `claude-pro-max` OAuth flow, `vertex_claude`, and `watsonx_code_assistant` providers have been removed. Use an Anthropic API key or the `claude-code` ACP provider for Claude. Azure requires a nonempty `deployment`, which selects the Azure endpoint independently of `model`.
+
+Streamed blocks keep separate history identities. Lua stores opaque native metadata alongside each block; Rust and Rig validate its origin and fingerprint before replaying signatures, encrypted reasoning, and response phases. Editing a block invalidates its original native payload.
+
 ## ACP Support
 
 Avante.nvim now supports the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/overview/introduction), enabling seamless integration with AI agents that follow this standardized communication protocol. ACP provides a unified way for AI agents to interact with development environments, offering enhanced capabilities for code editing, file operations, and tool execution.
@@ -1294,11 +1298,9 @@ Avante enables tools by default, but some LLM models do not support tools. You c
 providers = {
   claude = {
     endpoint = "https://api.anthropic.com",
-    model = "claude-sonnet-4-20250514",
-    timeout = 30000, -- Timeout in milliseconds
+    model = "claude-sonnet-5-5",
     disable_tools = true, -- disable tools!
     extra_request_body = {
-      temperature = 0,
       max_tokens = 4096,
     }
   }

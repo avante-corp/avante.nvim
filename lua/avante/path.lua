@@ -13,9 +13,10 @@ local Config = require("avante.config")
 local P = {}
 
 ---@param bufnr integer | nil
+---@param project_root? string
 ---@return string dirname
-local function generate_project_dirname_in_storage(bufnr)
-  local project_root = Utils.root.get({
+local function generate_project_dirname_in_storage(bufnr, project_root)
+  project_root = project_root or Utils.root.get({
     buf = bufnr,
   })
   -- Replace path separators with double underscores
@@ -33,15 +34,15 @@ local History = {}
 ---Returns the folder that contains past prompts
 ---@see avante.Config.History
 ---@return Path
-function History.get_history_dir(bufnr)
-  local dirname = generate_project_dirname_in_storage(bufnr)
+function History.get_history_dir(bufnr, project_root)
+  local dirname = generate_project_dirname_in_storage(bufnr, project_root)
   local history_dir = Path:new(Config.history.storage_path):joinpath(dirname):joinpath("history")
   if not history_dir:exists() then
     history_dir:mkdir({ parents = true })
 
     local metadata_filepath = history_dir:joinpath("metadata.json")
     local metadata = {
-      project_root = Utils.root.get({
+      project_root = project_root or Utils.root.get({
         buf = bufnr,
       }),
     }
@@ -83,26 +84,26 @@ end
 ---@param bufnr integer
 ---@param new boolean
 ---@return Path
-function History.get_latest_filepath(bufnr, new)
-  local history_dir = History.get_history_dir(bufnr)
-  local filename = History.get_latest_filename(bufnr, new)
+function History.get_latest_filepath(bufnr, new, project_root)
+  local history_dir = History.get_history_dir(bufnr, project_root)
+  local filename = History.get_latest_filename(bufnr, new, project_root)
   return history_dir:joinpath(filename)
 end
 
-function History.get_filepath(bufnr, filename)
-  local history_dir = History.get_history_dir(bufnr)
+function History.get_filepath(bufnr, filename, project_root)
+  local history_dir = History.get_history_dir(bufnr, project_root)
   return history_dir:joinpath(filename)
 end
 
-function History.get_metadata_filepath(bufnr)
-  local history_dir = History.get_history_dir(bufnr)
+function History.get_metadata_filepath(bufnr, project_root)
+  local history_dir = History.get_history_dir(bufnr, project_root)
   return history_dir:joinpath("metadata.json")
 end
 
-function History.get_latest_filename(bufnr, new)
-  local history_dir = History.get_history_dir(bufnr)
+function History.get_latest_filename(bufnr, new, project_root)
+  local history_dir = History.get_history_dir(bufnr, project_root)
   local filename
-  local metadata_filepath = History.get_metadata_filepath(bufnr)
+  local metadata_filepath = History.get_metadata_filepath(bufnr, project_root)
   if metadata_filepath:exists() and not new then
     local metadata_content = metadata_filepath:read()
     local metadata = vim.json.decode(metadata_content)
@@ -118,23 +119,25 @@ function History.get_latest_filename(bufnr, new)
 end
 
 ---Update metadata with latest history
-function History.save_latest_filename(bufnr, filename)
-  local metadata_filepath = History.get_metadata_filepath(bufnr)
+function History.save_latest_filename(bufnr, filename, project_root)
+  local metadata_filepath = History.get_metadata_filepath(bufnr, project_root)
   local metadata = {}
   if metadata_filepath:exists() then
     local metadata_content = metadata_filepath:read()
     metadata = vim.json.decode(metadata_content)
   end
-  if metadata.project_root == nil then metadata.project_root = Utils.root.get({
-    buf = bufnr,
-  }) end
+  if metadata.project_root == nil then
+    metadata.project_root = project_root or Utils.root.get({
+      buf = bufnr,
+    })
+  end
   metadata.latest_filename = filename
   metadata_filepath:write(vim.json.encode(metadata), "w")
 end
 
 ---@param bufnr integer
-function History.new(bufnr)
-  local filepath = History.get_latest_filepath(bufnr, true)
+function History.new(bufnr, project_root)
+  local filepath = History.get_latest_filepath(bufnr, true, project_root)
   ---@type avante.ChatHistory
   local history = {
     title = "untitled",
@@ -174,19 +177,26 @@ end
 ---@param bufnr integer
 ---@param filename string?
 ---@return avante.ChatHistory
-function History.load(bufnr, filename)
-  local history_filepath = filename and History.get_filepath(bufnr, filename)
-    or History.get_latest_filepath(bufnr, false)
-  return History.from_file(history_filepath) or History.new(bufnr)
+function History.load(bufnr, filename, project_root)
+  local history_filepath = filename and History.get_filepath(bufnr, filename, project_root)
+    or History.get_latest_filepath(bufnr, false, project_root)
+  return History.from_file(history_filepath) or History.new(bufnr, project_root)
 end
 
--- Saves the chat history for the given buffer.
+-- Writes chat contents without selecting the chat.
 ---@param bufnr integer
 ---@param history avante.ChatHistory
-function History.save(bufnr, history)
-  local history_filepath = History.get_filepath(bufnr, history.filename)
+function History.write(bufnr, history, project_root)
+  local history_filepath = History.get_filepath(bufnr, history.filename, project_root)
   history_filepath:write(vim.json.encode(history), "w")
-  History.save_latest_filename(bufnr, history.filename)
+end
+
+-- Saves and selects the chat history for the given buffer.
+---@param bufnr integer
+---@param history avante.ChatHistory
+function History.save(bufnr, history, project_root)
+  History.write(bufnr, history, project_root)
+  History.save_latest_filename(bufnr, history.filename, project_root)
 end
 
 --- Deletes a specific chat history file.

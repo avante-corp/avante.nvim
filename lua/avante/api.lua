@@ -15,6 +15,13 @@ local Utils = require("avante.utils")
 ---@field toggle avante.ApiToggle
 local M = {}
 
+local function is_generating()
+  local sidebar = require("avante").get(false)
+  if not sidebar or not sidebar.is_generating then return false, sidebar end
+  Utils.warn("Cannot switch chats during generation")
+  return true, sidebar
+end
+
 ---@param target_provider avante.SelectorProvider
 function M.switch_selector_provider(target_provider)
   require("avante.config").override({
@@ -141,7 +148,6 @@ M.zen_mode = M.full_view_ask
 ---@param opts? AskOptions
 function M.ask(opts)
   opts = opts or {}
-  Config.ask_opts = opts
   if type(opts) == "string" then
     Utils.warn("passing 'ask' as string is deprecated, do {question = '...'} instead", { once = true })
     opts = { question = opts }
@@ -149,6 +155,12 @@ function M.ask(opts)
 
   local has_question = opts.question ~= nil and opts.question ~= ""
   local new_chat = opts.new_chat == true
+  local function chat_switch_is_blocked()
+    local sidebar = require("avante").get(false)
+    return sidebar ~= nil and not sidebar:can_open(opts)
+  end
+
+  if chat_switch_is_blocked() then return false end
 
   if Utils.is_sidebar_buffer(0) and not has_question and not new_chat then
     require("avante").close_sidebar()
@@ -159,14 +171,16 @@ function M.ask(opts)
 
   ---@param input string | nil
   local function ask(input)
+    if chat_switch_is_blocked() then return false end
+    Config.ask_opts = opts
     if input == nil or input == "" then input = opts.question end
     local sidebar = require("avante").get()
     if sidebar and sidebar:is_open() and sidebar.code.bufnr ~= vim.api.nvim_get_current_buf() then
       sidebar:close({ goto_code_win = false })
     end
-    require("avante").open_sidebar(opts)
+    if require("avante").open_sidebar(opts) == false then return false end
     sidebar = require("avante").get()
-    if new_chat then sidebar:new_chat() end
+    if new_chat and sidebar:new_chat() == false then return false end
     if opts.without_selection then
       sidebar.code.selection = nil
       sidebar.file_selector:reset()
@@ -229,6 +243,10 @@ function M.refresh(opts)
   local listed = vim.api.nvim_get_option_value("buflisted", { buf = curbuf })
 
   if Utils.is_sidebar_buffer(curbuf) or not listed then return end
+  if sidebar.is_generating then
+    Utils.warn("Cannot switch chats during generation")
+    return false
+  end
 
   local curwin = vim.api.nvim_get_current_win()
 
@@ -279,8 +297,12 @@ function M.select_acp_mode() require("avante.acp_config_selector").open_mode() e
 function M.select_acp_session() require("avante.acp_session_selector").open() end
 
 function M.select_history()
+  local generating, sidebar = is_generating()
+  if generating then return end
   local buf = vim.api.nvim_get_current_buf()
+  if Utils.is_sidebar_buffer(buf) and sidebar and sidebar.code.bufnr then buf = sidebar.code.bufnr end
   require("avante.history_selector").open(buf, function(filename)
+    if is_generating() then return end
     vim.api.nvim_buf_call(buf, function()
       -- Switch the latest history before opening the sidebar, otherwise
       -- Sidebar:open() preconnects the ACP agent with the previous chat's

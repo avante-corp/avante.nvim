@@ -1,4 +1,0 @@
-{
-  "error": "invalid_grant",
-  "error_description": "The provided authorization grant is invalid, expired, or revoked"
-}

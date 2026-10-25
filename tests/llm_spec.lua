@@ -1,6 +1,7 @@
 local utils = require("avante.utils")
 
 local llm = require("avante.llm")
+local RigClient = require("avante.libs.rig_client")
 
 describe("generate_prompts", function()
   local project_root = "/tmp/project_root"
@@ -28,7 +29,6 @@ describe("generate_prompts", function()
       openai = {
         endpoint = "https://api.mock.com/v1",
         model = "gpt-mock",
-        timeout = 10000,
         context_window = 1000,
         extra_request_body = {
           temperature = 0.5,
@@ -153,6 +153,70 @@ describe("generate_prompts", function()
     local result = llm.generate_prompts(opts)
     assert.are.same(#result.tools, 1)
     assert.are.same(result.tools[1].name, "test_tool")
+  end)
+
+  it("uses local compaction for Responses and Chat routes", function()
+    local history_messages = {
+      { message = { role = "user", content = "old context" } },
+    }
+    local function generate(provider)
+      return llm.generate_prompts({
+        provider = provider,
+        history_messages = history_messages,
+        get_tokens_usage = function() return { prompt_tokens = 950, completion_tokens = 1 } end,
+      })
+    end
+
+    local responses = generate({
+      _protocol = "openai",
+      _name = "openai",
+      endpoint = "https://api.openai.com/v1",
+      model = "gpt-5.6-sol",
+      context_window = 1000,
+      use_response_api = true,
+    })
+    local chat = generate({
+      _protocol = "openai",
+      model = "custom-chat-model",
+      context_window = 1000,
+      use_response_api = false,
+    })
+
+    assert.same(history_messages, responses.pending_compaction_history_messages)
+    assert.same(history_messages, chat.pending_compaction_history_messages)
+  end)
+
+  it("preserves synthetic provenance when projecting saved history into the prompt", function()
+    local history = { message = { role = "assistant", content = "synthetic view" }, is_dummy = true }
+    local prompt = llm.generate_prompts({ history_messages = { history } })
+    local projected = vim.iter(prompt.messages):find(function(message) return message.content == "synthetic view" end)
+
+    assert.is_true(projected.is_dummy)
+    assert.is_nil(history.message.is_dummy)
+  end)
+
+  it("resolves a dynamic Responses route once for prompt generation and transport", function()
+    local calls = 0
+    local provider = {
+      _name = "openai",
+      _protocol = "openai",
+      dialect = "openai",
+      endpoint = "https://api.openai.com/v1",
+      model = "gpt-mock",
+      context_window = 1000,
+      use_response_api = function()
+        calls = calls + 1
+        return true
+      end,
+      parse_api_key = function() return "token" end,
+    }
+    local opts = { provider = provider, session_ctx = {} }
+
+    local prompt = llm.generate_prompts(opts)
+    local request = RigClient._build_request(provider, prompt, opts.session_ctx)
+
+    assert.same("responses", request.provider.route)
+    assert.same(1, calls)
   end)
 
   it("should not duplicate instruction file content when called multiple times with same opts", function()

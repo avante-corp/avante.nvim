@@ -124,6 +124,7 @@ local SIDEBAR_CONTAINERS = {
 ---@field containers { result?: NuiSplit, todos?: NuiSplit, selected_code?: NuiSplit, selected_files?: NuiSplit, input?: NuiSplit }
 ---@field file_selector FileSelector
 ---@field chat_history avante.ChatHistory | nil
+---@field chat_history_project_root string | nil
 ---@field current_state avante.GenerateState | nil
 ---@field state_timer table | nil
 ---@field state_spinner_chars string[]
@@ -212,6 +213,7 @@ function Sidebar:new(id)
     acp_client_generation = 0,
     pending_acp_import = nil,
     chat_history = nil,
+    chat_history_project_root = nil,
     current_state = nil,
     state_timer = nil,
     state_spinner_chars = Config.windows.spinner.generating,
@@ -283,9 +285,27 @@ end
 ---@class SidebarOpenOptions: AskOptions
 ---@field selection? avante.SelectionResult
 
----@param opts SidebarOpenOptions
+---@param opts? AskOptions
+function Sidebar:can_open(opts)
+  if not self.is_generating then return true end
+  opts = opts or {}
+  local bufnr = api.nvim_get_current_buf()
+  if Utils.is_sidebar_buffer(bufnr) then bufnr = self.code.bufnr end
+  if
+    opts.new_chat
+    or bufnr ~= self.code.bufnr
+    or (opts.project_root and opts.project_root ~= self.chat_history_project_root)
+  then
+    Utils.warn("Cannot switch chats during generation")
+    return false
+  end
+  return true
+end
+
+---@param opts? SidebarOpenOptions
 function Sidebar:open(opts)
   opts = opts or {}
+  if not self:can_open(opts) then return false end
   self.show_logo = opts.show_logo
   local in_visual_mode = Utils.in_visual_mode() and self:in_code_win()
   if not self:is_open() then
@@ -312,11 +332,7 @@ function Sidebar:open(opts)
   end
 
   local acp_provider = Config.acp_providers[Config.provider]
-  if acp_provider and (not opts.question or opts.question == "") then
-    -- When opening a new chat, drop the previous chat's session id before
-    -- preconnecting, otherwise session/load replays the old conversation into
-    -- the new chat (new_chat() only runs after open() returns).
-    if opts.new_chat and self.chat_history then self.chat_history.acp_session_id = nil end
+  if acp_provider and not opts.new_chat and (not opts.question or opts.question == "") then
     self:resume_pending_acp_import()
     self:handle_submit("")
   end
@@ -438,8 +454,7 @@ function Sidebar:toggle(opts)
     return false
   else
     ---@cast opts SidebarOpenOptions
-    self:open(opts)
-    return true
+    return self:open(opts) ~= false
   end
 end
 
@@ -1972,6 +1987,7 @@ function Sidebar:update_content(content, opts)
   Utils.lock_buf(bufnr)
 
   vim.defer_fn(function()
+    if not Utils.is_valid_container(self.containers.result, true) then return end
     if self.permission_button_options and self.permission_handler then
       local cur_winid = api.nvim_get_current_win()
       if cur_winid == self.containers.result.winid then
@@ -1993,6 +2009,7 @@ function Sidebar:update_content(content, opts)
   if opts.callback then vim.schedule(opts.callback) end
 
   vim.schedule(function()
+    if not Utils.is_valid_container(self.containers.result, true) then return end
     self:render_state()
     self:render_tool_use_control_buttons()
     vim.defer_fn(function() vim.cmd("redraw") end, 10)
@@ -2100,7 +2117,7 @@ function Sidebar:_get_message_lines(ctx, message, messages, ignore_record_prefix
     return res
   end
   if message.message.role == "assistant" then
-    if History.Helpers.is_tool_use_message(message) then return lines end
+    if message.is_usage_summary or History.Helpers.is_tool_use_message(message) then return lines end
     local text = table.concat(vim.tbl_map(function(line) return tostring(line) end, lines), "\n")
     local transformed = transform_result_content(text, ctx.prev_filepath)
     ctx.prev_filepath = transformed.current_filepath
@@ -2471,7 +2488,7 @@ You are a responsible senior development engineer, and you are about to leave yo
 - If there is an AGENTS.md file in the project root directory, combine it with the existing AGENTS.md content to generate a new AGENTS.md.
 - If the existing AGENTS.md content conflicts with the newly generated content, replace the conflicting old parts with the new content.
 - If there is no AGENTS.md file in the project root directory, create a new AGENTS.md file and write the new content in it.]]
-  self:new_chat(args, cb)
+  if self:new_chat(args, cb) == false then return false end
   self.code.selection = nil
   self.file_selector:reset()
   if self.containers.selected_files then self.containers.selected_files:unmount() end
@@ -2479,18 +2496,30 @@ You are a responsible senior development engineer, and you are about to leave yo
 end
 
 function Sidebar:compact_history_messages(args, cb)
-  local history_memory = self.chat_history.memory
-  local messages = History.get_history_messages(self.chat_history)
+  local chat_history = assert(self.chat_history, "Chat history must be initialized before compacting")
+  local code_bufnr = self.code.bufnr
+  local history_project_root = self.chat_history_project_root or Utils.root.get({ buf = code_bufnr })
+  local history_memory = chat_history.memory
+  local messages = History.get_history_messages(chat_history)
   self.current_state = "compacting"
   self:render_state()
   self:update_content(
     "compacting history messsages",
     { focus = false, scroll = true, callback = function() self:focus_input() end }
   )
-  Llm.summarize_memory(history_memory and history_memory.content, messages, function(memory)
-    if memory then
-      self.chat_history.memory = memory
-      Path.history.save(self.code.bufnr, self.chat_history)
+  Llm.summarize_memory(history_memory and history_memory.content, messages, function(memory, failure)
+    if memory and chat_history.memory == history_memory then
+      chat_history.memory = memory
+      Path.history.write(code_bufnr, chat_history, history_project_root)
+    end
+    if self.chat_history ~= chat_history or self.code.bufnr ~= code_bufnr or self.current_state ~= "compacting" then
+      return
+    end
+    if failure then
+      self.current_state = failure.reason == "cancelled" and "cancelled" or "failed"
+      self:clear_state()
+      if failure.error then Utils.error(failure.error) end
+      return
     end
     self:update_content("compacted!", { focus = false, scroll = true, callback = function() self:focus_input() end })
     self.current_state = "compacted"
@@ -2500,6 +2529,10 @@ function Sidebar:compact_history_messages(args, cb)
 end
 
 function Sidebar:new_chat(args, cb)
+  if self.is_generating then
+    Utils.warn("Cannot switch chats during generation")
+    return false
+  end
   local history = Path.history.new(self.code.bufnr)
   -- Only point at the new file; it is written once the chat has something to save
   Path.history.save_latest_filename(self.code.bufnr, history.filename)
@@ -2646,11 +2679,16 @@ function Sidebar:discard_acp_import_chat(import)
 end
 
 local debounced_save_history = Utils.debounce(
-  function(self) Path.history.save(self.code.bufnr, self.chat_history) end,
+  function(bufnr, history, project_root) Path.history.write(bufnr, history, project_root) end,
   1000
 )
 
-function Sidebar:save_history() debounced_save_history(self) end
+---@param history? avante.ChatHistory
+---@param bufnr? integer
+---@param project_root? string
+function Sidebar:save_history(history, bufnr, project_root)
+  debounced_save_history(bufnr or self.code.bufnr, history or self.chat_history, project_root)
+end
 
 ---@param uuids string[]
 function Sidebar:delete_history_messages(uuids)
@@ -2662,18 +2700,26 @@ function Sidebar:delete_history_messages(uuids)
 end
 
 ---@param todos avante.TODO[]
-function Sidebar:update_todos(todos)
-  if self.chat_history == nil then self:reload_chat_history() end
-  if self.chat_history == nil then return end
-  self.chat_history.todos = todos
-  Path.history.save(self.code.bufnr, self.chat_history)
-  self:create_todos_container()
+---@param history? avante.ChatHistory
+---@param bufnr? integer
+---@param project_root? string
+function Sidebar:update_todos(todos, history, bufnr, project_root)
+  if history == nil and self.chat_history == nil then self:reload_chat_history() end
+  history = history or self.chat_history
+  if history == nil then return end
+  history.todos = todos
+  Path.history.save(bufnr or self.code.bufnr, history, project_root)
+  if history == self.chat_history then self:create_todos_container() end
 end
 
 ---@param messages avante.HistoryMessage | avante.HistoryMessage[]
----@param opts? {eager_update?: boolean}
+---@param opts? {eager_update?: boolean, history?: avante.ChatHistory, bufnr?: integer, project_root?: string}
 function Sidebar:add_history_messages(messages, opts)
-  local history_messages = History.get_history_messages(self.chat_history)
+  opts = opts or {}
+  local chat_history =
+    assert(opts.history or self.chat_history, "Chat history must be initialized before adding messages")
+  local bufnr = opts.bufnr or self.code.bufnr
+  local history_messages = History.get_history_messages(chat_history)
   messages = vim.islist(messages) and messages or { messages }
   for _, message in ipairs(messages) do
     set_user_message_metadata(self, message)
@@ -2690,11 +2736,10 @@ function Sidebar:add_history_messages(messages, opts)
       table.insert(history_messages, message)
     end
   end
-  self.chat_history.messages = history_messages
-  self._history_cache_invalidated = true
-  self:save_history()
+  chat_history.messages = history_messages
+  self:save_history(chat_history, bufnr, opts.project_root)
   if
-    self.chat_history.title == "untitled"
+    chat_history.title == "untitled"
     and #messages > 0
     and messages[1].just_for_display ~= true
     and messages[1].state == "generated"
@@ -2702,14 +2747,17 @@ function Sidebar:add_history_messages(messages, opts)
     local first_msg_text = Render.message_to_text(messages[1], messages)
     local lines_ = vim.iter(vim.split(first_msg_text, "\n")):filter(function(line) return line ~= "" end):totable()
     if #lines_ > 0 then
-      self.chat_history.title = lines_[1]
-      self:save_history()
+      chat_history.title = lines_[1]
+      self:save_history(chat_history, bufnr, opts.project_root)
     end
   end
+  if chat_history ~= self.chat_history then return end
+  self._history_cache_invalidated = true
   local last_message = messages[#messages]
   if last_message then
-    if History.Helpers.is_tool_use_message(last_message) then
-      self.current_state = "tool calling"
+    local tool_use = History.Helpers.get_tool_use_data(last_message)
+    if tool_use then
+      self.current_state = tool_use.name == "attempt_completion" and "generating" or "tool calling"
     elseif History.Helpers.is_thinking_message(last_message) then
       self.current_state = "thinking"
     else
@@ -2868,22 +2916,38 @@ function Sidebar:show_selected_files_hint()
   )
 end
 
-function Sidebar:reload_chat_history()
+---@param filename? string
+---@param project_root? string
+function Sidebar:reload_chat_history(filename, project_root)
   self.token_count = nil
   if not self.code.bufnr or not api.nvim_buf_is_valid(self.code.bufnr) then return end
-  self.chat_history = Path.history.load(self.code.bufnr)
+  project_root = project_root or Utils.root.get({ buf = self.code.bufnr })
+  -- Keep follow-ups and stream callbacks attached to the same active history.
+  if
+    not (
+      self.is_generating
+      and self.chat_history
+      and (filename == nil or filename == self.chat_history.filename)
+      and self.chat_history_project_root == project_root
+    )
+  then
+    self.chat_history = Path.history.load(self.code.bufnr, filename, project_root)
+  end
+  self.chat_history_project_root = project_root
   self._history_cache_invalidated = true
 end
 
----@param opts? {all?: boolean}
+---@param opts? {all?: boolean, resolved_api_route?: "chat" | "responses", history?: avante.ChatHistory}
 ---@return avante.HistoryMessage[]
 function Sidebar:get_history_messages_for_api(opts)
   opts = opts or {}
-  local messages = History.get_history_messages(self.chat_history)
+  local chat_history = opts.history or self.chat_history
+  if chat_history == nil then return {} end
+  local messages = History.get_history_messages(chat_history)
 
   -- Scan the initial set of messages, filtering out "uninteresting" ones, but also
   -- check if the last message mentioned in the chat memory is actually present.
-  local last_message = self.chat_history.memory and self.chat_history.memory.last_message_uuid
+  local last_message = chat_history.memory and chat_history.memory.last_message_uuid
   local last_message_present = false
   messages = vim
     .iter(messages)
@@ -2915,13 +2979,10 @@ function Sidebar:get_history_messages_for_api(opts)
 
     if not Config.acp_providers[Config.provider] then
       local provider = Providers[Config.provider]
-      local use_response_api = Providers.resolve_use_response_api(provider, nil)
-      local tool_limit
-      if provider.use_ReAct_prompt or use_response_api then
-        tool_limit = nil
-      else
-        tool_limit = 25
-      end
+      local route = opts.resolved_api_route or Providers.resolve_api_route(provider, nil)
+      ---@type integer?
+      local tool_limit = 25
+      if route == "responses" then tool_limit = nil end
       messages = History.update_tool_invocation_history(messages, tool_limit, Config.behaviour.auto_check_diagnostics)
     end
   end
@@ -2932,6 +2993,12 @@ end
 ---@param request string
 ---@param cb? fun(opts: AvanteGeneratePromptsOptions): nil
 function Sidebar:get_generate_prompts_options(request, cb)
+  local session_ctx = {
+    project_root = self.chat_history_project_root or Utils.root.get({ buf = self.code.bufnr }),
+  }
+  if not Config.acp_providers[Config.provider] then
+    session_ctx.resolved_api_route = Providers.resolve_api_route(Providers[Config.provider], nil)
+  end
   local filetype = api.nvim_get_option_value("filetype", { buf = self.code.bufnr })
   local file_ext = nil
 
@@ -2966,7 +3033,7 @@ function Sidebar:get_generate_prompts_options(request, cb)
     end
   end
 
-  local history_messages = self:get_history_messages_for_api()
+  local history_messages = self:get_history_messages_for_api({ resolved_api_route = session_ctx.resolved_api_route })
 
   local LLMTools = require("avante.llm_tools")
   local tools = vim.deepcopy(LLMTools.get_tools(request, history_messages))
@@ -2989,12 +3056,13 @@ function Sidebar:get_generate_prompts_options(request, cb)
     code_lang = filetype,
     selected_code = selected_code,
     tools = tools,
+    session_ctx = session_ctx,
   }
 
   if self.chat_history.system_prompt then
     prompts_opts.prompt_opts = {
       system_prompt = self.chat_history.system_prompt,
-      messages = history_messages,
+      messages = {},
     }
   end
 
@@ -3066,6 +3134,8 @@ function Sidebar:handle_submit(request)
   local chat_history = assert(self.chat_history, "Chat history must be initialized before submitting")
   local acp_client_generation = self.acp_client_generation
   local code_bufnr = self.code.bufnr
+  local history_project_root = self.chat_history_project_root or Utils.root.get({ buf = code_bufnr })
+  self.chat_history_project_root = self.chat_history_project_root or history_project_root
   local acp_provider = Config.acp_providers[Config.provider]
   local acp_context = acp_provider
     and {
@@ -3073,7 +3143,8 @@ function Sidebar:handle_submit(request)
       provider = vim.deepcopy(acp_provider),
     }
   local function is_current_request()
-    return self.chat_history == chat_history and self.acp_client_generation == acp_client_generation
+    return not acp_provider
+      or (self.chat_history == chat_history and self.acp_client_generation == acp_client_generation)
   end
   local new_content, has_shortcuts = Utils.extract_shortcuts(request)
   if has_shortcuts then request = new_content end
@@ -3118,17 +3189,40 @@ function Sidebar:handle_submit(request)
   vim.keymap.set("n", "k", on_k, { buffer = self.containers.result.bufnr })
   vim.keymap.set("n", "G", on_G, { buffer = self.containers.result.bufnr })
 
+  local task_usage, usage_reports = {}, {}
+  local usage_requests = 0
+  local function is_request_history_visible()
+    return self.chat_history ~= nil
+      and self.chat_history.filename == chat_history.filename
+      and self.chat_history_project_root == history_project_root
+  end
+
+  local function sync_request_history()
+    if not is_request_history_visible() then return false end
+    if self.chat_history ~= chat_history then
+      self.token_count = nil
+      self.chat_history = Path.history.load(code_bufnr, chat_history.filename, history_project_root)
+      self.chat_history_project_root = history_project_root
+      self._history_cache_invalidated = true
+    end
+    return true
+  end
+
   ---@type AvanteLLMStartCallback
   local function on_start(_) end
 
   ---@param messages avante.HistoryMessage[]
   local function on_messages_add(messages)
-    if is_current_request() then self:add_history_messages(messages) end
+    if not is_current_request() then return end
+    self:add_history_messages(
+      messages,
+      { history = chat_history, bufnr = code_bufnr, project_root = history_project_root }
+    )
   end
 
   ---@param state avante.GenerateState
   local function on_state_change(state)
-    if not is_current_request() then return end
+    if not is_current_request() or not is_request_history_visible() then return end
     self:clear_state()
     self.current_state = state
     self:render_state()
@@ -3140,8 +3234,10 @@ function Sidebar:handle_submit(request)
   ---@param state AvanteLLMToolUseState
   local function on_tool_log(tool_id, tool_name, log, state)
     if not is_current_request() then return end
-    if state == "generating" then on_state_change("tool calling") end
-    local tool_use_message = History.Helpers.get_tool_use_message(tool_id, self.chat_history.messages)
+    if state == "generating" then
+      on_state_change(tool_name == "attempt_completion" and "generating" or "tool calling")
+    end
+    local tool_use_message = History.Helpers.get_tool_use_message(tool_id, chat_history.messages)
     if not tool_use_message then
       -- Utils.debug("tool_use message not found", tool_id, tool_name)
       return
@@ -3154,19 +3250,19 @@ function Sidebar:handle_submit(request)
 
     local orig_is_calling = tool_use_message.is_calling
     tool_use_message.is_calling = true
-    self:update_content("")
+    if self.chat_history == chat_history then self:update_content("") end
     tool_use_message.is_calling = orig_is_calling
-    self:save_history()
+    self:save_history(chat_history, code_bufnr, history_project_root)
   end
 
   local function set_tool_use_store(tool_id, key, value)
     if not is_current_request() then return end
-    local tool_use_message = History.Helpers.get_tool_use_message(tool_id, self.chat_history.messages)
+    local tool_use_message = History.Helpers.get_tool_use_message(tool_id, chat_history.messages)
     if tool_use_message then
       local tool_use_store = tool_use_message.tool_use_store or {}
       tool_use_store[key] = value
       tool_use_message.tool_use_store = tool_use_store
-      self:save_history()
+      self:save_history(chat_history, code_bufnr, history_project_root)
     end
   end
 
@@ -3189,30 +3285,77 @@ function Sidebar:handle_submit(request)
         History.Message:new("assistant", "\n\nError: " .. msg_content, {
           just_for_display = true,
         }),
-      })
-      on_state_change("failed")
+      }, { history = chat_history, bufnr = code_bufnr, project_root = history_project_root })
+      Path.history.save(code_bufnr, chat_history, history_project_root)
+      if sync_request_history() then
+        on_state_change("failed")
+        self:update_content("")
+      else
+        self:clear_state()
+        self.current_state = nil
+      end
       return
     end
 
-    if stop_opts.reason == "cancelled" then
+    if stop_opts.reason == "complete" and usage_requests > 0 then
+      local function count(key)
+        local value = task_usage[key]
+        if value == nil then return "not reported" end
+        local formatted = tostring(value):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+        return formatted .. (usage_reports[key] < usage_requests and " (partial)" or "")
+      end
+      local cached = count("cached_input_tokens")
+      if
+        usage_reports.prompt_tokens == usage_requests
+        and usage_reports.cached_input_tokens == usage_requests
+        and task_usage.prompt_tokens > 0
+      then
+        cached = cached .. string.format(" (%.2f%%)", task_usage.cached_input_tokens / task_usage.prompt_tokens * 100)
+      end
+      local lines = {
+        string.format("Usage · %d %s · tokens", usage_requests, usage_requests == 1 and "request" or "requests"),
+        "Total        " .. count("uncached_total_tokens"),
+        "Input        " .. count("uncached_input_tokens"),
+        "Output       " .. count("completion_tokens"),
+        "Cached       " .. cached,
+        "Reasoning    " .. count("reasoning_tokens"),
+      }
+      if task_usage.tool_use_prompt_tokens ~= nil then
+        lines[#lines + 1] = "Tool prompt  " .. count("tool_use_prompt_tokens")
+      end
+      on_messages_add({
+        History.Message:new("assistant", "\n" .. table.concat(lines, "\n"), {
+          just_for_display = true,
+          is_usage_summary = true,
+        }),
+      })
+    end
+
+    Path.history.save(code_bufnr, chat_history, history_project_root)
+    local showing_request_history = sync_request_history()
+
+    if not showing_request_history then
+      self:clear_state()
+      self.current_state = nil
+    elseif stop_opts.reason == "cancelled" then
       on_state_change("cancelled")
     else
       on_state_change("succeeded")
     end
 
-    self:update_content("", {
-      callback = function() api.nvim_exec_autocmds("User", { pattern = VIEW_BUFFER_UPDATED_PATTERN }) end,
-    })
+    if showing_request_history then
+      self:update_content("", {
+        callback = function() api.nvim_exec_autocmds("User", { pattern = VIEW_BUFFER_UPDATED_PATTERN }) end,
+      })
+    end
 
     vim.defer_fn(function()
       if not is_current_request() then return end
       if Utils.is_valid_container(self.containers.result, true) and Config.behaviour.jump_result_buffer_on_finish then
         api.nvim_set_current_win(self.containers.result.winid)
       end
-      if Config.behaviour.auto_apply_diff_after_generation then self:apply(false) end
+      if is_request_history_visible() and Config.behaviour.auto_apply_diff_after_generation then self:apply(false) end
     end, 0)
-
-    Path.history.save(self.code.bufnr, self.chat_history)
   end
 
   if request and request ~= "" then
@@ -3222,7 +3365,7 @@ function Sidebar:handle_submit(request)
         selected_filepaths = selected_filepaths,
         selected_code = selected_code,
       }),
-    })
+    }, { history = chat_history, bufnr = code_bufnr, project_root = history_project_root })
   end
 
   self:get_generate_prompts_options(request, function(generate_prompts_options)
@@ -3258,7 +3401,7 @@ function Sidebar:handle_submit(request)
       on_save_acp_session_id = function(session_id)
         if not is_current_request() then return end
         chat_history.acp_session_id = session_id
-        Path.history.save(code_bufnr, chat_history)
+        Path.history.save(code_bufnr, chat_history, history_project_root)
       end,
       on_acp_session_replay = acp_import
         and function(session_id, messages)
@@ -3269,46 +3412,60 @@ function Sidebar:handle_submit(request)
       end,
       set_tool_use_store = set_tool_use_store,
       get_history_messages = function(opts)
-        if is_current_request() then return self:get_history_messages_for_api(opts) end
-        return chat_history.messages
+        if not is_current_request() then return chat_history.messages end
+        opts = opts or {}
+        opts.resolved_api_route = generate_prompts_options.session_ctx.resolved_api_route
+        opts.history = chat_history
+        return self:get_history_messages_for_api(opts)
       end,
-      get_todos = function()
-        if not is_current_request() then return chat_history.todos end
-        local history = Path.history.load(code_bufnr, chat_history.filename)
-        return history.todos
-      end,
+      get_todos = function() return chat_history.todos or {} end,
       update_todos = function(todos)
-        if is_current_request() then self:update_todos(todos) end
+        if is_current_request() then self:update_todos(todos, chat_history, code_bufnr, history_project_root) end
       end,
-      session_ctx = {},
       ---@param usage avante.LLMTokenUsage
       update_tokens_usage = function(usage)
         if not is_current_request() then return end
         if not usage then return end
-        if usage.completion_tokens == nil then return end
-        if usage.prompt_tokens == nil then return end
-        self.chat_history.tokens_usage = usage
-        self:save_history()
+        usage_requests = usage_requests + 1
+        local counts = vim.tbl_extend("force", {}, usage)
+        if usage.prompt_tokens ~= nil and usage.cached_input_tokens ~= nil then
+          counts.uncached_input_tokens = math.max(0, usage.prompt_tokens - usage.cached_input_tokens)
+          if usage.completion_tokens ~= nil then
+            counts.uncached_total_tokens = counts.uncached_input_tokens + usage.completion_tokens
+          end
+        end
+        for key, value in pairs(counts) do
+          if type(value) == "number" then
+            task_usage[key] = (task_usage[key] or 0) + value
+            usage_reports[key] = (usage_reports[key] or 0) + 1
+          end
+        end
+        -- Context compaction needs the latest request, not the task's cumulative usage.
+        if usage.completion_tokens ~= nil and usage.prompt_tokens ~= nil then chat_history.tokens_usage = usage end
+        self:save_history(chat_history, code_bufnr, history_project_root)
       end,
       get_tokens_usage = function() return chat_history.tokens_usage end,
     })
 
     ---@param pending_compaction_history_messages avante.HistoryMessage[]
-    local function on_memory_summarize(pending_compaction_history_messages)
+    ---@param on_stop AvanteLLMStopCallback
+    local function on_memory_summarize(pending_compaction_history_messages, on_stop)
       if not is_current_request() then return end
       local history_memory = chat_history.memory
       Llm.summarize_memory(
         history_memory and history_memory.content,
         pending_compaction_history_messages,
-        function(memory)
+        function(memory, failure)
           if not is_current_request() then return end
+          if failure then return on_stop(failure) end
+          if stream_options._request_state and stream_options._request_state.finished then return end
           if memory then
-            self.chat_history.memory = memory
-            Path.history.save(self.code.bufnr, self.chat_history)
+            chat_history.memory = memory
+            Path.history.save(code_bufnr, chat_history, history_project_root)
             stream_options.memory = memory.content
           end
-          stream_options.history_messages = self:get_history_messages_for_api()
-          Llm.stream(stream_options)
+          stream_options.history_messages = stream_options.get_history_messages()
+          Llm._stream(stream_options)
         end
       )
     end
@@ -3455,8 +3612,8 @@ function Sidebar:get_selected_code_container_height()
 end
 
 function Sidebar:get_todos_container_height()
-  local history = Path.history.load(self.code.bufnr)
-  if #history.todos == 0 then return 0 end
+  local history = self.chat_history
+  if history == nil or #history.todos == 0 then return 0 end
   return 3
 end
 
@@ -3516,6 +3673,8 @@ function Sidebar:render(opts)
   })
 
   if opts.sidebar_pre_render then opts.sidebar_pre_render(self) end
+
+  self:reload_chat_history()
 
   local function get_position()
     return (opts and opts.win and opts.win.position) and opts.win.position or calculate_config_window_position()
@@ -3580,8 +3739,7 @@ function Sidebar:render(opts)
 
   self:setup_colors()
 
-  -- Load history before open() returns and the API submits the initial question.
-  self:update_content_with_history()
+  self:update_content("")
   if opts.sidebar_post_render then
     self.post_render = opts.sidebar_post_render
     vim.defer_fn(function()
@@ -3759,8 +3917,8 @@ function Sidebar:create_selected_files_container()
 end
 
 function Sidebar:create_todos_container()
-  local history = Path.history.load(self.code.bufnr)
-  if #history.todos == 0 then
+  local history = self.chat_history
+  if history == nil or #history.todos == 0 then
     if self.containers.todos and Utils.is_valid_container(self.containers.todos) then
       self.containers.todos:unmount()
     end

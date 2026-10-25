@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install required and optional plugin dependencies into ./target/tests/deps,
+# Install required and optional plugin dependencies into the supplied directory.
 set -e
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

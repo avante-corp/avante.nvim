@@ -69,9 +69,10 @@ describe("Sidebar ACP request lifecycle", function()
     }) do
       sidebar[name] = function() end
     end
-    sidebar.get_generate_prompts_options = function(_, _, done)
+    sidebar.get_generate_prompts_options = function(self, _, done)
+      local session_ctx = { project_root = self.chat_history_project_root }
       complete_prompts = function()
-        done({ history_messages = old_chat.messages })
+        done({ history_messages = old_chat.messages, session_ctx = session_ctx })
         return captured
       end
       if not opts.defer_prompts then complete_prompts() end

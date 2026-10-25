@@ -30,7 +30,6 @@ local curl = require("avante.utils.curl")
 local Path = require("plenary.path")
 local Utils = require("avante.utils")
 local Providers = require("avante.providers")
-local OpenAI = require("avante.providers").openai
 
 local H = {}
 
@@ -173,10 +172,11 @@ local function _get_chat_auth_url()
   return "https://api.github.com/copilot_internal/v2/token"
 end
 H.chat_auth_url = _get_chat_auth_url()
-function H.chat_completion_url(base_url) return Utils.url_join(base_url, "/chat/completions") end
-function H.response_url(base_url) return Utils.url_join(base_url, "/responses") end
 
-function H.refresh_token(async, force)
+---@param async? boolean
+---@param force? boolean
+---@param callback? fun(err: string?)
+function H.refresh_token(async, force, callback)
   if not M.state then error("internal initialization error") end
 
   async = async == nil and true or async
@@ -189,6 +189,7 @@ function H.refresh_token(async, force)
     and M.state.github_token.expires_at
     and M.state.github_token.expires_at > math.floor(os.time())
   then
+    if callback then callback(nil) end
     return false
   end
 
@@ -199,16 +200,26 @@ function H.refresh_token(async, force)
       ["Authorization"] = "token " .. M.state.oauth_token,
       ["Accept"] = "application/json",
     },
-    timeout = provider_conf.timeout,
     proxy = provider_conf.proxy,
     insecure = provider_conf.allow_insecure,
   }
 
   local function handle_response(response)
     if response.status == 200 then
-      M.state.github_token = vim.json.decode(response.body)
+      local ok, token = pcall(vim.json.decode, response.body)
+      if
+        not ok
+        or type(token) ~= "table"
+        or type(token.token) ~= "string"
+        or token.token == ""
+        or type(token.expires_at) ~= "number"
+        or token.expires_at <= os.time()
+      then
+        error("Invalid Copilot token response", 0)
+      end
       local file = Path:new(copilot_path)
-      file:write(vim.json.encode(M.state.github_token), "w")
+      file:write(vim.json.encode(token), "w")
+      M.state.github_token = token
       if not vim.g.avante_login then vim.g.avante_login = true end
 
       -- If triggered synchronously, reset timer
@@ -216,22 +227,48 @@ function H.refresh_token(async, force)
 
       return true
     else
-      error("Failed to get success response: " .. vim.inspect(response))
-      return false
+      error("Failed to refresh Copilot token (HTTP " .. tostring(response.status) .. ")", 0)
     end
   end
 
   if async then
-    curl.get(
+    local function complete(response, err)
+      if not err then
+        local ok, result = pcall(handle_response, response)
+        if not ok then err = tostring(result) end
+      end
+      if callback then
+        callback(err)
+      elseif err then
+        Utils.warn(err)
+      end
+    end
+    local ok, err = pcall(
+      curl.get,
       H.chat_auth_url,
       vim.tbl_deep_extend("force", {
-        callback = handle_response,
+        -- Plenary's timeout only bounds synchronous requests.
+        raw = { "--max-time", "10" },
+        callback = vim.schedule_wrap(function(response) complete(response) end),
+        on_error = vim.schedule_wrap(
+          function(err) complete(nil, "Failed to refresh Copilot token (curl exit " .. tostring(err.exit) .. ")") end
+        ),
       }, curl_opts)
     )
+    if not ok then complete(nil, tostring(err)) end
   else
     local response = curl.get(H.chat_auth_url, curl_opts)
     handle_response(response)
   end
+end
+
+M.refresh_token = H.refresh_token
+
+---@param callback? fun(err: string?, token: CopilotToken?) Refresh asynchronously when provided; otherwise read the cache.
+---@return CopilotToken?
+function M.get_session_token(callback)
+  if not callback then return M.state and M.state.github_token end
+  H.refresh_token(true, false, function(err) callback(err, not err and M.state.github_token or nil) end)
 end
 
 ---@private
@@ -242,16 +279,8 @@ M.state = nil
 
 M.api_key_name = ""
 M.tokenizer_id = "gpt-4o"
-M.role_map = {
-  user = "user",
-  assistant = "assistant",
-}
 
-function M:is_disable_stream() return false end
-
-setmetatable(M, { __index = OpenAI })
-
----@param timeout? integer Timeout in milliseconds, overriding the provider configuration
+---@param timeout? integer Timeout in milliseconds
 function M:list_models(timeout)
   if M._model_list_cache then return M._model_list_cache end
   if not M._is_setup then M.setup() end
@@ -262,7 +291,7 @@ function M:list_models(timeout)
   local headers = self:build_headers()
   local curl_opts = {
     headers = Utils.tbl_override(headers, self.extra_headers),
-    timeout = timeout or provider_conf.timeout,
+    timeout = timeout,
     proxy = provider_conf.proxy,
     insecure = provider_conf.allow_insecure,
   }
@@ -310,98 +339,6 @@ function M:build_headers()
     ["Editor-Plugin-Version"] = "copilot-chat/0.26.7",
     ["Copilot-Integration-Id"] = "vscode-chat",
     ["Openai-Intent"] = "conversation-edits",
-  }
-end
-
-function M:parse_curl_args(prompt_opts)
-  -- refresh token synchronously, only if it has expired
-  -- (this should rarely happen, as we refresh the token in the background)
-  H.refresh_token(false, false)
-
-  local provider_conf, request_body = Providers.parse_config(self)
-  local use_response_api = Providers.resolve_use_response_api(provider_conf, prompt_opts)
-  local disable_tools = provider_conf.disable_tools or false
-
-  -- Apply OpenAI's set_allowed_params for Response API compatibility
-  OpenAI.set_allowed_params(provider_conf, request_body)
-
-  local use_ReAct_prompt = provider_conf.use_ReAct_prompt == true
-
-  local tools = nil
-  if not disable_tools and prompt_opts.tools and not use_ReAct_prompt then
-    tools = {}
-    for _, tool in ipairs(prompt_opts.tools) do
-      local transformed_tool = OpenAI:transform_tool(tool)
-      -- Response API uses flattened tool structure
-      if use_response_api then
-        if transformed_tool.type == "function" and transformed_tool["function"] then
-          transformed_tool = {
-            type = "function",
-            name = transformed_tool["function"].name,
-            description = transformed_tool["function"].description,
-            parameters = transformed_tool["function"].parameters,
-          }
-        end
-      end
-      table.insert(tools, transformed_tool)
-    end
-  end
-
-  local headers = self:build_headers()
-
-  if prompt_opts.messages and #prompt_opts.messages > 0 then
-    local last_message = prompt_opts.messages[#prompt_opts.messages]
-    local initiator = last_message.role == "user" and "user" or "agent"
-    headers["X-Initiator"] = initiator
-  end
-
-  local parsed_messages = self:parse_messages(prompt_opts)
-
-  -- Build base body
-  local base_body = {
-    model = provider_conf.model,
-    stream = true,
-    tools = tools,
-  }
-
-  -- Response API uses 'input' instead of 'messages'
-  -- NOTE: Copilot doesn't support previous_response_id, always send full history
-  if use_response_api then
-    base_body.input = parsed_messages
-
-    -- Response API uses max_output_tokens instead of max_tokens/max_completion_tokens
-    if request_body.max_completion_tokens then
-      request_body.max_output_tokens = request_body.max_completion_tokens
-      request_body.max_completion_tokens = nil
-    end
-    if request_body.max_tokens then
-      request_body.max_output_tokens = request_body.max_tokens
-      request_body.max_tokens = nil
-    end
-    -- Response API doesn't use stream_options
-    base_body.stream_options = nil
-    base_body.include = { "reasoning.encrypted_content" }
-    base_body.reasoning = {
-      summary = "detailed",
-    }
-    base_body.truncation = "disabled"
-  else
-    base_body.messages = parsed_messages
-    base_body.stream_options = {
-      include_usage = true,
-    }
-  end
-
-  local base_url = M.state.github_token.endpoints.api or provider_conf.endpoint
-  local build_url = use_response_api and H.response_url or H.chat_completion_url
-
-  return {
-    url = build_url(base_url),
-    timeout = provider_conf.timeout,
-    proxy = provider_conf.proxy,
-    insecure = provider_conf.allow_insecure,
-    headers = Utils.tbl_override(headers, self.extra_headers),
-    body = vim.tbl_deep_extend("force", base_body, request_body),
   }
 end
 

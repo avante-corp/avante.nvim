@@ -7,10 +7,42 @@ local M = {}
 M.Helpers = Helpers
 M.Message = Message
 
+---@param messages avante.HistoryMessage[]
+---@return avante.HistoryMessage[]
+function M.sort_messages(messages)
+  local start = 1
+  while start <= #messages do
+    local first = messages[start]
+    local finish = start
+    if first.message.role == "assistant" and first.turn_id and first.order ~= nil then
+      while finish < #messages do
+        local next_message = messages[finish + 1]
+        if
+          next_message.message.role ~= "assistant"
+          or next_message.turn_id ~= first.turn_id
+          or next_message.order == nil
+        then
+          break
+        end
+        finish = finish + 1
+      end
+      if finish > start then
+        local turn = vim.list_slice(messages, start, finish)
+        table.sort(turn, function(left, right) return left.order < right.order end)
+        for index, message in ipairs(turn) do
+          messages[start + index - 1] = message
+        end
+      end
+    end
+    start = finish + 1
+  end
+  return messages
+end
+
 ---@param history avante.ChatHistory
 ---@return avante.HistoryMessage[]
 function M.get_history_messages(history)
-  if history.messages then return history.messages end
+  if history.messages then return M.sort_messages(history.messages) end
   local messages = {}
   for _, entry in ipairs(history.entries or {}) do
     if entry.request and entry.request ~= "" then
@@ -40,7 +72,6 @@ end
 ---@field kind "edit" | "view" | "other"
 ---@field use AvanteLLMToolUse
 ---@field result? AvanteLLMToolResult
----@field result_message? avante.HistoryMessage Complete result message
 ---@field path? string Uniform (normalized) path of the affected file
 
 ---@class HistoryFileInfo
@@ -78,7 +109,6 @@ local function collect_tool_info(messages)
       local info = tools[result.tool_use_id]
       if info then
         info.result = result
-        info.result_message = message
         if info.path then
           local f = files[info.path]
           if not f then
@@ -132,6 +162,7 @@ end
 local function update_view_result(tool_info, stale_view)
   local use = tool_info.use
   local result = tool_info.result
+  if not result or result.is_error or result.is_user_declined then return end
 
   if stale_view then
     result.content = stale_view_content(tool_info.path)
@@ -220,32 +251,36 @@ end
 ---that has up-to-date file contents and potentially updated diagnostic for modified
 ---files.
 ---@param messages avante.HistoryMessage[]
----@param tools HistoryToolInfo[]
----@param files HistoryFileInfo[]
+---@param tools table<string, HistoryToolInfo>
+---@param files table<string, HistoryFileInfo>
 ---@param add_diagnostic boolean Whether to generate and add diagnostic info to "edit" invocations
----@param tools_to_text integer Number of tool invocations to be converted to simple text
+---@param tools_to_keep? table<string, boolean> Tool invocations kept as structured messages
 ---@return avante.HistoryMessage[]
-local function refresh_history(messages, tools, files, add_diagnostic, tools_to_text)
+local function refresh_history(messages, tools, files, add_diagnostic, tools_to_keep)
   ---@type avante.HistoryMessage[]
   local updated_messages = {}
-  local tool_count = 0
+  local converted_results = {}
+  local pending_messages = {}
 
   for _, message in ipairs(messages) do
+    local result = Helpers.get_tool_result_data(message)
+    if not result and #pending_messages > 0 then
+      vim.list_extend(updated_messages, pending_messages)
+      pending_messages = {}
+    end
     local use = Helpers.get_tool_use_data(message)
     if use then
-      -- This is a tool invocation message. We will be handling both use and result together.
       local tool_info = tools[use.id]
       if not tool_info then goto continue end
       if not tool_info.result then goto continue end
 
-      if tool_count < tools_to_text then
+      if tools_to_keep and not tools_to_keep[use.id] then
         local text_msgs = convert_tool_to_text(tool_info)
         Utils.debug("Converted", use.name, "invocation to", #text_msgs, "messages")
-        updated_messages = vim.list_extend(updated_messages, text_msgs)
+        table.insert(updated_messages, text_msgs[1])
+        converted_results[use.id] = text_msgs[2]
       else
         table.insert(updated_messages, message)
-        table.insert(updated_messages, tool_info.result_message)
-        tool_count = tool_count + 1
 
         if tool_info.kind == "view" then
           local path = tool_info.path
@@ -253,8 +288,16 @@ local function refresh_history(messages, tools, files, add_diagnostic, tools_to_
           update_view_result(tool_info, use.id ~= files[tool_info.path].last_tool_id)
         end
       end
-
-      if tool_info.kind == "edit" then
+    elseif result then
+      local tool_info = tools[result.tool_use_id]
+      if not tool_info then goto continue end
+      if converted_results[result.tool_use_id] then
+        table.insert(pending_messages, converted_results[result.tool_use_id])
+      else
+        table.insert(updated_messages, message)
+      end
+      local result_use = tool_info.use
+      if tool_info.kind == "edit" and not converted_results[result.tool_use_id] then
         local path = tool_info.path
         assert(path, "encountered 'edit' tool invocation without path")
         local file_info = files[path]
@@ -262,29 +305,25 @@ local function refresh_history(messages, tools, files, add_diagnostic, tools_to_
         -- If this is the last operation for this file, generate synthetic "view"
         -- invocation to provide the up-to-date file contents.
         if not tool_info.result.is_error then
-          local view_msgs = generate_view_messages(use, path, use.id == file_info.last_tool_id)
+          local view_msgs = generate_view_messages(result_use, path, result_use.id == file_info.last_tool_id)
           Utils.debug("Added", #view_msgs, "'view' tool messages for", path)
-          updated_messages = vim.list_extend(updated_messages, view_msgs)
-          tool_count = tool_count + 1
+          vim.list_extend(pending_messages, view_msgs)
         end
 
-        if add_diagnostic and use.id == file_info.edit_tool_id then
+        if add_diagnostic and result_use.id == file_info.edit_tool_id then
           local diag_msgs = generate_diagnostic_messages(path)
           Utils.debug("Added", #diag_msgs, "'diagnostics' tool messages for", path)
-          updated_messages = vim.list_extend(updated_messages, diag_msgs)
-          tool_count = tool_count + 1
+          vim.list_extend(pending_messages, diag_msgs)
         end
       end
-    elseif not Helpers.get_tool_result_data(message) then
-      -- Skip the tool result messages (since we process them together with their "use"s.
-      -- All other (non-tool-related) messages we simply keep.
+    else
       table.insert(updated_messages, message)
     end
 
     ::continue::
   end
 
-  return updated_messages
+  return vim.list_extend(updated_messages, pending_messages)
 end
 
 ---Analyzes the history looking for tool invocations, drops incomplete invocations,
@@ -294,28 +333,34 @@ end
 ---@param add_diagnostic boolean Mix in LSP diagnostic info for affected files
 ---@return avante.HistoryMessage[]
 M.update_tool_invocation_history = function(messages, max_tool_use, add_diagnostic)
+  M.sort_messages(messages)
   local tools, files = collect_tool_info(messages)
 
-  -- Figure number of tool invocations that should be converted to simple "text"
-  -- messages to reduce prompt costs.
-  local tools_to_text = 0
+  -- Keep the newest calls within the budget, including their synthetic calls.
+  local tools_to_keep
   if max_tool_use then
-    local n_edits = vim.iter(files):fold(
-      0,
-      ---@param count integer
-      ---@param file_info HistoryFileInfo
-      function(count, file_info)
-        if file_info.edit_tool_id then count = count + 1 end
-        return count
+    tools_to_keep = {}
+    for index = #messages, 1, -1 do
+      local use = Helpers.get_tool_use_data(messages[index])
+      local tool_info = use and tools[use.id]
+      if tool_info and tool_info.result then
+        local count = 1
+        if tool_info.kind == "edit" then
+          if not tool_info.result.is_error then count = count + 1 end
+          local file_info = files[assert(tool_info.path)]
+          if add_diagnostic and tool_info.use.id == file_info.edit_tool_id then count = count + 1 end
+        end
+        if count <= max_tool_use then
+          tools_to_keep[tool_info.use.id] = true
+          max_tool_use = max_tool_use - count
+        else
+          max_tool_use = 0
+        end
       end
-    )
-    -- Each valid "edit" invocation will result in synthetic "view" and also
-    -- in "diagnostic" if it is requested by the caller.
-    local expected = #tools + n_edits + (add_diagnostic and n_edits or 0)
-    tools_to_text = expected - max_tool_use
+    end
   end
 
-  return refresh_history(messages, tools, files, add_diagnostic, tools_to_text)
+  return refresh_history(messages, tools, files, add_diagnostic, tools_to_keep)
 end
 
 ---Scans message history backwards, looking for tool invocations that have not been executed yet
@@ -323,6 +368,7 @@ end
 ---@return AvantePartialLLMToolUse[]
 ---@return avante.HistoryMessage[]
 function M.get_pending_tools(messages)
+  M.sort_messages(messages)
   local last_turn_id = nil
   if #messages > 0 then last_turn_id = messages[#messages].turn_id end
 

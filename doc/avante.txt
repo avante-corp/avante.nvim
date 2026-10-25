@@ -209,10 +209,8 @@ Common options:
      providers = {
        claude = {
          endpoint = "https://api.anthropic.com",
-         model = "claude-sonnet-4-20250514",
-         timeout = 30000,
+         model = "claude-sonnet-5-5",
          extra_request_body = {
-           temperature = 0.75,
            max_tokens = 20480,
          },
        },
@@ -933,6 +931,7 @@ avante.Sidebar                                                  *avante.Sidebar*
         {containers}                 ({result?:NuiSplit,todos?:NuiSplit,selected_code?:NuiSplit,selected_files?:NuiSplit,input?:NuiSplit})
         {file_selector}              (FileSelector)
         {chat_history}               (avante.ChatHistory|nil)
+        {chat_history_project_root}  (string|nil)
         {current_state}              (avante.GenerateState|nil)
         {state_timer}                (table|nil)
         {state_spinner_chars}        (string[])
@@ -999,10 +998,16 @@ SidebarOpenOptions : AskOptions                             *SidebarOpenOptions*
         {selection?}  (avante.SelectionResult)
 
 
-Sidebar:open({opts})                                       *avante-sidebar:open*
+Sidebar:can_open({opts?})                              *avante-sidebar:can_open*
 
     Parameters: ~
-        {opts}  (SidebarOpenOptions)
+        {opts?}  (AskOptions)
+
+
+Sidebar:open({opts?})                                      *avante-sidebar:open*
+
+    Parameters: ~
+        {opts?}  (SidebarOpenOptions)
 
 
 Sidebar:setup_colors()                             *avante-sidebar:setup_colors*
@@ -1358,7 +1363,13 @@ Sidebar:discard_acp_import_chat({import})
         {import}  (avante.PendingAcpImport)
 
 
-Sidebar:save_history()                             *avante-sidebar:save_history*
+                                                   *avante-sidebar:save_history*
+Sidebar:save_history({history?}, {bufnr?}, {project_root?})
+
+    Parameters: ~
+        {history?}       (avante.ChatHistory)
+        {bufnr?}         (integer)
+        {project_root?}  (string)
 
 
                                         *avante-sidebar:delete_history_messages*
@@ -1368,10 +1379,14 @@ Sidebar:delete_history_messages({uuids})
         {uuids}  (string[])
 
 
-Sidebar:update_todos({todos})                      *avante-sidebar:update_todos*
+                                                   *avante-sidebar:update_todos*
+Sidebar:update_todos({todos}, {history?}, {bufnr?}, {project_root?})
 
     Parameters: ~
-        {todos}  (avante.TODO[])
+        {todos}          (avante.TODO[])
+        {history?}       (avante.ChatHistory)
+        {bufnr?}         (integer)
+        {project_root?}  (string)
 
 
                                            *avante-sidebar:add_history_messages*
@@ -1379,7 +1394,7 @@ Sidebar:add_history_messages({messages}, {opts?})
 
     Parameters: ~
         {messages}  (avante.HistoryMessage|avante.HistoryMessage[])
-        {opts?}     ({eager_update?:boolean})
+        {opts?}     ({eager_update?:boolean,history?:avante.ChatHistory,bufnr?:integer,project_root?:string})
 
 
                                                *avante-sidebar:add_chat_history*
@@ -1409,14 +1424,16 @@ Sidebar:close_selected_files_hint()   *avante-sidebar:close_selected_files_hint*
 Sidebar:show_selected_files_hint()     *avante-sidebar:show_selected_files_hint*
 
 
-Sidebar:reload_chat_history()               *avante-sidebar:reload_chat_history*
+                                            *avante-sidebar:reload_chat_history*
+Sidebar:reload_chat_history({filename?}, {project_root?})
+
+    Parameters: ~
+        {filename?}      (string)
+        {project_root?}  (string)
 
 
                                    *avante-sidebar:get_history_messages_for_api*
-Sidebar:get_history_messages_for_api({opts?})
-
-    Parameters: ~
-        {opts?}  ({all?:boolean})
+Sidebar:get_history_messages_for_api()
 
     Returns: ~
         (avante.HistoryMessage[])
@@ -2010,6 +2027,7 @@ avante.ProcessToolUseOpts                            *avante.ProcessToolUseOpts*
         {on_log?}              (fun(tool_id:string,tool_name:string,log:string,state:AvanteLLMToolUseState):nil)
         {set_tool_use_store?}  (fun(tool_id:string,key:string,value:any):nil)
         {on_complete?}         (fun(result:string|nil,error:string|nil):nil)
+        {is_cancelled?}        (fun():boolean)
 
 
 M.process_tool_use({tools}, {tool_use})   *avante-custom-tools.process_tool_use*
@@ -2154,17 +2172,6 @@ Avante can load `*.avanterules` files from a project. Configure rule
      override_prompt_dir = vim.fn.expand("~/.config/nvim/avante_prompts"),
    }
 <
-
-
-                                        *avante-prompts.get_ReAct_system_prompt*
-M.get_ReAct_system_prompt({provider_conf}, {opts})
-
-    Parameters: ~
-        {provider_conf}  (AvanteDefaultBaseProvider)
-        {opts}           (AvantePromptOptions)
-
-    Returns: ~
-        (string)
 
 
 M.get_agents_rules_prompt()             *avante-prompts.get_agents_rules_prompt*
@@ -2802,12 +2809,6 @@ M.parse_args({fargs}, {options?})                      *avante-utils.parse_args*
         (string|nil)  Concatenated remaining arguments (if collect_remaining is true)
 
 
-M.tool_use_to_xml({tool_use})                     *avante-utils.tool_use_to_xml*
-
-    Parameters: ~
-        {tool_use}  (AvanteLLMToolUse)
-
-
 M.is_edit_tool_use({tool_use})                   *avante-utils.is_edit_tool_use*
 
     Parameters: ~
@@ -2831,7 +2832,7 @@ M.call_once()                                           *avante-utils.call_once*
 
 
 M.fix_diff({diff})                                       *avante-utils.fix_diff*
-     Some models (e.g., gpt-4o) cannot correctly return diff content and often miss the SEARCH line, so this needs to be manually fixed in such cases.
+     Normalize diff markers and restore missing SEARCH headers in model-generated edits.
 
     Parameters: ~
         {diff}  (string)
@@ -3111,7 +3112,6 @@ Model providers                                               *avante-providers*
  - `copilot`
  - `bedrock`
  - `ollama`
- - `watsonx_code_assistant`
  - `mistral`
  - ...
  Please refer to the provider's help section under the tag avante-providers-NAME
@@ -3119,17 +3119,15 @@ Model providers                                               *avante-providers*
 avante.Providers                                              *avante.Providers*
 
     Fields: ~
-        {azure}                   (AvanteProviderFunctor)
-        {bedrock}                 (AvanteBedrockProviderFunctor)
-        {claude}                  (AvanteClaudeProviderFunctor)
-        {cohere}                  (AvanteProviderFunctor)
-        {copilot}                 (AvanteProviderFunctor)
-        {gemini}                  (AvanteProviderFunctor)
-        {mistral}                 (AvanteProviderFunctor)
-        {ollama}                  (AvanteProviderFunctor)
-        {openai}                  (AvanteProviderFunctor)
-        {vertex_claude}           (AvanteProviderFunctor)
-        {watsonx_code_assistant}  (AvanteProviderFunctor)
+        {azure}    (AvanteProviderFunctor)
+        {bedrock}  (AvanteBedrockProviderFunctor)
+        {claude}   (AvanteClaudeProviderFunctor)
+        {cohere}   (AvanteProviderFunctor)
+        {copilot}  (AvanteProviderFunctor)
+        {gemini}   (AvanteProviderFunctor)
+        {mistral}  (AvanteProviderFunctor)
+        {ollama}   (AvanteProviderFunctor)
+        {openai}   (AvanteProviderFunctor)
 
 
 EnvironmentHandler                                          *EnvironmentHandler*
@@ -3147,7 +3145,7 @@ M.refresh({provider_name})                            *avante-providers.refresh*
 M.parse_config({opts})                           *avante-providers.parse_config*
 
     Parameters: ~
-        {opts}  (AvanteProvider|AvanteSupportedProvider|AvanteAnthropicProvider|AvanteProviderFunctor|AvanteBedrockProviderFunctor)
+        {opts}  (AvanteProvider|AvanteSupportedProvider|AvanteProviderFunctor|AvanteBedrockProviderFunctor)
 
     Returns: ~
         (AvanteDefaultBaseProvider)  provider_opts
@@ -3163,6 +3161,15 @@ M.resolve_use_response_api({provider_conf}, {ctx})
 
     Returns: ~
         (boolean)
+
+
+                                            *avante-providers.resolve_api_route*
+M.resolve_api_route({provider_conf}, {ctx}, {protocol?})
+
+    Parameters: ~
+        {provider_conf}  (AvanteDefaultBaseProvider|nil)
+        {ctx}            (any)
+        {protocol?}      (AvanteNativeLLMProtocol)        @return "chat" | "responses" | nil
 
 
 M.get_config({provider_name})                      *avante-providers.get_config*
@@ -3196,7 +3203,7 @@ Bedrock can use `BEDROCK_KEYS` or the AWS default credentials chain:
    require("avante").setup({
      providers = {
        bedrock = {
-         model = "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+         model = "us.anthropic.claude-sonnet-4-6",
          aws_region = "us-east-1",
        },
      },
@@ -3207,112 +3214,14 @@ See https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html.
 AvanteBedrockProviderFunctor                      *AvanteBedrockProviderFunctor*
 
 
-AWSCreds                                                              *AWSCreds*
-
-    Fields: ~
-        {access_key_id}      (string)
-        {secret_access_key}  (string)
-        {session_token}      (string)
-
-
 M.setup()                                       *avante-providers-bedrock.setup*
-
-
-M.load_model_handler()             *avante-providers-bedrock.load_model_handler*
 
 
 M.is_env_set()                             *avante-providers-bedrock.is_env_set*
 
 
-M:parse_messages()                     *avante-providers-bedrock:parse_messages*
-
-
-M:parse_response()                     *avante-providers-bedrock:parse_response*
-
-
-M:transform_tool()                     *avante-providers-bedrock:transform_tool*
-
-
-M:build_bedrock_payload()       *avante-providers-bedrock:build_bedrock_payload*
-
-
-M:parse_stream_data()               *avante-providers-bedrock:parse_stream_data*
-
-
-                        *avante-providers-bedrock:parse_response_without_stream*
-M:parse_response_without_stream()
-
-
-M:parse_curl_args({prompt_opts})      *avante-providers-bedrock:parse_curl_args*
-
-    Parameters: ~
-        {prompt_opts}  (AvantePromptOptions)
-
-    Returns: ~
-        (AvanteCurlOutput|nil)
-
-
-M.on_error()                                 *avante-providers-bedrock.on_error*
-
-
-                                  *avante-providers-bedrock:get_aws_credentials*
-M:get_aws_credentials({region}, {profile})
-     get_aws_credentials returns aws credentials using the aws cli
-
-    Parameters: ~
-        {region}   (string)
-        {profile}  (string)
-
-    Returns: ~
-        (AWSCreds)
-
-
-M.check_aws_cli_installed()   *avante-providers-bedrock.check_aws_cli_installed*
-     check_aws_cli_installed returns true when the aws cli is installed
-     @return boolean
-
-
-                  *avante-providers-bedrock.check_curl_version_supports_aws_sig*
-M.check_curl_version_supports_aws_sig()
-     check_curl_version_supports_aws_sig checks if the given curl version supports aws sigv4 correctly
-     we require at least version 8.10.0 because it contains critical fixes for aws sigv4 support
-     https://curl.se/ch/8.10.0.html
-     @param version_string string The curl version string to check
-     @return boolean
-
-
-                          *avante-providers-bedrock.check_curl_supports_aws_sig*
-M.check_curl_supports_aws_sig()
-     check_curl_supports_aws_sig returns true when the installed curl version supports aws sigv4
-     @return boolean
-
-
 ==============================================================================
 Anthropic provider                                     *avante-providers-claude*
-
- Avante supports both the 'api' and 'max' authentications
-
- Set the Claude provider `auth_type` to `"max"`:
-
-AvanteAnthropicProvider : AvanteDefaultBaseProvider    *AvanteAnthropicProvider*
-
-    Fields: ~
-        {auth_type}  ()
-
-
-ClaudeAuthToken                                                *ClaudeAuthToken*
-
-    Fields: ~
-        {access_token}   (string)
-        {refresh_token}  (string)
-        {expires_at}     (integer)
-
-
-AvanteClaudeProviderFunctor                        *AvanteClaudeProviderFunctor*
-
-
-M.setup()                                        *avante-providers-claude.setup*
-
 
                              *avante-providers-claude:get_rate_limit_sleep_time*
 M:get_rate_limit_sleep_time({headers})
@@ -3324,136 +3233,17 @@ M:get_rate_limit_sleep_time({headers})
         (integer|nil)
 
 
-                            *avante-providers-claude.is_temperature_unsupported*
-M.is_temperature_unsupported({model})
-
-    Parameters: ~
-        {model}  (string|nil)
-
-    Returns: ~
-        (boolean)
-
-
-                                        *avante-providers-claude:transform_tool*
-M:transform_tool({self}, {tool}, {use_prefix?})
-
-    Parameters: ~
-        {self}         (AvanteProviderFunctor)
-        {tool}         (AvanteLLMTool)
-        {use_prefix?}  (boolean)                Whether to prefix tool names (for OAuth)
-
-    Returns: ~
-        (AvanteClaudeTool)
-
-
-M:is_disable_stream()                *avante-providers-claude:is_disable_stream*
-
-
-M:parse_messages()                      *avante-providers-claude:parse_messages*
-
-    Returns: ~
-        (AvanteClaudeMessage[])
-
-
-                             *avante-providers-claude.transform_anthropic_usage*
-M.transform_anthropic_usage({usage})
-
-    Parameters: ~
-        {usage}  (avante.AnthropicTokenUsage|nil)
-
-    Returns: ~
-        (avante.LLMTokenUsage|nil)
-
-
-M:parse_response()                      *avante-providers-claude:parse_response*
-
-
-M:parse_curl_args({prompt_opts})       *avante-providers-claude:parse_curl_args*
-
-    Parameters: ~
-        {prompt_opts}  (AvantePromptOptions)
-
-    Returns: ~
-        (AvanteCurlOutput|nil)
-
-
-M.on_error()                                  *avante-providers-claude.on_error*
-
-
-M.authenticate()                          *avante-providers-claude.authenticate*
-
-
-M.refresh_token({async}, {force})        *avante-providers-claude.refresh_token*
-     Function to refresh an expired claude auth token
-
-    Parameters: ~
-        {async}  (boolean)  whether to refresh the token asynchronously
-        {force}  (boolean)  whether to force the refresh
-
-
-M.store_tokens()                          *avante-providers-claude.store_tokens*
-
-
-M.cleanup_claude()                      *avante-providers-claude.cleanup_claude*
-
-
 ==============================================================================
 Ollama provider                                        *avante-providers-ollama*
 
-                                                   *AvanteOllamaProviderFunctor*
-AvanteOllamaProviderFunctor : AvanteProviderFunctor
-
-
 M.is_env_set()                              *avante-providers-ollama.is_env_set*
-    Ollama is disabled by default. Users should override is_env_set()
-    implementation in their configs to enable it. There is a helper
-    check_endpoint_alive() that can be used to test if configured
-    endpoint is alive that can be used in place of is_env_set().
-
-
-M:is_disable_stream()                *avante-providers-ollama:is_disable_stream*
-
-
-avante.OllamaFunction                                    *avante.OllamaFunction*
-
-    Fields: ~
-        {name}       (string)
-        {arguments}  (table)
-
-
-avante.OllamaToolCall                                    *avante.OllamaToolCall*
-
-    Fields: ~
-        {function}  (avante.OllamaFunction)
-
-
-                                 *avante-providers-ollama:add_tool_use_messages*
-M:add_tool_use_messages({tool_calls}, {opts})
-
-    Parameters: ~
-        {tool_calls}  (avante.OllamaToolCall[])
-        {opts}        (AvanteHandlerOptions)
-
-
-M:parse_curl_args({prompt_opts})       *avante-providers-ollama:parse_curl_args*
-
-    Parameters: ~
-        {prompt_opts}  (AvantePromptOptions)
-
-    Returns: ~
-        (AvanteCurlOutput|nil)
-
-
-M.on_error({result})                          *avante-providers-ollama.on_error*
-
-    Parameters: ~
-        {result}  (table)
+    Ollama is disabled until users opt into checking or trusting their endpoint.
 
 
 M:list_models({timeout?})                  *avante-providers-ollama:list_models*
 
     Parameters: ~
-        {timeout?}  (integer)  Timeout in milliseconds
+        {timeout?}  (integer)
 
 
 M.check_endpoint_alive()          *avante-providers-ollama.check_endpoint_alive*
@@ -3462,101 +3252,14 @@ M.check_endpoint_alive()          *avante-providers-ollama.check_endpoint_alive*
 ==============================================================================
 OpenAI provider                                        *avante-providers-openai*
 
-AvanteProviderFunctor                                    *AvanteProviderFunctor*
-
-
-M:is_disable_stream()                *avante-providers-openai:is_disable_stream*
-
-
-M:transform_tool({tool})                *avante-providers-openai:transform_tool*
-
-    Parameters: ~
-        {tool}  (AvanteLLMTool)
-
-    Returns: ~
-        (AvanteOpenAITool)
-
-
-M.is_openrouter()                        *avante-providers-openai.is_openrouter*
-    Check if url belongs to openrouter
-
-    Returns: ~
-        (boolean)
-
-
-M.is_mistral()                              *avante-providers-openai.is_mistral*
-    Check if url belongs to mistral
-
-    Returns: ~
-        (boolean)
-
-
 M:list_models({timeout?})                  *avante-providers-openai:list_models*
     Asking remote provider to list available models
 
     Parameters: ~
-        {timeout?}  (integer)  Timeout in milliseconds, overriding the provider configuration
+        {timeout?}  (integer)  Timeout in milliseconds
 
     Returns: ~
         (AvanteProviderModelList)
-
-
-M.get_user_message({opts})            *avante-providers-openai.get_user_message*
-
-    Parameters: ~
-        {opts}  (AvantePromptOptions)
-
-
-M.is_reasoning_model()              *avante-providers-openai.is_reasoning_model*
-
-
-M.set_allowed_params()              *avante-providers-openai.set_allowed_params*
-
-
-M:parse_messages()                      *avante-providers-openai:parse_messages*
-
-
-M:finish_pending_messages()    *avante-providers-openai:finish_pending_messages*
-
-
-M:add_text_message()                  *avante-providers-openai:add_text_message*
-
-
-M:add_thinking_message()          *avante-providers-openai:add_thinking_message*
-
-
-M:add_tool_use_message()          *avante-providers-openai:add_tool_use_message*
-
-
-M:add_reasoning_message()        *avante-providers-openai:add_reasoning_message*
-
-
-                                *avante-providers-openai.transform_openai_usage*
-M.transform_openai_usage({usage})
-
-    Parameters: ~
-        {usage}  (avante.OpenAITokenUsage|nil)
-
-    Returns: ~
-        (avante.LLMTokenUsage|nil)
-
-
-M:parse_response()                      *avante-providers-openai:parse_response*
-     Parse response
-     Updates status
-
-
-                         *avante-providers-openai:parse_response_without_stream*
-M:parse_response_without_stream()
-
-
-M:parse_curl_args({prompt_opts})       *avante-providers-openai:parse_curl_args*
-
-    Parameters: ~
-        {prompt_opts}  (AvantePromptOptions)
-
-    Returns: ~
-        (AvanteCurlOutput|nil)
 
 
 ==============================================================================
