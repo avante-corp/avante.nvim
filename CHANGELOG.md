@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.8](https://github.com/avante-corp/avante.nvim/compare/v0.4.7...v0.4.8) (2026-10-28)
+
+
+### Continuous Integration
+
+* fix passing of secret ([3e76a7e](https://github.com/avante-corp/avante.nvim/commit/3e76a7e41e67ec4a56daa3674c32c135d8c0b277))
+
 ## [0.4.7](https://github.com/avante-corp/avante.nvim/compare/v0.4.6...v0.4.7) (2026-10-25)
 
 
