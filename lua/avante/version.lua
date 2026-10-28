@@ -1,1 +1,1 @@
-return "0.4.7" -- x-release-please-version
+return "0.4.8" -- x-release-please-version
