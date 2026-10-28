@@ -80,6 +80,15 @@ jobs:
           path: ./avante_lib-${{ steps.build.outputs.os_name }}-${{ matrix.config.arch }}-${{ matrix.feature }}.*
           if-no-files-found: error
 
+  luarocks-upload:
+    needs: [create-release]
+    if: needs.create-release.outputs.release_created == 'true'
+    uses: ./.github/workflows/luarocks.yml
+    with:
+      tag: ${{ needs.create-release.outputs.release_tag }}
+    secrets:
+      LUX_API_KEY: ${{ secrets.LUX_API_KEY }}
+
   upload-release-assets:
     needs: [create-release]
     if: needs.create-release.outputs.release_created == 'true'

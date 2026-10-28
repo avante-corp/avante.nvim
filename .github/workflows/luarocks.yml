@@ -1,6 +1,21 @@
 name: Push to luarocks.org
 
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish (e.g. v0.4.3)
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to publish
+        required: true
+        type: string
+    secrets:
+      LUX_API_KEY:
+        required: true
   push:
     tags:
       - '*'
