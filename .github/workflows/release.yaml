@@ -87,7 +87,7 @@ jobs:
     with:
       tag: ${{ needs.create-release.outputs.release_tag }}
     secrets:
-      LUAROCKS_API_KEY: ${{ secrets.LUAROCKS_API_KEY }}
+      LUX_API_KEY: ${{ secrets.LUX_API_KEY }}
 
   upload-release-assets:
     needs: [create-release]
