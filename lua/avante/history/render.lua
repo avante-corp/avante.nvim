@@ -316,14 +316,15 @@ function M.get_content_lines(content, decoration, truncate)
         end
       elseif
         content_item.type == "diff"
-        and content_item.oldText ~= nil
-        and content_item.newText ~= nil
-        and content_item.oldText ~= vim.NIL
-        and content_item.newText ~= vim.NIL
+        and type(content_item.path) == "string"
+        and (content_item.oldText == nil or content_item.oldText == vim.NIL or type(content_item.oldText) == "string")
+        and type(content_item.newText) == "string"
       then
+        -- Standard ACP diff: missing/null oldText means the tool call creates a new file.
         local relative_path = Utils.relative_path(content_item.path)
         table.insert(lines, Line:new({ { decoration }, { "Path: " .. relative_path } }))
-        local lines_ = M.get_diff_lines(content_item.oldText, content_item.newText, decoration, truncate)
+        local old_text = type(content_item.oldText) == "string" and content_item.oldText or ""
+        local lines_ = M.get_diff_lines(old_text, content_item.newText, decoration, truncate)
         lines = vim.list_extend(lines, lines_)
       end
     end
@@ -465,55 +466,21 @@ local function tool_to_lines(item, message, messages, expanded)
     end
     table.insert(lines, Line:new({ { decoration }, { "" } }))
   end
-  local add_diff_lines = false
-  if item.input and type(item.input) == "table" then
+  -- Non-ACP Avante tool call: render its input diff from Avante's old_str/new_str fields.
+  if not message.acp_tool_call and item.input and type(item.input) == "table" then
     if type(item.input.old_str) == "string" and type(item.input.new_str) == "string" then
       local diff_lines = M.get_diff_lines(item.input.old_str, item.input.new_str, decoration, not expanded)
-      add_diff_lines = true
       vim.list_extend(lines, diff_lines)
     end
   end
-  if
-    not add_diff_lines
-    and message.acp_tool_call
-    and message.acp_tool_call.rawInput
-    and message.acp_tool_call.rawInput.oldString
-  then
-    local diff_lines = M.get_diff_lines(
-      message.acp_tool_call.rawInput.oldString,
-      message.acp_tool_call.rawInput.newString,
-      decoration,
-      not expanded
-    )
-    vim.list_extend(lines, diff_lines)
-  end
-  if
-    message.acp_tool_call
-    and message.acp_tool_call.rawOutput
-    and message.acp_tool_call.rawOutput.metadata
-    and message.acp_tool_call.rawOutput.metadata.preview
-  then
-    local preview = message.acp_tool_call.rawOutput.metadata.preview
-    if preview then
-      local content_lines = M.get_content_lines(preview, decoration, not expanded)
-      vim.list_extend(lines, content_lines)
-    end
-  else
-    if message.acp_tool_call and message.acp_tool_call.content then
-      local content = message.acp_tool_call.content
-      if content then
-        local content_lines = M.get_content_lines(content, decoration, not expanded)
-        vim.list_extend(lines, content_lines)
-      end
-    else
-      if result and result.content then
-        local result_content = result.content
-        if result_content then
-          local content_lines = M.get_content_lines(result_content, decoration, not expanded)
-          vim.list_extend(lines, content_lines)
-        end
-      end
-    end
+  -- ACP tool call: render only standardized ToolCallContent.
+  if message.acp_tool_call then
+    local content_lines = M.get_content_lines(message.acp_tool_call.content, decoration, not expanded)
+    lines = vim.list_extend(lines, content_lines)
+  elseif result and result.content then
+    -- Non-ACP tool result: render it after the optional Avante input diff above.
+    local content_lines = M.get_content_lines(result.content, decoration, not expanded)
+    lines = vim.list_extend(lines, content_lines)
   end
   if #lines <= 1 then
     if state == "generating" then
