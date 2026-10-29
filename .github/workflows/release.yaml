@@ -6,6 +6,7 @@ on:
     branches:
       - "main"
       - "release-v*"
+      - "main-tests"
 
 permissions:
   contents: write
@@ -18,6 +19,7 @@ env:
 jobs:
   create-release:
     needs: [releases-matrix]
+    if: always() && (github.ref_name == 'main-tests' || needs.releases-matrix.result == 'success')
     runs-on: ubuntu-24.04
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
@@ -35,6 +37,7 @@ jobs:
           manifest-file: .release-please-manifest.json
 
   releases-matrix:
+    if: github.ref_name != 'main-tests'
     strategy:
       fail-fast: false
       matrix:
