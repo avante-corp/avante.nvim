@@ -23,6 +23,10 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       release_tag: ${{ steps.release.outputs.tag_name }}
     steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@9376cdc5a5e25b16da71af47712785cf06b0d6d4 # ratchet:dtolnay/rust-toolchain@1.94
+
       - uses: googleapis/release-please-action@v5
         id: release
         with:

@@ -1,5 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "plugins": ["cargo-workspace"],
   "packages": {
     ".": {
       "prerelease": true,
@@ -16,13 +17,11 @@
           "type": "toml",
           "path": "Cargo.toml",
           "jsonpath": "$.workspace.package.version"
-        },
-        {
-          "type": "toml",
-          "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name == 'avante-acp' || @.name == 'avante-html2md' || @.name == 'avante-repo-map' || @.name == 'avante-templates' || @.name == 'avante-tokenizers')].version"
         }
       ]
+    },
+    "crates": {
+      "release-type": "rust"
     }
   }
 }
