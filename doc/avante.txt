@@ -742,6 +742,8 @@ Commands (:AvanteAsk,...)                                      *avante-commands*
                                                      *:Avante*
  :Avante resume
          Open a picker for previous chat sessions.
+ :Avante toggle
+         Toggle the Avante sidebar.
  :Avante rag start
          Start the configured RAG service and index the current project.
  :Avante rag stop
@@ -832,7 +834,7 @@ Commands (:AvanteAsk,...)                                      *avante-commands*
 
                                                      *:AvanteToggle*
  :AvanteToggle
-         Toggle the Avante sidebar.
+         Deprecated alias for :Avante toggle. Shows a deprecation warning.
 
                                                      *:AvanteModels*
  :AvanteModels [--all] [timeout]
