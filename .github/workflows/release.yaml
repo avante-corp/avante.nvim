@@ -36,6 +36,31 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      # Post-hook: after the version bump, regenerate Cargo.lock
+      # the "rust" release strategy doesn't work with buggy release-please
+      # so we bump Cargo.toml as extra-file
+      - name: Commit Cargo.lock update on release PR
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          BRANCH: ${{ fromJson(steps.release.outputs.pr).headBranchName }}
+        run: |
+          git fetch origin "$BRANCH"
+          git checkout "$BRANCH"
+
+          # bump just the avante components
+          cargo update --workspace
+          if git diff --exit-code Cargo.lock; then
+            echo "Cargo.lock already valid. Not committing, exiting"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock
+          git commit -m "chore: update Cargo.lock for version bump"
+          git push origin "$BRANCH"
+
   releases-matrix:
     if: github.ref_name != 'main-tests'
     strategy:
