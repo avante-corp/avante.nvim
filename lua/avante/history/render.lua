@@ -346,13 +346,13 @@ function M.get_tool_display_name(message)
   local item = message.message.content[1]
 
   local native_tool_name = item.name
-  if native_tool_name == "other" and message.acp_tool_call then
-    native_tool_name = message.acp_tool_call.title or "Other"
-  end
-  if message.acp_tool_call and message.acp_tool_call.title then native_tool_name = message.acp_tool_call.title end
   local tool_name = native_tool_name
   if message.displayed_tool_name then
     tool_name = message.displayed_tool_name
+  elseif message.acp_tool_call then
+    -- ACP ToolCall.title: display the standard title supplied by the agent.
+    local title = message.acp_tool_call.title
+    tool_name = type(title) == "string" and title or ""
   else
     local param
     if item.input and type(item.input) == "table" then
@@ -368,36 +368,10 @@ function M.get_tool_display_name(message)
         local pieces = vim.split(param, "\n")
         if #pieces > 1 then param = pieces[1] .. "..." end
       end
-      if native_tool_name == "execute" and not param then
-        if message.acp_tool_call and message.acp_tool_call.title then param = message.acp_tool_call.title end
-      end
       if not param and path then
         local relative_path = Utils.relative_path(path)
         param = relative_path
       end
-    end
-    if not param and message.acp_tool_call then
-      if message.acp_tool_call.locations then
-        for _, location in ipairs(message.acp_tool_call.locations) do
-          if location.path then
-            local relative_path = Utils.relative_path(location.path)
-            param = relative_path
-            break
-          end
-        end
-      end
-    end
-    if
-      not param
-      and message.acp_tool_call
-      and message.acp_tool_call.rawInput
-      and message.acp_tool_call.rawInput.command
-    then
-      param = message.acp_tool_call.rawInput.command
-      pcall(function()
-        local project_root = Utils.root.get()
-        param = param:gsub(project_root .. "/?", "")
-      end)
     end
     if param then tool_name = native_tool_name .. "(" .. vim.inspect(param) .. ")" end
   end
@@ -515,17 +489,20 @@ local function message_content_item_to_lines(item, message, messages, expanded)
     elseif item.type == "image" then
       return { Line:new({ { "![image](" .. item.source.media_type .. ": " .. item.source.data .. ")" } }) }
     elseif item.type == "tool_use" and item.name then
-      local ok, llm_tool = pcall(require, "avante.llm_tools." .. item.name)
-      if ok then
-        local tool_result_message = Helpers.get_tool_result_message(item.id, messages)
-        ---@cast llm_tool AvanteLLMTool
-        if llm_tool.on_render then
-          return llm_tool.on_render(item.input, {
-            logs = message.tool_use_logs,
-            state = message.state,
-            store = message.tool_use_store,
-            result_message = tool_result_message,
-          })
+      -- Non-ACP tool call: allow native Avante tool renderers.
+      if not message.acp_tool_call then
+        local ok, llm_tool = pcall(require, "avante.llm_tools." .. item.name)
+        if ok then
+          local tool_result_message = Helpers.get_tool_result_message(item.id, messages)
+          ---@cast llm_tool AvanteLLMTool
+          if llm_tool.on_render then
+            return llm_tool.on_render(item.input, {
+              logs = message.tool_use_logs,
+              state = message.state,
+              store = message.tool_use_store,
+              result_message = tool_result_message,
+            })
+          end
         end
       end
 
