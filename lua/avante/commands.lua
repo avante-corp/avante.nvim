@@ -22,6 +22,8 @@
 ---<
 --- :Avante acp modes
 ---         Switch ACP mode.
+--- :Avante acp models
+---         Switch ACP model.
 --- :Avante acp sessions
 ---         List the current ACP agent's sessions for this project, including
 ---         ones started outside avante (e.g. in the agent's CLI), and resume
@@ -104,7 +106,7 @@
 ---
 ---                                                     *:AvanteACPModels*
 --- :AvanteACPModels
----         Switch ACP model.
+---         Deprecated alias for :Avante acp models. Shows a deprecation warning.
 ---
 ---                                                     *:AvanteACPModes*
 --- :AvanteACPModes
@@ -190,6 +192,9 @@ function M.setup()
   acp_actions
     :add_parser({ name = "modes", help = "Switch ACP mode" })
     :set_execute(function() require("avante.api").select_acp_mode() end)
+  acp_actions
+    :add_parser({ name = "models", help = "Switch ACP model" })
+    :set_execute(function() require("avante.api").select_acp_model() end)
   acp_actions
     :add_parser({ name = "sessions", help = "List the agent's sessions for this project and resume one" })
     :set_execute(function() require("avante.api").select_acp_session() end)

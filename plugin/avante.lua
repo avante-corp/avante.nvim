@@ -265,8 +265,11 @@ end, {
   nargs = "*",
   complete = function() return { "--all" } end,
 })
-api.nvim_create_user_command("AvanteACPModels", function() require("avante.api").select_acp_model() end, {
-  desc = "avante: switch ACP model",
+api.nvim_create_user_command("AvanteACPModels", function()
+  Utils.warn("AvanteACPModels is deprecated. Use :Avante acp models instead.")
+  vim.cmd("Avante acp models")
+end, {
+  desc = "avante: deprecated alias for :Avante acp models",
   nargs = 0,
 })
 api.nvim_create_user_command("AvanteACPModes", function()

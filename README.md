@@ -1049,6 +1049,7 @@ The following key bindings are available for use with `avante.nvim`:
 | `:AvanteChatNew`                   | Start a new chat session. The current chat can be re-opened with the chat session selector                  |                                                     |
 | `:Avante resume`                   | Opens a picker for your previous chat sessions (`:AvanteHistory` is a deprecated alias)                      |                                                     |
 | `:Avante acp modes`                | Switches ACP mode (`:AvanteACPModes` is a deprecated alias)                                                  |                                                     |
+| `:Avante acp models`               | Switches ACP model (`:AvanteACPModels` is a deprecated alias)                                                |                                                     |
 | `:Avante acp sessions`             | Lists the current ACP agent's sessions (including ones started in its CLI) and resumes the selected one     |                                                     |
 | `:AvanteClear`                     | Clear the chat history for your current chat session                                                        |                                                     |
 | `:AvanteEdit`                      | Edit the selected code blocks                                                                               |                                                     |

@@ -757,6 +757,8 @@ Commands (:AvanteAsk,...)                                      *avante-commands*
 <
  :Avante acp modes
          Switch ACP mode.
+ :Avante acp models
+         Switch ACP model.
  :Avante acp sessions
          List the current ACP agent's sessions for this project, including
          ones started outside avante (e.g. in the agent's CLI), and resume
@@ -839,7 +841,7 @@ Commands (:AvanteAsk,...)                                      *avante-commands*
 
                                                      *:AvanteACPModels*
  :AvanteACPModels
-         Switch ACP model.
+         Deprecated alias for :Avante acp models. Shows a deprecation warning.
 
                                                      *:AvanteACPModes*
  :AvanteACPModes
