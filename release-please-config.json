@@ -16,11 +16,6 @@
           "type": "toml",
           "path": "Cargo.toml",
           "jsonpath": "$.workspace.package.version"
-        },
-        {
-          "type": "toml",
-          "path": "Cargo.lock",
-          "jsonpath": "$.package[?(@.name == 'avante-acp' || @.name == 'avante-html2md' || @.name == 'avante-repo-map' || @.name == 'avante-templates' || @.name == 'avante-tokenizers')].version"
         }
       ]
     }
