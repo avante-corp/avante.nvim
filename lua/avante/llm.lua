@@ -1389,7 +1389,7 @@ function M._continue_stream_acp(opts, acp_client, session_id)
         local abs_path = Utils.is_absolute_path(filepath) and filepath
           or vim.fs.joinpath(acp_context(opts).cwd, filepath)
         local file_name = vim.fn.fnamemodify(abs_path, ":t")
-        table.insert(prompt, { type = "resource_link", uri = "file://" .. abs_path, name = file_name })
+        table.insert(prompt, { type = "resource_link", uri = vim.uri_from_fname(abs_path), name = file_name })
       end
     end
     if opts.selected_code then
