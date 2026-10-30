@@ -1059,7 +1059,7 @@ The following key bindings are available for use with `avante.nvim`:
 | `:AvanteStop`                      | Stop the current AI request                                                                                 |                                                     |
 | `:AvanteSwitchProvider [--save] [--acp {true|false}] [filter]`   | Switch AI provider; `--save` persists the choice, `--acp true` (default) includes ACP providers; `--acp false` hides them, and `filter` prefills the selector input                                           |                                                     |
 | `:AvanteShowRepoMap`               | Show repo map for project's structure                                                                       |                                                     |
-| `:AvanteToggle`                    | Toggle the Avante sidebar                                                                                   |                                                     |
+| `:Avante toggle`                   | Toggle the Avante sidebar (`:AvanteToggle` is a deprecated alias)                                             |                                                     |
 | `:AvanteModels`                    | Show model list                                                                                             |                                                     |
 | `:AvanteSwitchSelectorProvider`    | Switch avante selector provider (e.g. native, telescope, fzf_lua, mini_pick, snacks)                        |                                                     |
 

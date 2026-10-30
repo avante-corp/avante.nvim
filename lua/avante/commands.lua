@@ -7,6 +7,8 @@
 ---                                                     *:Avante*
 --- :Avante resume
 ---         Open a picker for previous chat sessions.
+--- :Avante toggle
+---         Toggle the Avante sidebar.
 --- :Avante rag start
 ---         Start the configured RAG service and index the current project.
 --- :Avante rag stop
@@ -100,7 +102,7 @@
 ---
 ---                                                     *:AvanteToggle*
 --- :AvanteToggle
----         Toggle the Avante sidebar.
+---         Deprecated alias for :Avante toggle. Shows a deprecation warning.
 ---
 ---                                                     *:AvanteModels*
 --- :AvanteModels [--all] [timeout]
@@ -189,6 +191,10 @@ function M.setup()
   subparsers
     :add_parser({ name = "resume", help = "Open a picker for previous chat sessions" })
     :set_execute(function() require("avante.api").select_history() end)
+  subparsers
+    :add_parser({ name = "toggle", help = "Toggle the Avante sidebar" })
+    :set_execute(function() require("avante").toggle() end)
+
   local rag = subparsers:add_parser({ name = "rag", help = "Manage and query the RAG service" })
   local actions = rag:add_subparsers({ destination = "rag_command" })
 

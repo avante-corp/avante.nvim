@@ -111,8 +111,11 @@ api.nvim_create_user_command("AvanteChatNew", function(opts)
   args.new_chat = true
   require("avante.api").ask(args)
 end, { desc = "avante: create new chat", nargs = "*", complete = ask_complete })
-api.nvim_create_user_command("AvanteToggle", function() require("avante").toggle() end, {
-  desc = "avante: toggle AI panel",
+api.nvim_create_user_command("AvanteToggle", function()
+  Utils.warn("AvanteToggle is deprecated. Use :Avante toggle instead.")
+  vim.cmd("Avante toggle")
+end, {
+  desc = "avante: deprecated alias for :Avante toggle",
   nargs = 0,
 })
 api.nvim_create_user_command(
