@@ -96,12 +96,22 @@ end, {
   complete = ask_complete,
 })
 api.nvim_create_user_command("AvanteChat", function(opts)
-  local args = Utils.parse_args(opts.fargs)
-  args.ask = false
-
-  require("avante.api").ask(args)
+  Utils.warn("AvanteChat is deprecated. Use :Avante chat instead.")
+  local args = { "chat" }
+  local supported_options = {
+    project_root = "project-root",
+    floating = "floating",
+    without_selection = "without-selection",
+    show_logo = "show-logo",
+  }
+  for _, arg in ipairs(opts.fargs) do
+    local key, value = arg:match("^([%w_]+)=(.*)$")
+    local option = key and supported_options[key]
+    if option then table.insert(args, "--" .. option .. "=" .. value) end
+  end
+  vim.cmd({ cmd = "Avante", args = args })
 end, {
-  desc = "avante: chat with the codebase",
+  desc = "avante: deprecated alias for :Avante chat",
   nargs = "*",
   complete = ask_complete,
 })

@@ -7,6 +7,10 @@
 ---                                                     *:Avante*
 --- :Avante resume
 ---         Open a picker for previous chat sessions.
+--- :Avante chat [options]
+---         Open a chat session. Supports --project-root=<path> and
+---         --floating={true|false}, --without-selection={true|false},
+---         --show-logo={true|false}.
 --- :Avante rag start
 ---         Start the configured RAG service and index the current project.
 --- :Avante rag stop
@@ -42,7 +46,7 @@
 ---
 ---                                                     *:AvanteChat*
 --- :AvanteChat [args]
----         Start a chat session with AI about your codebase.
+---         Deprecated alias for :Avante chat. Shows a deprecation warning.
 ---
 ---                                                     *:AvanteChatNew*
 --- :AvanteChatNew [args]
@@ -163,6 +167,33 @@ function M.setup()
   subparsers
     :add_parser({ name = "resume", help = "Open a picker for previous chat sessions" })
     :set_execute(function() require("avante.api").select_history() end)
+  local chat = subparsers:add_parser({ name = "chat", help = "Open a chat session with the codebase" })
+  chat:add_parameter({
+    name = "--project-root",
+    required = false,
+    help = "Use this project root instead of the detected root",
+  })
+  local boolean = function(value) return value == "true" end
+  chat:add_parameter({ name = "--floating", choices = { "true", "false" }, type = boolean, required = false })
+  chat:add_parameter({
+    name = "--without-selection",
+    choices = { "true", "false" },
+    type = boolean,
+    required = false,
+  })
+  chat:add_parameter({ name = "--show-logo", choices = { "true", "false" }, type = boolean, required = false })
+  chat:set_execute(function(data)
+    local namespace = data.namespace
+    local options = {
+      ask = false,
+      project_root = namespace["project-root"],
+      floating = namespace.floating,
+      without_selection = namespace["without-selection"],
+      show_logo = namespace["show-logo"],
+    }
+    require("avante.api").ask(options)
+  end)
+
   local rag = subparsers:add_parser({ name = "rag", help = "Manage and query the RAG service" })
   local actions = rag:add_subparsers({ destination = "rag_command" })
 
