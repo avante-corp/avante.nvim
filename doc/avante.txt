@@ -77,7 +77,7 @@ Usage                                                             *avante-usage*
  Basic workflow:
 
  1. Open a code file in Neovim.
- 2. Run |:AvanteAsk| with a question, or open the chat with |:AvanteChat|.
+ 2. Run |:AvanteAsk| with a question, or open the chat with |:Avante chat|.
  3. Review the AI response and suggested changes.
  4. Apply edits from the sidebar with the configured keymaps.
 
@@ -742,6 +742,10 @@ Commands (:AvanteAsk,...)                                      *avante-commands*
                                                      *:Avante*
  :Avante resume
          Open a picker for previous chat sessions.
+ :Avante chat [options]
+         Open a chat session. Supports --project-root=<path> and
+         --floating={true|false}, --without-selection={true|false},
+         --show-logo={true|false}.
  :Avante rag start
          Start the configured RAG service and index the current project.
  :Avante rag stop
@@ -777,7 +781,7 @@ Commands (:AvanteAsk,...)                                      *avante-commands*
 
                                                      *:AvanteChat*
  :AvanteChat [args]
-         Start a chat session with AI about your codebase.
+         Deprecated alias for :Avante chat. Shows a deprecation warning.
 
                                                      *:AvanteChatNew*
  :AvanteChatNew [args]
