@@ -45,7 +45,7 @@ runs:
 
     - name: Install Nix
       if: ${{ steps.platform.outputs.os_name != 'windows' }}
-      uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # ratchet:DeterminateSystems/nix-installer-action@v23
+      uses: ./.github/actions/install-nix
 
     - name: Install avante dependencies
       if: ${{ steps.platform.outputs.os_name != 'windows' }}

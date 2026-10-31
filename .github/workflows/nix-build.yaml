@@ -30,13 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v23
-        with:
-          determinate: false
-          extra-conf: |
-            extra-substituters = https://avante-nvim.cachix.org
-            extra-trusted-public-keys = avante-nvim.cachix.org-1:bxXX3jAkVDlvhLePyKfznp+rsvUpKm0onR8j0BuUKkA=
+      - uses: ./.github/actions/install-nix
 
       - name: Configure Cachix
         uses: cachix/cachix-action@v17
