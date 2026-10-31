@@ -119,6 +119,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field turn_id string | nil
 ---@field is_calling boolean | nil
 ---@field original_content AvanteLLMMessageContent | nil
+---@field acp_message_id? string
 ---@field acp_tool_call? avante.acp.ToolCall | avante.acp.ToolCallUpdate
 
 ---@class AvanteLLMToolResult

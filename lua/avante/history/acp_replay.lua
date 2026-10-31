@@ -57,10 +57,11 @@ end
 ---@param state avante.acp.UpdateState
 ---@param role "user"|"assistant"
 ---@param text string
+---@param message_id string|nil
 ---@return avante.HistoryMessage
-local function append_text(state, role, text)
+local function append_text(state, role, text, message_id)
   local last_message = state.messages[#state.messages]
-  if last_message and last_message.message.role == role then
+  if last_message and last_message.message.role == role and last_message.acp_message_id == message_id then
     local content = last_message.message.content
     if type(content) == "string" then
       last_message.message.content = append_chunk(state, last_message, content, text)
@@ -81,6 +82,7 @@ local function append_text(state, role, text)
     end
   end
   local message = Message:new(role, text, { is_user_submission = role == "user" })
+  message.acp_message_id = message_id
   table.insert(state.messages, message)
   return message
 end
@@ -96,7 +98,7 @@ function M.apply_update(state, update)
     local text = content_text(update.content)
     if not text then return {}, nil end
     local role = kind == "user_message_chunk" and "user" or "assistant"
-    return { append_text(state, role, text) }, nil
+    return { append_text(state, role, text, update.messageId) }, nil
   end
 
   if kind == "agent_thought_chunk" then
@@ -104,11 +106,12 @@ function M.apply_update(state, update)
     if not text then return {}, nil end
     local last_message = state.messages[#state.messages]
     local item = thinking_item(last_message)
-    if item then
+    if item and last_message.acp_message_id == update.messageId then
       item.thinking = append_chunk(state, last_message, item.thinking, text)
       return { last_message }, nil
     end
     local message = Message:new("assistant", { type = "thinking", thinking = text })
+    message.acp_message_id = update.messageId
     table.insert(state.messages, message)
     return { message }, nil
   end
