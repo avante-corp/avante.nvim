@@ -134,27 +134,17 @@
               platforms = systems;
             };
           });
-          pythonSet = ragPythonSets.${system};
-          ragService = (pythonSet.mkVirtualEnv "rag-service-env" ragWorkspace.deps.default).overrideAttrs (
-              old: {
-                venvIgnoreCollisions = [
-                  "bin/fastapi"
-                    "bin/llama-parse"
 
-                ];
-              venvSkip = [
-                "bin/huggingface-cli"
-                "bin/chroma"
-              ];
-              postInstall = (old.postInstall or "") + ''
-                # This application does not need shell activation scripts.
-                rm -f "$out"/bin/activate "$out"/bin/activate.* "$out"/bin/Activate.ps1
-              '';
-              meta = (old.meta or { }) // {
-                mainProgram = "avante-rag-service";
-              };
-            }
-          );
+          # only links package content from venv as explaind in
+          # https://pyproject-nix.github.io/uv2nix/patterns/applications.html#shipping-applications
+          ragService = let
+            inherit (pkgs.callPackages pyproject-nix.build.util { }) mkApplication;
+            pythonSet = ragPythonSets.${system};
+          in
+            mkApplication {
+                venv = pythonSet.mkVirtualEnv "application-env" ragWorkspace.deps.default;
+                package = pythonSet.rag-service;
+            };
 
           # TODO replace with nixpkgs' packaged libraries
           megaLogging = pkgs.vimUtils.buildVimPlugin {
