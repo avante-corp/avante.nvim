@@ -1,3 +1,23 @@
+---@mod avante-rig-client Rust LLM interface
+---
+---@brief [[
+---
+---Avante runs LLM inference through the native Rust module `avante_llm`, backed
+---by Rig. This Lua client is the interface between `avante.llm` and that module.
+---See https://github.com/0xPlaygrounds/rig.
+---
+---Rust and Rig handle provider selection, request encoding, HTTP transport,
+---and response decoding. This client passes provider configuration, credentials,
+---prompts, and tools to Rust, polls normalized stream events on Neovim's main
+---loop, and forwards message updates and completion callbacks to Avante. It also
+---handles request cancellation and cleanup.
+---
+---The Lua agent loop builds context, executes tools, and manages UI and history.
+---When the model requests tools, Lua records their results and starts the next
+---inference request through this client.
+---@brief ]]
+---@see avante-config
+
 local api = vim.api
 local uv = vim.uv or vim.loop
 
