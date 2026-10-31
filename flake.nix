@@ -44,13 +44,9 @@
         "x86_64-linux"
       ];
 
-      rustLibraryNames = [
-          "avante-acp"
-          "avante-html2md"
-          "avante-repo-map"
-          "avante-templates"
-          "avante-tokenizers"
-        ];
+      rustLibraryNames = lib.attrNames (
+        lib.filterAttrs (_: type: type == "directory") (builtins.readDir ./crates)
+      );
 
       forAllSystems = lib.genAttrs systems;
 
