@@ -858,11 +858,12 @@ Avante 的工具包括一些 Web 搜索引擎，目前支持：
 - [Brave Search](https://api-dashboard.search.brave.com/app/documentation/web-search/get-started)
 - [Firecrawl](https://docs.firecrawl.dev/features/search?utm_source=avante&utm_medium=integration)
 - [Serply](https://serply.io)
+- [Outcrawl](https://outcrawl.ai/docs/search/overview)
 - [SearXNG](https://searxng.github.io/searxng/)
 
 每个搜索引擎都作为独立工具提供（`web_search_tavily`、`web_search_serpapi`、
 `web_search_searchapi`、`web_search_google`、`web_search_kagi`、`web_search_brave`、
-`web_search_firecrawl`、`web_search_serply` 和 `web_search_searxng`）。共享设置仍位于 `web_search_engine` 下：
+`web_search_firecrawl`、`web_search_serply`、`web_search_outcrawl` 和 `web_search_searxng`）。共享设置仍位于 `web_search_engine` 下：
 
 ```lua
 web_search_engine = {
@@ -882,6 +883,7 @@ web_search_engine = {
 - Brave Search: `BRAVE_API_KEY` 作为 [API 密钥](https://api-dashboard.search.brave.com/app/keys)
 - Firecrawl: `FIRECRAWL_API_KEY` 作为 [API 密钥](https://www.firecrawl.dev/app/api-keys?utm_source=avante&utm_medium=integration)
 - Serply: `SERPLY_API_KEY` 作为 [API 密钥](https://serply.io)
+- Outcrawl: `OUTCRAWL_API_KEY` 作为 [API 密钥](https://outcrawl.ai/docs/account/api-keys)
 - SearXNG: `SEARXNG_API_URL` 作为 [API URL](https://docs.searxng.org/dev/search_api.html)
 
 ## 禁用工具
@@ -915,7 +917,7 @@ Avante 默认启用工具，但某些 LLM 模型不支持工具。您可以通�
 > read_file, create_file, move_path, copy_path, delete_path, create_dir, bash,
 > web_search_tavily, web_search_serpapi, web_search_searchapi, web_search_google,
 > web_search_kagi, web_search_brave, web_search_firecrawl, web_search_serply,
-> web_search_searxng, fetch
+> web_search_outcrawl, web_search_searxng, fetch
 
 ## 自定义工具
 

@@ -1333,11 +1333,12 @@ Avante's tools include some web search engines, currently support:
 - [Brave Search](https://api-dashboard.search.brave.com/app/documentation/web-search/get-started)
 - [Firecrawl](https://docs.firecrawl.dev/features/search?utm_source=avante&utm_medium=integration)
 - [Serply](https://serply.io)
+- [Outcrawl](https://outcrawl.ai/docs/search/overview)
 - [SearXNG](https://searxng.github.io/searxng/)
 
 Each engine is exposed as its own tool (`web_search_tavily`, `web_search_serpapi`,
 `web_search_searchapi`, `web_search_google`, `web_search_kagi`, `web_search_brave`,
-`web_search_firecrawl`, `web_search_serply`, and `web_search_searxng`). Shared settings remain under `web_search_engine`:
+`web_search_firecrawl`, `web_search_serply`, `web_search_outcrawl`, and `web_search_searxng`). Shared settings remain under `web_search_engine`:
 
 ```lua
 web_search_engine = {
@@ -1357,6 +1358,7 @@ Environment variables required for providers:
 - Brave Search: `BRAVE_API_KEY` as the [API key](https://api-dashboard.search.brave.com/app/keys)
 - Firecrawl: `FIRECRAWL_API_KEY` as the [API key](https://www.firecrawl.dev/app/api-keys?utm_source=avante&utm_medium=integration)
 - Serply: `SERPLY_API_KEY` as the [API key](https://serply.io)
+- Outcrawl: `OUTCRAWL_API_KEY` as the [API key](https://outcrawl.ai/docs/account/api-keys)
 - SearXNG: `SEARXNG_API_URL` as the [API URL](https://docs.searxng.org/dev/search_api.html)
 
 ## Custom prompts

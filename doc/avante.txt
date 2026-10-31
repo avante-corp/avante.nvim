@@ -2084,6 +2084,7 @@ Web search tools                                       *avante-tools-web-search*
  - Brave Search: `BRAVE_API_KEY`
  - Firecrawl: `FIRECRAWL_API_KEY`
  - Serply: `SERPLY_API_KEY`
+ - Outcrawl: `OUTCRAWL_API_KEY`
  - SearXNG: `SEARXNG_API_URL`
 
 WebSearchProviderName                                    *WebSearchProviderName*
@@ -2097,6 +2098,7 @@ WebSearchProviderName                                    *WebSearchProviderName*
         ("brave")
         ("firecrawl")
         ("serply")
+        ("outcrawl")
         ("searxng")
 
 
