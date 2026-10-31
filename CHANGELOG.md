@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/avante-corp/avante.nvim/compare/v0.5.0...v0.5.1) (2026-10-31)
+
+
+### Features
+
+* **Avante:** set ft=Avante options in its own file ([9fd188c](https://github.com/avante-corp/avante.nvim/commit/9fd188c5a037cf338b270387151702f0538c6bf1))
+
 ## [0.5.0](https://github.com/avante-corp/avante.nvim/compare/v0.5.0...v0.5.0) (2026-10-31)
 
 
