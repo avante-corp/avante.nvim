@@ -138,7 +138,7 @@
             };
           });
           pythonSet = ragPythonSets.${system};
-          ragService = (pythonSet.mkVirtualEnv "rag-service-env" ragWorkspace.deps.default).overrideAttrs (
+          ragServiceEnv = (pythonSet.mkVirtualEnv "rag-service-env" ragWorkspace.deps.default).overrideAttrs (
               old: {
                 venvIgnoreCollisions = [
                   "bin/fastapi"
@@ -158,6 +158,12 @@
               };
             }
           );
+          ragService = pkgs.runCommand "avante-rag-service" {
+            meta.mainProgram = "avante-rag-service";
+          } ''
+            mkdir -p "$out/bin"
+            ln -s ${ragServiceEnv}/bin/avante-rag-service "$out/bin/avante-rag-service"
+          '';
 
           # TODO replace with nixpkgs' packaged libraries
           megaLogging = pkgs.vimUtils.buildVimPlugin {
