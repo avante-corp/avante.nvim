@@ -16,13 +16,7 @@ jobs:
       if: github.event.action == 'labeled' && github.event.label.name == 'pre-commit ci run'
       env:
         GH_TOKEN: ${{ github.token }}
-    - name: Install Nix
-      uses: DeterminateSystems/nix-installer-action@v23
-      with:
-        determinate: false
-        extra-conf: |
-          extra-substituters = https://avante-nvim.cachix.org
-          extra-trusted-public-keys = avante-nvim.cachix.org-1:bxXX3jAkVDlvhLePyKfznp+rsvUpKm0onR8j0BuUKkA=
+    - uses: ./.github/actions/install-nix
     # Needs to be installed before running pyright
     - name: setup rag service venv
       run: nix develop .#ci --command make rag-venv
