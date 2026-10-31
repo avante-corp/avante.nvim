@@ -46,4 +46,14 @@ describe("has_permission_to_access", function()
     abs_path = test_dir .. "/data_test/test1.txt"
     assert.is_true(LlmToolHelpers.has_permission_to_access(abs_path))
   end)
+
+  it("Rejects paths that only share the project root prefix", function()
+    assert.is_false(LlmToolHelpers.has_permission_to_access(test_dir .. "-evil/test1.txt"))
+    assert.is_false(LlmToolHelpers.has_permission_to_access(test_dir .. "2/test1.txt"))
+  end)
+
+  it(
+    "Rejects an empty allowed root",
+    function() assert.is_false(LlmToolHelpers.is_path_within("/tmp/anything", "")) end
+  )
 end)
