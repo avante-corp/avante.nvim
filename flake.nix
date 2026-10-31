@@ -98,6 +98,8 @@
       );
     in
     {
+      legacyPackages = forAllSystems (system: nixpkgs.legacyPackages.${system});
+
       packages = forAllSystems (
         system:
         let
