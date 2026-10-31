@@ -13,6 +13,10 @@
           "path": "lua/avante/version.lua"
         },
         {
+          "type": "generic",
+          "path": "README.md"
+        },
+        {
           "type": "toml",
           "path": "Cargo.toml",
           "jsonpath": "$.workspace.package.version"
