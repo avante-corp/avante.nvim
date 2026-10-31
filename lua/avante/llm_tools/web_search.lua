@@ -18,6 +18,7 @@
 --- - Brave Search: `BRAVE_API_KEY`
 --- - Firecrawl: `FIRECRAWL_API_KEY`
 --- - Serply: `SERPLY_API_KEY`
+--- - Outcrawl: `OUTCRAWL_API_KEY`
 --- - SearXNG: `SEARXNG_API_URL`
 ---@brief ]]
 
@@ -33,6 +34,7 @@ local Utils = require("avante.utils")
 ---| '"brave"'
 ---| '"firecrawl"'
 ---| '"serply"'
+---| '"outcrawl"'
 ---| '"searxng"'
 
 ---@alias WebSearchResponseFormatter fun(body: table): (string, string?)
@@ -400,6 +402,45 @@ local function web_search_serply_func(input, opts)
 end
 
 ---@type AvanteLLMToolFunc<{ query: string }>
+---Expects OUTCRAWL_API_KEY in environment
+local function web_search_outcrawl_func(input, opts)
+  log_search("outcrawl", input, opts)
+  local api_key, api_key_err = get_api_key("OUTCRAWL_API_KEY")
+  if not api_key then return nil, api_key_err end
+  return request(
+    "POST",
+    "https://api.outcrawl.ai/v1/search",
+    {
+      headers = {
+        ["Content-Type"] = "application/json",
+        ["Authorization"] = "Bearer " .. api_key,
+      },
+      body = vim.json.encode({
+        query = input.query,
+        limit = 10,
+      }),
+    },
+    opts,
+    function(body)
+      if body.hits == nil then return "", body.message end
+      local results = vim
+        .iter(body.hits)
+        :map(
+          function(result)
+            return {
+              title = result.title,
+              url = result.url,
+              snippet = result.snippet,
+            }
+          end
+        )
+        :totable()
+      return vim.json.encode(results), nil
+    end
+  )
+end
+
+---@type AvanteLLMToolFunc<{ query: string }>
 local function web_search_searxng_func(input, opts)
   log_search("searxng", input, opts)
   local api_url = Utils.environment.parse("SEARXNG_API_URL")
@@ -464,6 +505,7 @@ M.web_search_kagi = web_search_tool("kagi", web_search_kagi_func)
 M.web_search_brave = web_search_tool("brave", web_search_brave_func)
 M.web_search_firecrawl = web_search_tool("firecrawl", web_search_firecrawl_func)
 M.web_search_serply = web_search_tool("serply", web_search_serply_func)
+M.web_search_outcrawl = web_search_tool("outcrawl", web_search_outcrawl_func)
 M.web_search_searxng = web_search_tool("searxng", web_search_searxng_func)
 
 return M
