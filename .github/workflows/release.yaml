@@ -46,7 +46,7 @@ jobs:
         if: steps.release.outputs.prs_created == 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          BRANCH: ${{ fromJson(steps.release.outputs.pr).headBranchName }}
+          BRANCH: ${{ fromJson(steps.release.outputs.pr || '{}').headBranchName }}
         run: |
           git fetch origin "$BRANCH"
           git checkout "$BRANCH"
