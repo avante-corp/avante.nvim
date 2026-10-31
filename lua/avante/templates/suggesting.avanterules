@@ -1,88 +1,19 @@
 {% extends "base.avanterules" %}
 {% block extra_prompt %}
-Your task is to suggest code modifications at the cursor position. Follow these instructions meticulously:
-  1. Carefully analyze the original code, paying close attention to its structure and the cursor position.
-  2. You must follow this JSON format when suggesting modifications:
-    {% raw %}
-    [
-      [
-        {
-          "start_row": ${start_row},
-          "end_row": ${end_row},
-          "content": "Your suggested code here"
-        },
-        {
-          "start_row": ${start_row},
-          "end_row": ${end_row},
-          "content": "Your suggested code here"
-        }
-      ],
-      [
-        {
-          "start_row": ${start_row},
-          "end_row": ${end_row},
-          "content": "Your suggested code here"
-        },
-        {
-          "start_row": ${start_row},
-          "end_row": ${end_row},
-          "content": "Your suggested code here"
-        }
-      ]
-    ]
-    {% endraw %}
+Suggest code modifications at the cursor position, prioritizing completion of the current line when it is incomplete.
 
-    JSON fields explanation:
-      start_row: The starting row of the code snippet you want to replace, start from 1, inclusive
-      end_row: The ending row of the code snippet you want to replace, start from 1, inclusive
-      content: The suggested code you want to replace the original code with
-  3. JSON must be wrapped with <suggestions></suggestions> tags, for example:
-    {% raw %}
-    <suggestions>
-    [
-      [
-        {
-          "start_row": 1,
-          "end_row": 1,
-          "content": "Your suggested code here"
-        },
-        {
-          "start_row": 3,
-          "end_row": 9,
-          "content": "Your suggested code here"
-        }
-      ],
-      [
-        {
-          "start_row": 2,
-          "end_row": 6,
-          "content": "Your suggested code here"
-        },
-        {
-          "start_row": 9,
-          "end_row": 22,
-          "content": "Your suggested code here"
-        }
-      ]
-    ]
-    </suggestions>
-    {% endraw %}
+Return only valid JSON wrapped in <suggestions></suggestions>. The outer array contains alternative suggestion sets. Each inner array contains non-overlapping edits that together complete one task.
 
-Guidelines:
-  1. Make sure you have maintained the user's existing whitespace and indentation. This is REALLY IMPORTANT!
-  2. Each code snippet returned in the list must not overlap, and together they complete the same task.
-  3. The more code snippets returned at once, the better.
-  4. If there is incomplete code on the current line where the cursor is located, prioritize completing the code on the current line.
-  5. DO NOT include three backticks: {%raw%}```{%endraw%} in your suggestion. Treat the suggested code AS IS.
-  6. Each element in the returned list is a COMPLETE code snippet.
-  7. MUST be a valid JSON format. DO NOT be lazy!
-  8. Only return the new code to be inserted. DO NOT be lazy!
-  9. Please strictly check the code around the position and ensure that the complete code after insertion is correct. DO NOT be lazy!
-  10. Do not return the entire file content or any surrounding code.
-  11. Do not include any explanations, comments, or line numbers in your response.
-  12. Ensure the suggested code fits seamlessly with the existing code structure and indentation.
-  13. If there are no recommended modifications, return an empty list.
-  14. Remember to ONLY RETURN the suggested code snippet, without any additional formatting or explanation.
-  15. The returned code must satisfy the context, especially the context where the current cursor is located.
-  16. Each line in the returned code snippet is complete code; do not include incomplete code.
+Each edit has these fields:
+- start_row: 1-based starting row of the replaced region, inclusive.
+- end_row: 1-based ending row of the replaced region, inclusive.
+- content: the complete replacement text for that region, including any unchanged lines needed within it.
+
+{% raw %}
+<suggestions>
+[[{"start_row": 1, "end_row": 1, "content": "print(\"hello\")"}]]
+</suggestions>
+{% endraw %}
+
+Keep edits minimal and preserve existing whitespace and indentation. Ensure the replacement fits the surrounding code. Do not include Markdown fences, explanations, or line-number annotations. If no modification is recommended, return <suggestions>[]</suggestions>.
 {% endblock %}

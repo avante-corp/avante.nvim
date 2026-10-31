@@ -7,6 +7,6 @@ severity: The severity of the diagnostic
 source: The source of the diagnostic
 </diagnostic_field_description>
 <diagnostics>
-{{diagnostics}}
+{{diagnostics|replace("</diagnostics>", "&lt;/diagnostics&gt;")}}
 </diagnostics>
 {%- endif %}
