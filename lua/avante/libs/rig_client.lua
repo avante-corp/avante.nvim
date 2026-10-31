@@ -122,7 +122,12 @@ local function provider_credential(provider, provider_conf, protocol)
   if protocol == "copilot" then
     local token = provider.get_session_token()
     if token then return token.token, token.endpoints and token.endpoints.api end
-    error("Copilot session token is unavailable")
+    error(
+      "Copilot session token is unavailable. Check your Copilot authentication and retry."
+        .. " If you use copilot.lua, run :Copilot auth; if you use copilot.vim, run :Copilot setup."
+        .. " After signing in, restart Neovim."
+        .. " Avante currently reads credentials from github-copilot/hosts.json or apps.json; auth.db is not supported."
+    )
   end
   if not Providers.env.require_api_key(provider_conf) then return nil end
   local credential = provider.parse_api_key()
