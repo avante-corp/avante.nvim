@@ -36,6 +36,9 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      - uses: ./.github/actions/install-nix
+        if: steps.release.outputs.prs_created == 'true'
+
       # Post-hook: after the version bump, regenerate Cargo.lock
       # the "rust" release strategy doesn't work with buggy release-please
       # so we bump Cargo.toml as extra-file
@@ -55,10 +58,13 @@ jobs:
             exit 0
           fi
 
+          # Recompute the vendored dependency hash used by flake.nix.
+          nix run github:Mic92/nix-update -- --flake --version=skip avante-tokenizers
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock
-          git commit -m "chore: update Cargo.lock for version bump"
+          git add Cargo.lock flake.nix
+          git commit -m "chore: update Cargo.lock and cargoHash for version bump"
           git push origin "$BRANCH"
 
   releases-matrix:
