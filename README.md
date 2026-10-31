@@ -271,8 +271,8 @@ vim.api.nvim_create_autocmd(
 
 vim.pack.add({
   {
-    src='https://github.com/yetone/avante.nvim',
-    version='main'  -- default
+    src='https://github.com/avante-corp/avante.nvim',
+    version='v0.4.8'  -- use the latest tagged releases
   },
 
   -- Deps
