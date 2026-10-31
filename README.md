@@ -1492,6 +1492,21 @@ See [the wiki](https://github.com/yetone/avante.nvim/wiki/plugin%E2%80%90integra
 
 ## FAQ
 
+### Get notified when LLM answers
+
+You can react to LLM answer completion, for instance you can send system notifications
+when avante is ready for your next input:
+
+```
+vim.api.nvim_create_autocmd({ 'User' }, {
+    pattern = 'AvanteViewBufferUpdated',
+    desc = 'notify user when LLM answered',
+    callback = function()
+        vim.notify('Got an answer')
+    end,
+})
+```
+
 ### How to disable agentic mode?
 
 Avante.nvim provides two interaction modes:
