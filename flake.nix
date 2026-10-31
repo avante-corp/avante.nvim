@@ -23,6 +23,10 @@
       inputs.pyproject-nix.follows = "pyproject-nix";
       inputs.uv2nix.follows = "uv2nix";
     };
+    rust-overlay = {
+      url = "git+https://github.com/oxalica/rust-overlay.git?rev=404b7a5537f0adc6e5c558a1b94612e683dec504";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -32,6 +36,7 @@
       pyproject-nix,
       uv2nix,
       pyproject-build-systems,
+      rust-overlay,
       ...
     }:
     let
@@ -47,12 +52,18 @@
       rustLibraryNames = [
           "avante-acp"
           "avante-html2md"
+          "avante-llm"
           "avante-repo-map"
           "avante-templates"
           "avante-tokenizers"
         ];
 
       forAllSystems = lib.genAttrs systems;
+
+      pkgsFor = system: import nixpkgs {
+        inherit system;
+        overlays = [ rust-overlay.overlays.default ];
+      };
 
       ragWorkspace = uv2nix.lib.workspace.loadWorkspace {
         workspaceRoot = ./py/rag-service;
@@ -90,7 +101,7 @@
       ragPythonSets = forAllSystems (
         system:
         let
-          pkgs = import nixpkgs { inherit system; };
+          pkgs = pkgsFor system;
           python = pkgs.python314;
         in
         (pkgs.callPackage pyproject-nix.build.packages { inherit python; }).overrideScope (
@@ -106,8 +117,13 @@
       packages = forAllSystems (
         system:
         let
-          pkgs = import nixpkgs { inherit system; };
-          rustPackages = lib.genAttrs rustLibraryNames (pname: pkgs.rustPlatform.buildRustPackage {
+          pkgs = pkgsFor system;
+          rustToolchain = pkgs.rust-bin.stable."1.97.1".default;
+          rustPlatform = pkgs.makeRustPlatform {
+            cargo = rustToolchain;
+            rustc = rustToolchain;
+          };
+          rustPackages = lib.genAttrs rustLibraryNames (pname: rustPlatform.buildRustPackage {
             inherit pname;
             version = (fromTOML (builtins.readFile ./Cargo.toml)).workspace.package.version;
             src = lib.fileset.toSource {
@@ -121,7 +137,7 @@
             };
 
             cargoDepsName = "avante";
-            cargoHash = "sha256-AnPie9wY1XgZAAVMQh9te48GLbE9hlI9ZdSlA42LD68=";
+            cargoHash = "sha256-1mE507iyTXlTVhrKWQrNvrLe3H5Nl2f3jU+ObRzsKss=";
             cargoBuildFlags = [ "--package" pname ];
             nativeBuildInputs = [ pkgs.pkg-config pkgs.perl ];
             buildInputs = [ pkgs.openssl ];
@@ -270,7 +286,8 @@
       devShells = forAllSystems (
         system:
         let
-          pkgs = import nixpkgs { inherit system; };
+          pkgs = pkgsFor system;
+          rustToolchain = pkgs.rust-bin.stable."1.97.1".default;
           mylua = pkgs.lua5_1.withPackages (lp: [
             lp.luassert
 
@@ -284,7 +301,6 @@
             name = "avante";
 
             packages = with pkgs; [
-              rustfmt
               lua5_1.pkgs.luacheck
               lua-language-server
               ripgrep
@@ -297,11 +313,14 @@
               vimcats  # to generate docs
               perl # needed for cargo check
               pre-commit
+              rustToolchain
             ];
 
             shellHook = ''
               echo "Welcome to the avante development environment!"
-              export DEPS_PATH="target/tests/deps"
+              # Nix creates a new TMPDIR per shell; dependencies must survive across invocations.
+              export AVANTE_RUNTIME_TEST_DIR="''${AVANTE_RUNTIME_TEST_DIR:-/tmp/avante.nvim-tests/runtime}"
+              export DEPS_PATH="''${DEPS_PATH:-$AVANTE_RUNTIME_TEST_DIR/deps}"
             '';
           };
 
@@ -309,8 +328,6 @@
         {
           default = basic.overrideAttrs(oa: {
             buildInputs = with pkgs; [
-              cargo
-              rustc
               ratchet # to upgrade github actions
               pkgs.pyright # to be able to run pre-commit tests
               pkgs.ruff # to be able to run pre-commit tests

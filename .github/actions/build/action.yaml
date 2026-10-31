@@ -38,7 +38,7 @@ runs:
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # ratchet:Swatinem/rust-cache@v2
       if: ${{ inputs.container == null }}
 
-    - uses: dtolnay/rust-toolchain@9376cdc5a5e25b16da71af47712785cf06b0d6d4 # ratchet:dtolnay/rust-toolchain@1.94
+    - uses: dtolnay/rust-toolchain@59a558e8c538bf4a23bbffa19e5a278b703f2920 # ratchet:dtolnay/rust-toolchain@1.97.1
       if: ${{ inputs.container == null }}
       with:
         targets: ${{ inputs.rust_target }}
@@ -60,7 +60,7 @@ runs:
         mkdir -p ~/.cache/nvim
         nix develop .#ci --command nvim -V3nvim.log --headless -u NONE \
           --cmd "set rtp^=." \
-          --cmd 'lua package.path = "./target/tests/deps/share/lua/5.1/?.lua;./target/tests/deps/share/lua/5.1/?/init.lua;" .. package.path' \
+          --cmd 'lua local deps = vim.env.DEPS_PATH .. "/share/lua/5.1/"; package.path = deps .. "?.lua;" .. deps .. "?/init.lua;" .. package.path' \
           -c "runtime plugin/avante.lua" \
           -c "lua vim.g.avante = { debug = vim.log.levels.INFO }" \
           -c "AvanteBuild source=true" +quit!
@@ -89,7 +89,7 @@ runs:
       shell: bash
       run: |
         # TODO run AvanteBuild instead
-        cargo build --release --no-default-features --features ${{ matrix.feature }} --target ${{ inputs.rust_target }} -p avante-tokenizers -p avante-templates -p avante-repo-map -p avante-html2md -p avante-acp
+        cargo build --release --no-default-features --features ${{ matrix.feature }} --target ${{ inputs.rust_target }} -p avante-tokenizers -p avante-templates -p avante-repo-map -p avante-html2md -p avante-acp -p avante-llm
 
     - name: Handle binaries (Windows)
       if: ${{ steps.platform.outputs.os_name == 'windows' }}
@@ -104,6 +104,7 @@ runs:
         Copy-Item -Path "$TargetDir\avante_repo_map.dll" -Destination "avante_repo_map.dll"
         Copy-Item -Path "$TargetDir\avante_html2md.dll" -Destination "avante_html2md.dll"
         Copy-Item -Path "$TargetDir\avante_acp.dll" -Destination "avante_acp.dll"
+        Copy-Item -Path "$TargetDir\avante_llm.dll" -Destination "avante_llm.dll"
 
         $dllFiles = Get-ChildItem -Filter "*.dll" | Select-Object -ExpandProperty Name
         Compress-Archive -Path $dllFiles -DestinationPath "avante_lib-${{ steps.platform.outputs.os_name }}-${{ inputs.arch }}-${{ matrix.feature }}.zip"

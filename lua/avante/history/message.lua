@@ -7,6 +7,7 @@ M.__index = M
 ---@class avante.HistoryMessage.Opts
 ---@field uuid? string
 ---@field turn_id? string
+---@field order? integer
 ---@field state? avante.HistoryMessageState
 ---@field displayed_content? string
 ---@field original_content? AvanteLLMMessageContent
@@ -16,6 +17,7 @@ M.__index = M
 ---@field is_dummy? boolean
 ---@field is_user_submission? boolean
 ---@field just_for_display? boolean
+---@field is_usage_summary? boolean
 ---@field visible? boolean
 ---
 ---@param role "user" | "assistant"

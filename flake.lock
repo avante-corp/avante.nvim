@@ -67,7 +67,29 @@
         "nixpkgs": "nixpkgs",
         "pyproject-build-systems": "pyproject-build-systems",
         "pyproject-nix": "pyproject-nix",
+        "rust-overlay": "rust-overlay",
         "uv2nix": "uv2nix"
+      }
+    },
+    "rust-overlay": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1791795448,
+        "narHash": "sha256-12C5ef8a3endLXBvLOVR/jynM9EHGgP1t+y5uBorwx4=",
+        "ref": "refs/heads/master",
+        "rev": "404b7a5537f0adc6e5c558a1b94612e683dec504",
+        "revCount": 2333,
+        "type": "git",
+        "url": "https://github.com/oxalica/rust-overlay.git"
+      },
+      "original": {
+        "rev": "404b7a5537f0adc6e5c558a1b94612e683dec504",
+        "type": "git",
+        "url": "https://github.com/oxalica/rust-overlay.git"
       }
     },
     "uv2nix": {

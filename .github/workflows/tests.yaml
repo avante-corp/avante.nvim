@@ -8,6 +8,7 @@ on:
       - "**/*.lua"
       - ".github/**"
       - "crates/avante-acp/**"
+      - "crates/avante-llm/**"
       - "Cargo.lock"
       - "Cargo.toml"
       - "Makefile"
@@ -19,6 +20,7 @@ on:
       - "**/*.lua"
       - ".github/**"
       - "crates/avante-acp/**"
+      - "crates/avante-llm/**"
       - "Cargo.lock"
       - "Cargo.toml"
       - "Makefile"
@@ -82,3 +84,7 @@ jobs:
       - name: Run ACP native integration tests
         if: runner.os != 'Windows'
         run: nix develop .#ci --command make acp-integration-test
+
+      - name: Run LLM native integration tests
+        if: runner.os != 'Windows'
+        run: nix develop .#ci --command make llm-integration-test

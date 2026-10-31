@@ -1162,6 +1162,7 @@ M.run_python = M.python
 ---@field on_log? fun(tool_id: string, tool_name: string, log: string, state: AvanteLLMToolUseState): nil
 ---@field set_tool_use_store? fun(tool_id: string, key: string, value: any): nil
 ---@field on_complete? fun(result: string | nil, error: string | nil): nil
+---@field is_cancelled? fun(): boolean
 
 ---@param tools AvanteLLMTool[]
 ---@param tool_use AvanteLLMToolUse
@@ -1170,11 +1171,20 @@ M.run_python = M.python
 function M.process_tool_use(tools, tool_use, opts)
   local on_log = opts.on_log
   local on_complete = opts.on_complete
-  -- Check if execution is already cancelled
-  if Helpers.is_cancelled then
+  local is_cancelled = opts.is_cancelled or function() return false end
+  local completed = false
+  local function complete(result, err)
+    if completed then return end
+    completed = true
+    if on_complete then on_complete(result, err) end
+  end
+  local project_root = opts.session_ctx and opts.session_ctx.project_root
+  local project_changed = project_root and project_root ~= Utils.get_project_root()
+  if project_changed then Utils.warn("Project changed; tool execution cancelled", { title = "Avante" }) end
+  if is_cancelled() or project_changed then
     Utils.debug("Tool execution cancelled before starting: " .. tool_use.name)
     if on_complete then
-      on_complete(nil, Helpers.CANCEL_TOKEN)
+      complete(nil, Helpers.CANCEL_TOKEN)
       return
     end
     return nil, Helpers.CANCEL_TOKEN
@@ -1197,21 +1207,20 @@ function M.process_tool_use(tools, tool_use, opts)
 
   -- Set up a timer to periodically check for cancellation
   local cancel_timer
-  if on_complete then
+  if on_complete and not opts.streaming then
     cancel_timer = vim.uv.new_timer()
     if cancel_timer then
       cancel_timer:start(
         100,
         100,
         vim.schedule_wrap(function()
-          if Helpers.is_cancelled then
+          if is_cancelled() then
             Utils.debug("Tool execution cancelled during execution: " .. tool_use.name)
             if cancel_timer and not cancel_timer:is_closing() then
               cancel_timer:stop()
               cancel_timer:close()
             end
-            Helpers.is_cancelled = false
-            on_complete(nil, Helpers.CANCEL_TOKEN)
+            complete(nil, Helpers.CANCEL_TOKEN)
           end
         end)
       )
@@ -1228,7 +1237,7 @@ function M.process_tool_use(tools, tool_use, opts)
     end
 
     -- Check for cancellation one more time before processing result
-    if Helpers.is_cancelled then
+    if is_cancelled() then
       if on_log then on_log(tool_use.id, tool_use.name, "cancelled during result handling", "failed") end
       return nil, Helpers.CANCEL_TOKEN
     end
@@ -1247,11 +1256,11 @@ function M.process_tool_use(tools, tool_use, opts)
     return result_str, err
   end
 
-  local result, err = func(input_json, {
+  local ok, result, err = pcall(func, input_json, {
     session_ctx = opts.session_ctx or {},
     on_log = function(log)
       -- Check for cancellation during logging
-      if Helpers.is_cancelled then return end
+      if is_cancelled() then return end
       if on_log then on_log(tool_use.id, tool_use.name, log, "running") end
     end,
     set_store = function(key, value)
@@ -1259,9 +1268,9 @@ function M.process_tool_use(tools, tool_use, opts)
     end,
     on_complete = function(result, err)
       -- Check for cancellation before completing
-      if Helpers.is_cancelled then
-        Helpers.is_cancelled = false
-        if on_complete then on_complete(nil, Helpers.CANCEL_TOKEN) end
+      if completed then return end
+      if is_cancelled() then
+        complete(nil, Helpers.CANCEL_TOKEN)
         return
       end
 
@@ -1270,11 +1279,20 @@ function M.process_tool_use(tools, tool_use, opts)
         Utils.error("asynchronous tool " .. tool_use.name .. " result not handled")
         return
       end
-      on_complete(result, err)
+      complete(result, err)
     end,
     streaming = opts.streaming,
     tool_use_id = opts.tool_use_id,
   })
+
+  if completed then
+    if not ok then error(result) end
+    return
+  end
+  if not ok then
+    completed = true
+    return handle_result(nil, tostring(result))
+  end
 
   -- Result and error being nil means that the tool was executed asynchronously
   if result == nil and err == nil and on_complete then return end

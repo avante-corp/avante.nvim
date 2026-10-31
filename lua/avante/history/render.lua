@@ -84,7 +84,8 @@ end
 ---@param item AvanteLLMMessageContentItem
 ---@return avante.ui.Line[]
 local function thinking_to_lines(item)
-  local text = item.thinking or item.data or ""
+  local text = item.thinking or ""
+  if item.type == "redacted_thinking" or not text:find("%S") then return {} end
   local text_lines = vim.split(text, "\n")
   --- trim prefix empty lines
   while #text_lines > 0 and text_lines[1] == "" do
@@ -522,6 +523,18 @@ end
 function M.message_to_lines(message, messages, expanded)
   if message.displayed_content then return text_to_lines(message.displayed_content) end
   local content = message.message.content
+  if message.is_usage_summary and type(content) == "string" then
+    local lines = text_to_lines(content)
+    for index, line in ipairs(lines) do
+      local text = tostring(line)
+      if index == 2 then
+        line.sections = { { text, "Title" } }
+      elseif index > 2 then
+        line.sections = { { text:sub(1, 13), Highlights.AVANTE_COMMENT_FG }, { text:sub(14), "Number" } }
+      end
+    end
+    return lines
+  end
   if type(content) == "string" then return text_to_lines(content) end
   if islist(content) then
     local lines = {}

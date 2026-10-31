@@ -824,7 +824,10 @@ function M.winline(winid)
   return line
 end
 
-function M.get_project_root() return M.root.get() end
+function M.get_project_root()
+  local sidebar = M.is_sidebar_buffer(0) and require("avante").get(false)
+  return sidebar and sidebar.chat_history_project_root or M.root.get()
+end
 
 function M.is_same_file_ext(target_ext, filepath)
   local ext = fn.fnamemodify(filepath, ":e")
@@ -1671,16 +1674,6 @@ function M.parse_args(fargs, options)
 end
 
 ---@param tool_use AvanteLLMToolUse
-function M.tool_use_to_xml(tool_use)
-  local tool_use_json = vim.json.encode({
-    name = tool_use.name,
-    input = tool_use.input,
-  })
-  local xml = string.format("<tool_use>%s</tool_use>", tool_use_json)
-  return xml
-end
-
----@param tool_use AvanteLLMToolUse
 function M.is_edit_tool_use(tool_use)
   return tool_use.name == "str_replace"
     or tool_use.name == "edit_file"
@@ -1714,7 +1707,7 @@ function M.call_once(func)
   end
 end
 
---- Some models (e.g., gpt-4o) cannot correctly return diff content and often miss the SEARCH line, so this needs to be manually fixed in such cases.
+--- Normalize diff markers and restore missing SEARCH headers in model-generated edits.
 ---@param diff string
 ---@return string
 function M.fix_diff(diff)

@@ -56,7 +56,7 @@ main() {
 
     VIMRUNTIME="$(nvim --headless --noplugin -u NONE -i NONE -c 'echo $VIMRUNTIME' +qa 2>&1)"
     export VIMRUNTIME
-    export DEPS_PATH="$dest_dir/deps"
+    export DEPS_PATH="${DEPS_PATH:-$dest_dir/deps}"
 
     log "VIMRUNTIME: $VIMRUNTIME"
     log "DEPS_PATH: $DEPS_PATH"
