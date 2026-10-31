@@ -1111,7 +1111,6 @@ local base_win_options = {
   linebreak = true,
   breakindent = true,
   wrap = false,
-  cursorline = false,
   fillchars = "eob: ",
   winhighlight = "CursorLine:Normal,CursorColumn:Normal,WinSeparator:"
     .. Highlights.AVANTE_SIDEBAR_WIN_SEPARATOR
