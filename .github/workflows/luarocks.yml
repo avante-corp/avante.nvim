@@ -28,11 +28,14 @@ jobs:
     if: github.repository == 'avante-corp/avante.nvim'
     runs-on: ubuntu-24.04
     steps:
+      - name: Get Version
+        env:
+          LUAROCKS_VERSION: ${{ inputs.tag || github.event.release.tag_name }}
+        run: echo "LUAROCKS_VERSION=$LUAROCKS_VERSION" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7
         with:
+          ref: refs/tags/${{ env.LUAROCKS_VERSION }}
           fetch-depth: 0 # Required to count the commits
-      - name: Get Version
-        run: echo "LUAROCKS_VERSION=$(git describe --abbrev=0 --tags)" >> "$GITHUB_ENV"
       - name: LuaRocks Upload
         uses: nvim-neorocks/luarocks-tag-release@v9
         env:

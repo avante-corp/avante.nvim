@@ -18,6 +18,7 @@ env:
 
 jobs:
   create-release:
+    name: release decision
     needs: [releases-matrix]
     if: always() && (github.ref_name == 'main-tests' || needs.releases-matrix.result == 'success')
     runs-on: ubuntu-24.04
@@ -35,6 +36,24 @@ jobs:
           target-branch: ${{ github.ref_name }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      - name: Summarize release decision
+        env:
+          PRS_CREATED: ${{ steps.release.outputs.prs_created }}
+          RELEASE_CREATED: ${{ steps.release.outputs.release_created }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
+        run: |
+          if [ "$PRS_CREATED" = "true" ]; then
+            echo "Release PR created or updated." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No Release PR created or updated." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "$RELEASE_CREATED" = "true" ]; then
+            printf 'Release `%s` created. Publishing enabled.\n' "$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No new release. Publishing skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - uses: ./.github/actions/install-nix
         if: steps.release.outputs.prs_created == 'true'
