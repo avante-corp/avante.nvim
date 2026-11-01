@@ -233,7 +233,7 @@ function M.setup()
 
   local execute = cmdparse.make_parser_triager(function() return parser end)
   -- cmdparse annotates command options here, but its callback receives command arguments.
-  ---@cast execute fun(options: vim.api.keyset.create_user_command.command_args)
+  ---@cast execute fun(options: vim.api.keyset.create_user_command.command_args|vim.api.keyset.user_command.callback_opts)
   vim.api.nvim_create_user_command("Avante", function(opts)
     -- cmdparse needs a separator for literal remainder text. Insert it internally
     -- so users can type questions containing quotes or flags without escaping.

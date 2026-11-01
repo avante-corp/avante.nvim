@@ -126,6 +126,7 @@ jobs:
         with:
           os: ${{ matrix.config.os }}
           arch: ${{ matrix.config.arch }}
+          feature: ${{ matrix.feature }}
           rust_target: ${{ matrix.config.rust_target }}
           docker_platform: ${{ matrix.config.docker_platform }}
           container: ${{ matrix.config.container }}

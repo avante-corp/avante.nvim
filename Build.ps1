@@ -1,7 +1,8 @@
 param (
     [string]$Version = "luajit",
     [string]$BuildFromSource = "false",
-    [string]$ReleaseVersion = ""
+    [string]$ReleaseVersion = "",
+    [string]$Target = ""
 )
 
 $Build = [System.Convert]::ToBoolean($BuildFromSource)
@@ -24,19 +25,23 @@ function Build-FromSource($feature) {
         New-Item -ItemType Directory -Path $BuildDir | Out-Null
     }
 
-    cargo build --release --no-default-features --features=$feature -p avante-tokenizers -p avante-templates -p avante-repo-map -p avante-html2md -p avante-acp
+    $Packages = @("avante-tokenizers", "avante-templates", "avante-repo-map", "avante-html2md", "avante-acp")
+    $CargoArguments = @("build", "--release", "--no-default-features", "--features=$feature")
+    $TargetDir = Join-Path $PSScriptRoot "target\release"
+    if ($Target) {
+        $CargoArguments += @("--target", $Target)
+        $TargetDir = Join-Path $PSScriptRoot "target\$Target\release"
+    }
+    foreach ($Package in $Packages) {
+        $CargoArguments += @("-p", $Package)
+    }
+    cargo @CargoArguments
+    if ($LASTEXITCODE -ne 0) { throw "Cargo build failed with exit code $LASTEXITCODE" }
 
-    $SCRIPT_DIR = $PSScriptRoot
-    $targetTokenizerFile = "avante_tokenizers.dll"
-    $targetTemplatesFile = "avante_templates.dll"
-    $targetRepoMapFile = "avante_repo_map.dll"
-    $targetAcpFile = "avante_acp.dll"
-    Copy-Item (Join-Path $SCRIPT_DIR "target\release\avante_tokenizers.dll") (Join-Path $BuildDir $targetTokenizerFile)
-    Copy-Item (Join-Path $SCRIPT_DIR "target\release\avante_templates.dll") (Join-Path $BuildDir $targetTemplatesFile)
-    Copy-Item (Join-Path $SCRIPT_DIR "target\release\avante_repo_map.dll") (Join-Path $BuildDir $targetRepoMapFile)
-    Copy-Item (Join-Path $SCRIPT_DIR "target\release\avante_acp.dll") (Join-Path $BuildDir $targetAcpFile)
-
-    Remove-Item -Recurse -Force "target"
+    foreach ($Package in $Packages) {
+        $Dll = $Package.Replace("-", "_") + ".dll"
+        Copy-Item (Join-Path $TargetDir $Dll) (Join-Path $BuildDir $Dll)
+    }
 }
 
 function Test-Command($cmdname) {

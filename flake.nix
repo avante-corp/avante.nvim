@@ -328,12 +328,6 @@
             ];
             shellHook = oa.shellHook + ''
               export VIMRUNTIME=${pkgs.neovim-unwrapped}/share/nvim/runtime
-              ${lib.concatMapStringsSep "\n" (name:
-                let
-                  moduleName = lib.replaceStrings [ "-" ] [ "_" ] name;
-                in
-                ''ln -sfv "${self.packages.${system}.${name}}/lib/lib${moduleName}${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}" "lua/${moduleName}.so"''
-              ) rustLibraryNames}
               '';
           });
         }

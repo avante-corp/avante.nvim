@@ -11,6 +11,7 @@ on:
       - "Cargo.lock"
       - "Cargo.toml"
       - "Makefile"
+      - "Build.ps1"
       - "scripts/**"
   pull_request:
     branches:
@@ -22,46 +23,26 @@ on:
       - "Cargo.lock"
       - "Cargo.toml"
       - "Makefile"
+      - "Build.ps1"
       - "scripts/**"
 
 jobs:
-  # reference from: https://github.com/nvim-lua/plenary.nvim/blob/2d9b06177a975543726ce5c73fca176cedbffe9d/.github/workflows/default.yml#L6C3-L43C20
-  run_tests:
-    name: unit tests
-    runs-on: ${{ matrix.os }}
+  build-libraries:
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-24.04
+            arch: x86_64
+            feature: luajit
           - os: macos-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: ./.github/actions/install-nix
-
-      - name: Setup test environment
-        run:
-          nix develop .#ci --command make setup-deps
-
-      - name: Run tests
-        run: |
-          nix develop .#ci --command nvim --version
-          nix develop .#ci --command make luatest
-
-      - name: Typecheck
-        run:
-          nix develop .#ci --command make lua-typecheck
-
-  build-libraries:
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-24.04
-          - macos-latest
-          - windows-latest
-        feature: [luajit]
+            arch: aarch64
+            rust_target: aarch64-apple-darwin
+            feature: luajit
+          - os: windows-latest
+            arch: x86_64
+            rust_target: x86_64-pc-windows-msvc
+            feature: luajit
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -70,9 +51,22 @@ jobs:
       - uses: ./.github/actions/build
         with:
           os: ${{ matrix.os }}
-          arch: x86_64
-          rust_target: ${{ startsWith(matrix.os, 'windows') && 'x86_64-pc-windows-msvc' || '' }}
+          arch: ${{ matrix.arch }}
+          feature: ${{ matrix.feature }}
+          rust_target: ${{ matrix.rust_target }}
+
+      - name: Run tests
+        if: runner.os != 'Windows'
+        run: |
+          nix develop .#ci --command nvim --version
+          nix develop .#ci --command make luatest
+
+      - name: Typecheck
+        if: runner.os != 'Windows'
+        run: nix develop .#ci --command make lua-typecheck
 
       - name: Run ACP native integration tests
-        if: runner.os != 'Windows'
-        run: nix develop .#ci --command make acp-integration-test
+        if: runner.os != 'Windows' && matrix.feature == 'luajit'
+        run: >-
+          nix develop .#ci --command make acp-integration-test
+          CARGO_TARGET="${{ matrix.rust_target }}"

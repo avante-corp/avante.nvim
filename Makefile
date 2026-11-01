@@ -138,7 +138,6 @@ luatest:
 
 .PHONY: acp-integration-test
 acp-integration-test:
-	cargo build --release --no-default-features --features=luajit -p avante-acp $(if $(CARGO_TARGET),--target $(CARGO_TARGET))
 	mkdir -p "$(ACP_INTEGRATION_DIR)"
 	cp "$(TARGET_DIR)/libavante_acp.$(CARGO_EXT)" "$(ACP_INTEGRATION_DIR)/avante_acp.$(EXT)"
 	rustc --edition=2024 \

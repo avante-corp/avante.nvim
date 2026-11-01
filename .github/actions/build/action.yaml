@@ -7,6 +7,9 @@ inputs:
     required: true
   arch:
     description: one of aarch64, x86_64
+  feature:
+    description: Lua runtime feature (lua51 or luajit)
+    required: true
   rust_target:
     # can we do without ?
     description: e.g. "aarch64-pc-windows-msvc"
@@ -35,13 +38,13 @@ runs:
 
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
 
-    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # ratchet:Swatinem/rust-cache@v2
-      if: ${{ inputs.container == null }}
-
     - uses: dtolnay/rust-toolchain@9376cdc5a5e25b16da71af47712785cf06b0d6d4 # ratchet:dtolnay/rust-toolchain@1.94
       if: ${{ inputs.container == null }}
       with:
         targets: ${{ inputs.rust_target }}
+
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # ratchet:Swatinem/rust-cache@v2
+      if: ${{ inputs.container == null }}
 
     - name: Install Nix
       if: ${{ steps.platform.outputs.os_name != 'windows' }}
@@ -52,9 +55,9 @@ runs:
       shell: bash
       run: nix develop .#ci --command make setup-deps
 
-    - name: Build all crates (Linux/MacOS)
+    - name: Build all crates (Linux)
       shell: bash
-      if: ${{ inputs.container == null && steps.platform.outputs.os_name != 'windows' }}
+      if: ${{ inputs.container == null && steps.platform.outputs.os_name == 'linux' }}
       run: |
         set -x
         mkdir -p ~/.cache/nvim
@@ -69,41 +72,50 @@ runs:
         cat nvim.log
         ls -la lua
 
+    - name: Build all crates (macOS)
+      if: ${{ steps.platform.outputs.os_name == 'darwin' }}
+      shell: bash
+      run: |
+        # Build outside Nix to avoid dependencies on /nix/store.
+        make "${{ inputs.feature }}" CARGO_TARGET="${{ inputs.rust_target }}"
+
+    - name: Verify macOS libraries
+      if: ${{ steps.platform.outputs.os_name == 'darwin' }}
+      shell: bash
+      env:
+        ARCH: ${{ inputs.arch }}
+      run: |
+        for library in lua/*.so; do
+          lipo "$library" -verify_arch "${ARCH/aarch64/arm64}"
+          dependencies=$(otool -L "$library")
+          printf '%s\n' "$dependencies"
+          if [[ "$dependencies" == *"/nix/store/"* ]]; then
+            echo "Non-portable Nix dependency in $library" >&2
+            exit 1
+          fi
+        done
+
     - name: Build all crates (Linux) with glibc 2.17 # for glibc 2.17
       shell: bash
       if: ${{ inputs.container != null }}
       run: |
         # sudo apt-get install -y qemu qemu-user-static
         ./scripts/build-in-container.sh "${{ inputs.docker_platform }}" \
-            "${{ inputs.container }}" "${{ matrix.feature }}"
+            "${{ inputs.container }}" "${{ inputs.feature }}"
 
     - name: Handle binaries (Linux/MacOS)
       if: ${{ steps.platform.outputs.os_name != 'windows' }}
       shell: bash
       run: |
-        # AvanteBuild put the libraries in `lua/`
-        (cd lua && tar cvf - *.so | gzip ) > avante_lib-${{ steps.platform.outputs.os_name }}-${{ inputs.arch }}-${{ matrix.feature }}.tar.gz
+        (cd lua && tar cvf - *.so | gzip ) > avante_lib-${{ steps.platform.outputs.os_name }}-${{ inputs.arch }}-${{ inputs.feature }}.tar.gz
 
     - name: Build all crates (Windows)
       if: ${{ steps.platform.outputs.os_name == 'windows' }}
-      shell: bash
-      run: |
-        # TODO run AvanteBuild instead
-        cargo build --release --no-default-features --features ${{ matrix.feature }} --target ${{ inputs.rust_target }} -p avante-tokenizers -p avante-templates -p avante-repo-map -p avante-html2md -p avante-acp
+      shell: pwsh
+      run: ./Build.ps1 -BuildFromSource true -Version "${{ inputs.feature }}" -Target "${{ inputs.rust_target }}"
 
     - name: Handle binaries (Windows)
       if: ${{ steps.platform.outputs.os_name == 'windows' }}
       shell: pwsh
       run: |
-        New-Item -ItemType Directory -Force -Path results
-
-        # we can probably remove that
-        $TargetDir = "target\${{ inputs.rust_target }}\release"
-        Copy-Item -Path "$TargetDir\avante_templates.dll" -Destination "avante_templates.dll"
-        Copy-Item -Path "$TargetDir\avante_tokenizers.dll" -Destination "avante_tokenizers.dll"
-        Copy-Item -Path "$TargetDir\avante_repo_map.dll" -Destination "avante_repo_map.dll"
-        Copy-Item -Path "$TargetDir\avante_html2md.dll" -Destination "avante_html2md.dll"
-        Copy-Item -Path "$TargetDir\avante_acp.dll" -Destination "avante_acp.dll"
-
-        $dllFiles = Get-ChildItem -Filter "*.dll" | Select-Object -ExpandProperty Name
-        Compress-Archive -Path $dllFiles -DestinationPath "avante_lib-${{ steps.platform.outputs.os_name }}-${{ inputs.arch }}-${{ matrix.feature }}.zip"
+        Compress-Archive -Path "lua/avante_*.dll" -DestinationPath "avante_lib-${{ steps.platform.outputs.os_name }}-${{ inputs.arch }}-${{ inputs.feature }}.zip"
