@@ -23,6 +23,7 @@ BUILD_DIR := lua
 TARGET_LIBRARY ?= all
 
 export AVANTE_RUNTIME_TEST_DIR ?= $(CURDIR)/target/tests
+export DEPS_PATH ?= $(AVANTE_RUNTIME_TEST_DIR)/deps
 ACP_INTEGRATION_DIR := $(AVANTE_RUNTIME_TEST_DIR)/acp-integration
 
 RAG_SERVICE_VERSION ?= 0.0.11
@@ -136,6 +137,16 @@ rusttest:
 luatest:
 	./scripts/run-luatest.sh
 
+.PHONY: nvim-build
+nvim-build:
+	mkdir -p ~/.cache/nvim
+	nvim -V3nvim.log --headless -u NONE \
+		--cmd "set rtp^=." \
+		--cmd 'lua local deps = vim.env.DEPS_PATH .. "/share/lua/5.1/"; package.path = deps .. "?.lua;" .. deps .. "?/init.lua;" .. package.path' \
+		-c "runtime plugin/avante.lua" \
+		-c "lua vim.g.avante = { debug = vim.log.levels.INFO }" \
+		-c "AvanteBuild source=true" +quit!
+
 .PHONY: acp-integration-test
 acp-integration-test:
 	mkdir -p "$(ACP_INTEGRATION_DIR)"
@@ -153,9 +164,13 @@ upgrade-actions:
 	# install with gh extension install github/gh-actions-lock
 	gh actions-lock --relock
 
+.PHONY: print-deps-path
+print-deps-path:
+	@printf '%s\n' "$(DEPS_PATH)"
+
 .PHONY: setup-deps
 setup-deps:
-	./scripts/setup-deps.sh clone "$(AVANTE_RUNTIME_TEST_DIR)/deps"
+	./scripts/setup-deps.sh clone "$(DEPS_PATH)"
 	./scripts/setup-deps.sh generate-luarc "$(AVANTE_RUNTIME_TEST_DIR)/luarc.json"
 
 .PHONY: lint

@@ -28,9 +28,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      - uses: dtolnay/rust-toolchain@9376cdc5a5e25b16da71af47712785cf06b0d6d4 # ratchet:dtolnay/rust-toolchain@1.99
+      - uses: dtolnay/rust-toolchain@1.99.0
 
-      - uses: googleapis/release-please-action@v5
+      - uses: googleapis/release-please-action@v5.0.0
         id: release
         with:
           target-branch: ${{ github.ref_name }}
@@ -55,7 +55,7 @@ jobs:
             echo "No new release. Publishing skipped." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - uses: ./.github/actions/install-nix
+      - uses: $/.github/actions/install-nix
         if: steps.release.outputs.prs_created == 'true'
 
       # Post-hook: after the version bump, regenerate Cargo.lock
@@ -119,9 +119,9 @@ jobs:
     runs-on: ${{ matrix.config.os }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
-      - uses: ./.github/actions/build
+      - uses: $/.github/actions/build
         id: build
         with:
           os: ${{ matrix.config.os }}
@@ -132,7 +132,7 @@ jobs:
           container: ${{ matrix.config.container }}
 
       - name: Store Release Asset
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: avante_lib-${{ steps.build.outputs.os_name }}-${{ matrix.config.arch }}-${{ matrix.feature }}
           path: ./avante_lib-${{ steps.build.outputs.os_name }}-${{ matrix.config.arch }}-${{ matrix.feature }}.*
@@ -152,7 +152,7 @@ jobs:
     if: needs.create-release.outputs.release_created == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4.3.0
         with:
           pattern: avante_lib-*
           path: release-assets

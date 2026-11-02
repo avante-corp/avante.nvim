@@ -11,12 +11,12 @@ jobs:
     if: "github.event.action != 'labeled' || github.event.label.name == 'pre-commit ci run'"
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@v7.0.1
     - run: gh pr edit ${{ github.event.number }} --remove-label 'pre-commit ci run'
       if: github.event.action == 'labeled' && github.event.label.name == 'pre-commit ci run'
       env:
         GH_TOKEN: ${{ github.token }}
-    - uses: ./.github/actions/install-nix
+    - uses: $/.github/actions/install-nix
     # Needs to be installed before running pyright
     - name: setup rag service venv
       run: nix develop .#ci --command make rag-venv

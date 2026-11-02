@@ -76,20 +76,27 @@ Then you can set `dev = true` in your `lazy` config for development.
 
 # How to run the tests ?
 
-The infra attempts by default to setup everything in "--managed" mode.
+Use the Makefile targets to run checks; they set the test runtime and dependency paths.
 
 ```
+make setup-deps
 make lint
 make lua-typecheck
 make luatest
 ```
 
-If the previous doesn't work you can check the Makefile targets and run the files in scripts/ with `--live` instead.
+Set `AVANTE_RUNTIME_TEST_DIR` or `DEPS_PATH` when invoking `make` to override the default directories under `target/tests`.
 
 # How to bump CI/CD actions
 
-Use [ratchet](https://github.com/sethvargo/ratchet) to upgrade and pin actions
-to specific commit. See the 'upgrade-actions' target in Makefile.
+Install [gh-actions-lock](https://github.com/github/gh-actions-lock), then run the Makefile target:
+
+```sh
+gh extension install github/gh-actions-lock
+make upgrade-actions
+```
+
+Review and commit the workflow and `.github/workflows/actions.lock` changes together.
 
 # How to create a new release ? (maintainers-only)
 

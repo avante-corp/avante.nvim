@@ -118,7 +118,7 @@
             };
 
             cargoDepsName = "avante";
-            cargoHash = "sha256-pUJgkGL5CQJPvJTo9AEnF77bZZmpcXAZkoxSm4zTw/E=";
+            cargoHash = "sha256-276iAGtGxSsW9lRqw7DP0bs3NYUOtghsmBVvBirH22Q=";
             cargoBuildFlags = [ "--package" pname ];
             nativeBuildInputs = [ pkgs.pkg-config pkgs.perl ];
             buildInputs = [ pkgs.openssl ];
@@ -298,7 +298,7 @@
 
             shellHook = ''
               echo "Welcome to the avante development environment!"
-              export DEPS_PATH="target/tests/deps"
+              export DEPS_PATH="$(make --no-print-directory -s print-deps-path)"
             '';
           };
 
@@ -308,7 +308,7 @@
             buildInputs = with pkgs; [
               cargo
               rustc
-              ratchet # to upgrade github actions
+              gh # to upgrade github actions
               pkgs.pyright # to be able to run pre-commit tests
               pkgs.ruff # to be able to run pre-commit tests
               pkgs.gcc # to build python deps

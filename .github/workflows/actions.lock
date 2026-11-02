@@ -23,17 +23,17 @@ workflows:
         - 'actions/download-artifact@v4.3.0'
         - 'actions/upload-artifact@v4.6.2'
         - 'determinatesystems/nix-installer-action@v23'
-        - 'dtolnay/rust-toolchain@1.99'
+        - 'dtolnay/rust-toolchain@1.99.0'
         - 'googleapis/release-please-action@v5.0.0'
         - 'swatinem/rust-cache@v2.9.2'
     '.github/workflows/rust.yaml':
         - 'actions/checkout@v7.0.1'
-        - 'dtolnay/rust-toolchain@1.99'
+        - 'dtolnay/rust-toolchain@1.99.0'
         - 'swatinem/rust-cache@v2.9.2'
     '.github/workflows/tests.yaml':
         - 'actions/checkout@v7.0.1'
         - 'determinatesystems/nix-installer-action@v23'
-        - 'dtolnay/rust-toolchain@1.99'
+        - 'dtolnay/rust-toolchain@1.99.0'
         - 'swatinem/rust-cache@v2.9.2'
     '.github/workflows/vimdoc.yaml':
         - 'actions/checkout@v7.0.1'
@@ -79,9 +79,9 @@ dependencies:
         commit: 'sha1-3138316df39ed29be04236d7ffc686fa525866aa'
         owner_id: 80991770
         repo_id: 588678074
-    'dtolnay/rust-toolchain@1.99':
-        ref: '1.99'
-        commit: 'sha1-d124f86f28ff42855784ff3319f48ac182c248f8'
+    'dtolnay/rust-toolchain@1.99.0':
+        ref: '1.99.0'
+        commit: 'sha1-ff7f6a3374ce205788da40198ec918bd5d67aea7'
         owner_id: 1940490
         repo_id: 260749683
     'googleapis/release-please-action@v5.0.0':

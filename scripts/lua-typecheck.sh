@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # First call setup-deps to setup dependencies
 # typecheck using the installed Neovim runtime and lua-language-server.
-set -e
+set -eu
 
 verbose=false
 
@@ -56,7 +56,6 @@ main() {
 
     VIMRUNTIME="$(nvim --headless --noplugin -u NONE -i NONE -c 'echo $VIMRUNTIME' +qa 2>&1)"
     export VIMRUNTIME
-    export DEPS_PATH="$dest_dir/deps"
 
     log "VIMRUNTIME: $VIMRUNTIME"
     log "DEPS_PATH: $DEPS_PATH"

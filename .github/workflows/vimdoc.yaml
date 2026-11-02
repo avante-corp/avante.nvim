@@ -24,9 +24,9 @@ jobs:
     name: Check generated docs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
-      - uses: ./.github/actions/install-nix
+      - uses: $/.github/actions/install-nix
 
       - name: Generate docs and check for duplicated tags
         run: nix shell .#vimcats .#neovim-unwrapped --command make docgen
