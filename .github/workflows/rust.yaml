@@ -4,17 +4,15 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "crates/**/*"
-      - "Cargo.lock"
-      - "Cargo.toml"
+    paths-ignore:
+      - "lua/**"
+      - "**/*.md"
   pull_request:
     branches:
       - main
-    paths:
-      - "crates/**/*"
-      - "Cargo.lock"
-      - "Cargo.toml"
+    paths-ignore:
+      - "lua/**"
+      - "**/*.md"
 
 jobs:
   tests:
