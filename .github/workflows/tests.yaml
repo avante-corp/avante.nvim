@@ -47,9 +47,9 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
-      - uses: ./.github/actions/build
+      - uses: $/.github/actions/build
         with:
           os: ${{ matrix.os }}
           arch: ${{ matrix.arch }}

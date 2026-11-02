@@ -17,4 +17,4 @@ docker run \
   -w /workspace \
   --platform "$docker_platform" \
   "$container" \
-  bash -c "yum install -y perl-IPC-Cmd perl-Time-Piece openssl-devel && curl --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal && . /root/.cargo/env && make '$feature'"
+  bash -c "yum install -y perl-IPC-Cmd perl-Time-Piece openssl-devel && curl --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.99.0 && . /root/.cargo/env && make '$feature'"

@@ -36,21 +36,21 @@ runs:
           *) echo "Unsupported runner: ${{ inputs.os }}" >&2; exit 1 ;;
         esac
 
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
+    - uses: actions/checkout@v7.0.1
 
-    - uses: dtolnay/rust-toolchain@9376cdc5a5e25b16da71af47712785cf06b0d6d4 # ratchet:dtolnay/rust-toolchain@1.99
+    - uses: dtolnay/rust-toolchain@1.99.0
       if: ${{ inputs.container == null }}
       with:
         targets: ${{ inputs.rust_target }}
 
-    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # ratchet:Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@v2.9.2
       if: ${{ inputs.container == null }}
       with:
         key: ${{ inputs.rust_target }}-${{ inputs.feature }}
 
     - name: Install Nix
       if: ${{ steps.platform.outputs.os_name != 'windows' }}
-      uses: ./.github/actions/install-nix
+      uses: $/.github/actions/install-nix
 
     - name: Install avante dependencies
       if: ${{ steps.platform.outputs.os_name != 'windows' }}
@@ -64,13 +64,7 @@ runs:
         CARGO_TARGET: ${{ inputs.rust_target }}
       run: |
         set -x
-        mkdir -p ~/.cache/nvim
-        nix develop .#ci --command nvim -V3nvim.log --headless -u NONE \
-          --cmd "set rtp^=." \
-          --cmd 'lua package.path = "./target/tests/deps/share/lua/5.1/?.lua;./target/tests/deps/share/lua/5.1/?/init.lua;" .. package.path' \
-          -c "runtime plugin/avante.lua" \
-          -c "lua vim.g.avante = { debug = vim.log.levels.INFO }" \
-          -c "AvanteBuild source=true" +quit!
+        nix develop .#ci --command make nvim-build
 
         # to help diagnose failures
         cat nvim.log
