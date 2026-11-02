@@ -10,8 +10,7 @@ version.workspace = true
 
 [dependencies]
 htmd = "0.5.5"
-#html2md = "0.2.15"
-html2md = { git = "https://gitlab.com/Kanedias/html2md.git", rev = "850ccf756a87fedebcea707c5c981c3103019238" }
+html2md = "0.2.17"
 mlua.workspace = true
 reqwest = { version = "0.13.4", features = ["blocking", "native-tls-vendored"] }
 
