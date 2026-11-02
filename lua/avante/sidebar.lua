@@ -2092,7 +2092,7 @@ function Sidebar:_get_message_lines(ctx, message, messages, ignore_record_prefix
   if message.message.role == "user" then
     local res = {}
     for _, line_ in ipairs(lines) do
-      local sections = { { "> " } }
+      local sections = { { "# " } }
       sections = vim.list_extend(sections, line_.sections)
       table.insert(res, Line:new(sections))
     end
@@ -2115,6 +2115,7 @@ end
 
 local _message_to_lines_lru_cache = LRUCache:new(100)
 
+---Get formatted conversation lines
 ---@param ctx table
 ---@param message avante.HistoryMessage
 ---@param messages avante.HistoryMessage[]
