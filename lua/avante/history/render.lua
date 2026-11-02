@@ -1,3 +1,8 @@
+---@mod avante-messages-render Render LLM conversation
+---@brief [[
+---Takes user and agent messages from history and render them differently depending on their type
+---(tool output, text diff, ...).
+---@brief ]]
 local Helpers = require("avante.history.helpers")
 local Line = require("avante.ui.line")
 local Utils = require("avante.utils")
@@ -95,7 +100,7 @@ local function thinking_to_lines(item)
     table.remove(text_lines, #text_lines)
   end
   local ui_lines = {}
-  table.insert(ui_lines, Line:new({ { Utils.icon("🤔 ") .. "Thought content:" } }))
+  table.insert(ui_lines, Line:new({ { "## " .. Utils.icon("🤔 ") .. "Thought content:" } }))
   table.insert(ui_lines, Line:new({ { "" } }))
   for _, text_line in ipairs(text_lines) do
     table.insert(ui_lines, Line:new({ { "> " .. text_line } }))
@@ -381,7 +386,10 @@ function M.get_tool_display_name(message)
   return tool_name, nil
 end
 
----Converts a tool invocation into format suitable for UI
+---Converts a tool invocation into format suitable for UI:
+---╭─ generating
+---│   ...
+---╰─
 ---@param item AvanteLLMMessageContentItem
 ---@param message avante.HistoryMessage
 ---@param messages avante.HistoryMessage[]
