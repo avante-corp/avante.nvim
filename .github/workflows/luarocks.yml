@@ -32,12 +32,12 @@ jobs:
         env:
           LUAROCKS_VERSION: ${{ inputs.tag || github.event.release.tag_name }}
         run: echo "LUAROCKS_VERSION=$LUAROCKS_VERSION" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           ref: refs/tags/${{ env.LUAROCKS_VERSION }}
           fetch-depth: 0 # Required to count the commits
       - name: LuaRocks Upload
-        uses: nvim-neorocks/luarocks-tag-release@v9
+        uses: lumen-oss/luarocks-tag-release@v9.12.0
         env:
           LUX_API_KEY: ${{ secrets.LUX_API_KEY }}
         with:
