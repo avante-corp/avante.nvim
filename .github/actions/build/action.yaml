@@ -45,6 +45,8 @@ runs:
 
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # ratchet:Swatinem/rust-cache@v2
       if: ${{ inputs.container == null }}
+      with:
+        key: ${{ inputs.rust_target }}-${{ inputs.feature }}
 
     - name: Install Nix
       if: ${{ steps.platform.outputs.os_name != 'windows' }}
@@ -58,6 +60,8 @@ runs:
     - name: Build all crates (Linux)
       shell: bash
       if: ${{ inputs.container == null && steps.platform.outputs.os_name == 'linux' }}
+      env:
+        CARGO_TARGET: ${{ inputs.rust_target }}
       run: |
         set -x
         mkdir -p ~/.cache/nvim
