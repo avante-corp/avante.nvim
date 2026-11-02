@@ -13,6 +13,6 @@ jobs:
   labeler:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/labeler@v6
+      - uses: actions/labeler@v6.2.0
         with:
           sync-labels: true

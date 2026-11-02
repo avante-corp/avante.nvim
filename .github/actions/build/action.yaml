@@ -38,7 +38,7 @@ runs:
 
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # ratchet:actions/checkout@v7
 
-    - uses: dtolnay/rust-toolchain@9376cdc5a5e25b16da71af47712785cf06b0d6d4 # ratchet:dtolnay/rust-toolchain@1.94
+    - uses: dtolnay/rust-toolchain@9376cdc5a5e25b16da71af47712785cf06b0d6d4 # ratchet:dtolnay/rust-toolchain@1.99
       if: ${{ inputs.container == null }}
       with:
         targets: ${{ inputs.rust_target }}

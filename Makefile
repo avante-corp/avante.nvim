@@ -150,7 +150,8 @@ acp-integration-test:
 # upgrade / pin CI actions
 .PHONY: upgrade-actions
 upgrade-actions:
-	ratchet upgrade ./.github/workflows/rust.yaml .github/actions/build/action.yaml
+	# install with gh extension install github/gh-actions-lock
+	gh actions-lock --relock
 
 .PHONY: setup-deps
 setup-deps:
