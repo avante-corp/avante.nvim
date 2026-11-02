@@ -1875,7 +1875,8 @@ function M.stream(opts)
       if stop_opts.reason == "complete" or stop_opts.reason == "error" or stop_opts.reason == "cancelled" then
         is_completed = true
       end
-      return original_on_stop(stop_opts)
+      original_on_stop(stop_opts)
+      if stop_opts.reason == "complete" then api.nvim_exec_autocmds("User", { pattern = "AvanteLLMAnswered" }) end
     end)
   end
 

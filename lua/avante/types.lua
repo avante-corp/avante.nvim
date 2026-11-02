@@ -350,7 +350,7 @@ vim.g.avante_login = vim.g.avante_login
 ---
 ---@class AvanteProviderFunctor
 ---  Implementation of a LLM provider
----@field _model_list_cache table
+---@field protected _model_list_cache table
 ---@field extra_headers fun(table): table | table | nil
 ---@field support_prompt_caching boolean | nil
 ---@field role_map table<"user" | "assistant", string>
