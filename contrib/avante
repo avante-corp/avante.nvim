@@ -2,10 +2,30 @@
 # launches neovim with avante to mimic a typical harness
 # Usage: avante [--provider NAME] [--] QUESTION...
 # Unrecognized arguments form the question; -- ends option parsing.
+show_help() {
+  cat <<'EOF'
+Usage: avante [--provider NAME] [--] QUESTION...
+
+Launch Neovim with Avante's Zen Mode and submit QUESTION.
+
+Options:
+  --provider NAME    Switch to NAME before submitting the question
+  -h, --help         Show this help and exit
+  --                 Treat all remaining arguments as question text
+
+Arguments that are not recognized as options are included in QUESTION.
+Question arguments are joined with spaces.
+EOF
+}
+
 provider=""
 question=()
 while (( $# )); do
   case "$1" in
+    -h|--help)
+      show_help
+      exit 0
+      ;;
     --provider)
       if (( $# < 2 )) || [[ -z $2 || $2 == --* ]]; then
         printf '%s\n' 'avante: --provider requires a name' >&2
