@@ -49,11 +49,11 @@ runs:
         key: ${{ inputs.rust_target }}-${{ inputs.feature }}
 
     - name: Install Nix
-      if: ${{ steps.platform.outputs.os_name != 'windows' }}
+      if: ${{ runner.os != 'Windows' && !(runner.os == 'macOS' && github.job == 'releases-matrix') }}
       uses: $/.github/actions/install-nix
 
     - name: Install avante dependencies
-      if: ${{ steps.platform.outputs.os_name != 'windows' }}
+      if: ${{ runner.os != 'Windows' && !(runner.os == 'macOS' && github.job == 'releases-matrix') }}
       shell: bash
       run: nix develop .#ci --command make setup-deps
 
