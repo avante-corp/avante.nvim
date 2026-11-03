@@ -103,7 +103,7 @@ jobs:
             rust_target: x86_64-unknown-linux-gnu
             docker_platform: linux/amd64
             container: quay.io/pypa/manylinux2014_x86_64 # for glibc 2.17
-          - os: macos-latest
+          - os: macos-15-intel
             arch: x86_64
             rust_target: x86_64-apple-darwin
           - os: macos-latest
