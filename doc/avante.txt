@@ -2231,6 +2231,7 @@ Web search tools                                       *avante-tools-web-search*
  - Sofya: `SOFYA_API_KEY`
  - SpecStream: `SPECSTREAM_API_KEY`
  - SearXNG: `SEARXNG_API_URL`
+ - Keenable: `KEENABLE_API_KEY` (optional; the public endpoint works without a key)
 
 WebSearchProviderName                                    *WebSearchProviderName*
 
@@ -2247,6 +2248,7 @@ WebSearchProviderName                                    *WebSearchProviderName*
         ("sofya")
         ("specstream")
         ("searxng")
+        ("keenable")
 
 
 WebSearchResponseFormatter                          *WebSearchResponseFormatter*
