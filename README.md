@@ -1323,10 +1323,11 @@ Avante's tools include some web search engines, currently support:
 - [Sofya](https://sofya.co/docs)
 - [SpecStream](https://specstream.ai/search-api)
 - [SearXNG](https://searxng.github.io/searxng/)
+- [Keenable](https://keenable.ai/) (works without an API key)
 
 Each engine is exposed as its own tool (`web_search_tavily`, `web_search_serpapi`,
 `web_search_searchapi`, `web_search_google`, `web_search_kagi`, `web_search_brave`,
-`web_search_firecrawl`, `web_search_serply`, `web_search_outcrawl`, `web_search_sofya`, `web_search_specstream`, and `web_search_searxng`). Shared settings remain under `web_search_engine`:
+`web_search_firecrawl`, `web_search_serply`, `web_search_outcrawl`, `web_search_sofya`, `web_search_specstream`, `web_search_searxng` and `web_search_keenable`). Shared settings remain under `web_search_engine`:
 
 ```lua
 web_search_engine = {
@@ -1350,6 +1351,7 @@ Environment variables required for providers:
 - Sofya: `SOFYA_API_KEY` as the [API key](https://sofya.co/dashboard)
 - SpecStream: `SPECSTREAM_API_KEY` as the [API key](https://specstream.ai/search-api)
 - SearXNG: `SEARXNG_API_URL` as the [API URL](https://docs.searxng.org/dev/search_api.html)
+- Keenable: optional `KEENABLE_API_KEY`; without it the free public endpoint is used
 
 ## Custom prompts
 

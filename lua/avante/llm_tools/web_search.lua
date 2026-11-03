@@ -22,6 +22,7 @@
 --- - Sofya: `SOFYA_API_KEY`
 --- - SpecStream: `SPECSTREAM_API_KEY`
 --- - SearXNG: `SEARXNG_API_URL`
+--- - Keenable: `KEENABLE_API_KEY` (optional; the public endpoint works without a key)
 ---@brief ]]
 
 local Config = require("avante.config")
@@ -40,6 +41,7 @@ local Utils = require("avante.utils")
 ---| '"sofya"'
 ---| '"specstream"'
 ---| '"searxng"'
+---| '"keenable"'
 
 ---@alias WebSearchResponseFormatter fun(body: table): (string, string?)
 
@@ -551,6 +553,53 @@ local function web_search_searxng_func(input, opts)
   )
 end
 
+local KEENABLE_SNIPPET_MAX_CHARS = 1000
+
+---@type AvanteLLMToolFunc<{ query: string }>
+---Uses KEENABLE_API_KEY when set; otherwise Keenable's free public endpoint (no key needed)
+local function web_search_keenable_func(input, opts)
+  log_search("keenable", input, opts)
+  local api_key = Utils.environment.parse("KEENABLE_API_KEY")
+  local headers = {
+    ["Content-Type"] = "application/json",
+    -- identifies avante as the caller in Keenable usage stats
+    ["X-Keenable-Title"] = "avante",
+  }
+  local url = "https://api.keenable.ai/v1/search/public"
+  if api_key ~= nil and api_key ~= "" then
+    headers["X-API-Key"] = api_key
+    url = "https://api.keenable.ai/v1/search"
+  end
+  return request(
+    "POST",
+    url,
+    {
+      headers = headers,
+      body = vim.json.encode({ query = input.query, max_results = 10 }),
+    },
+    opts,
+    function(body)
+      if body.results == nil then return "", nil end
+      local results = vim
+        .iter(body.results)
+        :filter(function(result) return type(result.url) == "string" and result.url ~= "" end)
+        :map(function(result)
+          -- prefer the short description; the snippet can be a long page excerpt
+          local snippet = result.description
+          if snippet == nil or snippet == "" then
+            snippet = result.snippet or ""
+            if #snippet > KEENABLE_SNIPPET_MAX_CHARS then
+              snippet = snippet:sub(1, KEENABLE_SNIPPET_MAX_CHARS) .. "…"
+            end
+          end
+          return { title = result.title, url = result.url, snippet = snippet }
+        end)
+        :totable()
+      return vim.json.encode(results), nil
+    end
+  )
+end
+
 ---@param provider WebSearchProviderName
 ---@param func AvanteLLMToolFunc<{ query: string }>
 ---@return AvanteLLMTool
@@ -593,5 +642,6 @@ M.web_search_outcrawl = web_search_tool("outcrawl", web_search_outcrawl_func)
 M.web_search_sofya = web_search_tool("sofya", web_search_sofya_func)
 M.web_search_specstream = web_search_tool("specstream", web_search_specstream_func)
 M.web_search_searxng = web_search_tool("searxng", web_search_searxng_func)
+M.web_search_keenable = web_search_tool("keenable", web_search_keenable_func)
 
 return M
