@@ -2767,7 +2767,7 @@ function Sidebar:create_selected_code_container()
         winid = self:get_split_candidate("selected_code"),
       },
       buf_options = vim.tbl_deep_extend("force", buf_options, { filetype = "AvanteSelectedCode" }),
-      win_options = vim.tbl_deep_extend("force", base_win_options, {}),
+      win_options = {},
       size = {
         height = height,
       },
