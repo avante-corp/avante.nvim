@@ -1,25 +1,26 @@
 #!/usr/bin/env bash
 # launches neovim with avante to mimic a typical harness
-# Usage: avante [--provider NAME] [--] QUESTION...
-# Unrecognized arguments form the question; -- ends option parsing.
+# Usage: avante [--provider NAME] [prompt...] [-- NVIM_ARGS...]
+# Unrecognized arguments before -- form the prompt.
 show_help() {
   cat <<'EOF'
-Usage: avante [--provider NAME] [--] QUESTION...
+Usage: avante [--provider NAME] [prompt...] [-- NVIM_ARGS...]
 
-Launch Neovim with Avante's Zen Mode and submit QUESTION.
+Launch Neovim with Avante's Zen Mode and submit prompt.
 
 Options:
-  --provider NAME    Switch to NAME before submitting the question
+  --provider NAME    Switch to NAME before submitting the prompt
   -h, --help         Show this help and exit
-  --                 Treat all remaining arguments as question text
+  --                 Pass all remaining arguments to Neovim
 
-Arguments that are not recognized as options are included in QUESTION.
-Question arguments are joined with spaces.
+Arguments before -- that are not recognized as options form prompt,
+joined with spaces. Arguments after -- are passed unchanged to Neovim.
 EOF
 }
 
 provider=""
-question=()
+prompt=()
+nvim_args=()
 while (( $# )); do
   case "$1" in
     -h|--help)
@@ -44,18 +45,18 @@ while (( $# )); do
       ;;
     --)
       shift
-      question+=("$@")
+      nvim_args=("$@")
       break
       ;;
     *)
-      question+=("$1")
+      prompt+=("$1")
       shift
       ;;
   esac
 done
 
 # Encode user input so it can be embedded safely in Lua.
-prompt_hex=$(printf '%s' "${question[*]}" | od -An -v -tx1 | tr -d ' \n')
+prompt_hex=$(printf '%s' "${prompt[*]}" | od -An -v -tx1 | tr -d ' \n')
 provider_command=""
 if [[ -n $provider ]]; then
   # Escape the provider for a single-quoted Lua string literal.
@@ -67,4 +68,5 @@ if [[ -n $provider ]]; then
 fi
 # Switch after startup configuration has loaded, immediately before asking.
 exec nvim \
-  -c "lua vim.defer_fn(function() local api = require('avante.api'); $provider_command local question = ('$prompt_hex'):gsub('..', function(byte) return string.char(tonumber(byte, 16)) end); api.zen_mode({ question = question }) end, 100)"
+  "${nvim_args[@]}" \
+  -c "lua vim.defer_fn(function() local api = require('avante.api'); $provider_command local prompt = ('$prompt_hex'):gsub('..', function(byte) return string.char(tonumber(byte, 16)) end); api.zen_mode({ question = prompt }) end, 100)"
