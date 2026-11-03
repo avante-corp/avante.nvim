@@ -9,6 +9,4 @@ vim.opt_local.list = false
 vim.opt_local.linebreak = true
 vim.opt_local.breakindent = true
 vim.opt_local.wrap = false
-vim.opt_local.fillchars = "eob: "
-vim.opt_local.winbar = ""
 vim.opt_local.statusline = vim.o.laststatus == 0 and " " or ""
