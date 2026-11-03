@@ -1,4 +1,4 @@
-name: Lua CI
+name: CI
 
 on:
   push:
@@ -7,7 +7,10 @@ on:
     paths:
       - "**/*.lua"
       - ".github/**"
-      - "crates/avante-acp/**"
+      - "crates/**"
+      - ".cargo/**"
+      - "flake.nix"
+      - "flake.lock"
       - "Cargo.lock"
       - "Cargo.toml"
       - "Makefile"
@@ -19,7 +22,10 @@ on:
     paths:
       - "**/*.lua"
       - ".github/**"
-      - "crates/avante-acp/**"
+      - "crates/**"
+      - ".cargo/**"
+      - "flake.nix"
+      - "flake.lock"
       - "Cargo.lock"
       - "Cargo.toml"
       - "Makefile"
@@ -56,15 +62,24 @@ jobs:
           feature: ${{ matrix.feature }}
           rust_target: ${{ matrix.rust_target }}
 
-      - name: Run tests
+      - name: Typecheck
+        if: runner.os != 'Windows'
+        run: nix develop .#ci --command make lua-typecheck
+
+      - name: Run Lua tests
         if: runner.os != 'Windows'
         run: |
           nix develop .#ci --command nvim --version
           nix develop .#ci --command make luatest
 
-      - name: Typecheck
+      - name: Run Rust tests
         if: runner.os != 'Windows'
-        run: nix develop .#ci --command make lua-typecheck
+        run: |
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            make rusttest CARGO_TARGET="${{ matrix.rust_target }}"
+          else
+            nix develop .#ci --command make rusttest CARGO_TARGET="${{ matrix.rust_target }}"
+          fi
 
       - name: Run ACP native integration tests
         if: runner.os != 'Windows' && matrix.feature == 'luajit'

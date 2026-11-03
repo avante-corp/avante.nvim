@@ -20,7 +20,8 @@ TARGET_DIR := target$(if $(CARGO_TARGET),/$(CARGO_TARGET))/release
 LUA_VERSIONS := luajit lua51
 
 BUILD_DIR := lua
-TARGET_LIBRARY ?= all
+# shortcut: directory names match library names; use Cargo metadata if they diverge.
+RUST_PACKAGES := $(notdir $(patsubst %/Cargo.toml,%,$(wildcard crates/*/Cargo.toml)))
 
 export AVANTE_RUNTIME_TEST_DIR ?= $(CURDIR)/target/tests
 export DEPS_PATH ?= $(AVANTE_RUNTIME_TEST_DIR)/deps
@@ -31,47 +32,17 @@ RAG_SERVICE_IMAGE := quay.io/yetoneful/avante-rag-service:$(RAG_SERVICE_VERSION)
 
 all: luajit
 
-define make_definitions
-ifeq ($(TARGET_LIBRARY), all)
-$1: $(BUILD_DIR)/libAvanteTokenizers-$1.$(EXT) $(BUILD_DIR)/libAvanteTemplates-$1.$(EXT) $(BUILD_DIR)/libAvanteRepoMap-$1.$(EXT) $(BUILD_DIR)/libAvanteHtml2md-$1.$(EXT) $(BUILD_DIR)/libAvanteAcp-$1.$(EXT)
-else ifeq ($(TARGET_LIBRARY), tokenizers)
-$1: $(BUILD_DIR)/libAvanteTokenizers-$1.$(EXT)
-else ifeq ($(TARGET_LIBRARY), templates)
-$1: $(BUILD_DIR)/libAvanteTemplates-$1.$(EXT)
-else ifeq ($(TARGET_LIBRARY), repo-map)
-$1: $(BUILD_DIR)/libAvanteRepoMap-$1.$(EXT)
-else ifeq ($(TARGET_LIBRARY), html2md)
-$1: $(BUILD_DIR)/libAvanteHtml2md-$1.$(EXT)
-else ifeq ($(TARGET_LIBRARY), acp)
-$1: $(BUILD_DIR)/libAvanteAcp-$1.$(EXT)
-else
-	$$(error TARGET_LIBRARY must be one of all, tokenizers, templates, repo-map, html2md, acp)
-endif
+define build_runtime
+.PHONY: $1
+$1: | $(BUILD_DIR)
+	cargo build --workspace --release --no-default-features --features=$1 $(if $(CARGO_TARGET),--target $(CARGO_TARGET))
+	for library in $(subst -,_,$(RUST_PACKAGES)); do \
+		rm -f "$(BUILD_DIR)/$$$$library.$(EXT)" || exit; \
+		cp "$(TARGET_DIR)/lib$$$$library.$(CARGO_EXT)" "$(BUILD_DIR)/$$$$library.$(EXT)" || exit; \
+	done
 endef
 
-$(foreach lua_version,$(LUA_VERSIONS),$(eval $(call make_definitions,$(lua_version))))
-
-define build_package
-$1-$2:
-	cargo build --release --no-default-features --features=$1 -p avante-$2 $(if $(CARGO_TARGET),--target $(CARGO_TARGET))
-	rm -f $(BUILD_DIR)/avante_$(shell echo $2 | tr - _).$(EXT)
-	cp $(TARGET_DIR)/libavante_$(shell echo $2 | tr - _).$(CARGO_EXT) $(BUILD_DIR)/avante_$(shell echo $2 | tr - _).$(EXT)
-endef
-
-define build_targets
-$(BUILD_DIR)/libAvanteTokenizers-$1.$(EXT): $(BUILD_DIR) $1-tokenizers
-$(BUILD_DIR)/libAvanteTemplates-$1.$(EXT): $(BUILD_DIR) $1-templates
-$(BUILD_DIR)/libAvanteRepoMap-$1.$(EXT): $(BUILD_DIR) $1-repo-map
-$(BUILD_DIR)/libAvanteHtml2md-$1.$(EXT): $(BUILD_DIR) $1-html2md
-$(BUILD_DIR)/libAvanteAcp-$1.$(EXT): $(BUILD_DIR) $1-acp
-endef
-
-$(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),tokenizers)))
-$(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),templates)))
-$(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),repo-map)))
-$(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),html2md)))
-$(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_package,$(lua_version),acp)))
-$(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_targets,$(lua_version))))
+$(foreach lua_version,$(LUA_VERSIONS),$(eval $(call build_runtime,$(lua_version))))
 
 $(BUILD_DIR):
 	@mkdir -p $(BUILD_DIR)
@@ -131,7 +102,7 @@ rustlint:
 
 .PHONY: rusttest
 rusttest:
-	cargo test --features luajit
+	cargo test --release --no-default-features --features=luajit $(if $(CARGO_TARGET),--target $(CARGO_TARGET))
 
 .PHONY: luatest
 luatest:

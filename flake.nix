@@ -281,6 +281,8 @@
             name = "avante";
 
             packages = with pkgs; [
+              cargo
+              rustc
               rustfmt
               lua5_1.pkgs.luacheck
               lua-language-server
@@ -306,8 +308,6 @@
         {
           default = basic.overrideAttrs(oa: {
             buildInputs = with pkgs; [
-              cargo
-              rustc
               gh # to upgrade github actions
               pkgs.pyright # to be able to run pre-commit tests
               pkgs.ruff # to be able to run pre-commit tests
