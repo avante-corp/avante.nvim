@@ -1964,6 +1964,7 @@ mod tests {
         ));
         let root = directory.join("root");
         std::fs::create_dir_all(&root).unwrap();
+        let root = root.canonicalize().unwrap();
         let executable = compile_stdio_agent(&directory);
         let close_marker = directory.join("closed");
         let events = Arc::new(EventQueue::new());
@@ -2646,7 +2647,7 @@ mod tests {
 
         assert_eq!(
             super::validate_file_path(&root.join("new.txt"), &roots).unwrap(),
-            root.join("new.txt")
+            root.canonicalize().unwrap().join("new.txt")
         );
         assert!(super::validate_file_path(&root.join("../outside.txt"), &roots).is_err());
 

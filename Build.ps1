@@ -25,15 +25,13 @@ function Build-FromSource($feature) {
         New-Item -ItemType Directory -Path $BuildDir | Out-Null
     }
 
-    $Packages = @("avante-tokenizers", "avante-templates", "avante-repo-map", "avante-html2md", "avante-acp")
-    $CargoArguments = @("build", "--release", "--no-default-features", "--features=$feature")
+    # shortcut: directory names match library names; use Cargo metadata if they diverge.
+    $Packages = Get-ChildItem -Path "$PSScriptRoot\crates\*\Cargo.toml" -File | ForEach-Object { $_.Directory.Name }
+    $CargoArguments = @("build", "--workspace", "--release", "--no-default-features", "--features=$feature")
     $TargetDir = Join-Path $PSScriptRoot "target\release"
     if ($Target) {
         $CargoArguments += @("--target", $Target)
         $TargetDir = Join-Path $PSScriptRoot "target\$Target\release"
-    }
-    foreach ($Package in $Packages) {
-        $CargoArguments += @("-p", $Package)
     }
     cargo @CargoArguments
     if ($LASTEXITCODE -ne 0) { throw "Cargo build failed with exit code $LASTEXITCODE" }

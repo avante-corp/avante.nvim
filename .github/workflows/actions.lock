@@ -26,10 +26,6 @@ workflows:
         - 'dtolnay/rust-toolchain@1.99.0'
         - 'googleapis/release-please-action@v5.0.0'
         - 'swatinem/rust-cache@v2.9.2'
-    '.github/workflows/rust.yaml':
-        - 'actions/checkout@v7.0.1'
-        - 'dtolnay/rust-toolchain@1.99.0'
-        - 'swatinem/rust-cache@v2.9.2'
     '.github/workflows/tests.yaml':
         - 'actions/checkout@v7.0.1'
         - 'determinatesystems/nix-installer-action@v23'
