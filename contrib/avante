@@ -69,4 +69,4 @@ fi
 # Switch after startup configuration has loaded, immediately before asking.
 exec nvim \
   "${nvim_args[@]}" \
-  -c "lua vim.defer_fn(function() local api = require('avante.api'); $provider_command local prompt = ('$prompt_hex'):gsub('..', function(byte) return string.char(tonumber(byte, 16)) end); api.zen_mode({ question = prompt }) end, 100)"
+  -c "lua vim.defer_fn(function() local api = require('avante.api'); $provider_command local prompt = ('$prompt_hex'):gsub('..', function(byte) return string.char(tonumber(byte, 16)) end); api.zen_mode({ question = prompt; new_chat = true; }) end, 100)"
