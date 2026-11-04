@@ -4,38 +4,29 @@ local Utils = require("avante.utils")
 ---@field id string
 ---@field title string
 
----@class avante.ui.SelectorOption
+---@class avante.ui.Selector
 ---@field provider avante.SelectorProvider
----@field title string
+---@field title string Prompt of the selector
+---@field default_query string | nil Initial query entered in the selector
 ---@field items avante.ui.SelectorItem[]
----@field default_item_id string | nil
+---@field default_item_id string | nil only used in native selector, marks it with a specific character. Duplicate of selected_item_ids ?
 ---@field selected_item_ids string[] | nil
----@field provider_opts table | nil
+---@field provider_opts table | nil provider-specific (fzf-lua/snacks) options forwarded to the provider
 ---@field on_select fun(item_ids: string[] | nil)
 ---@field get_preview_content fun(item_id: string): (string, string) | nil
 ---@field on_delete_item fun(item_id: string): (nil) | nil
 ---@field on_open fun(): (nil) | nil
 
----@class avante.ui.Selector
----@field provider avante.SelectorProvider
----@field title string
----@field items avante.ui.SelectorItem[]
----@field default_item_id string | nil
----@field provider_opts table | nil
----@field on_select fun(item_ids: string[] | nil)
----@field selected_item_ids string[] | nil
----@field get_preview_content fun(item_id: string): (string, string) | nil
----@field on_delete_item fun(item_id: string): (nil) | nil
----@field on_open fun(): (nil) | nil
 local Selector = {}
 Selector.__index = Selector
 
----@param opts avante.ui.SelectorOption
+---@param opts avante.ui.Selector
 function Selector:new(opts)
   local o = {}
   setmetatable(o, Selector)
   o.provider = opts.provider
   o.title = opts.title
+  o.default_query = opts.default_query
   o.items = vim
     .iter(opts.items)
     :map(function(item)

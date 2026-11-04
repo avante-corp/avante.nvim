@@ -39,6 +39,7 @@ function M.show(selector)
   Snacks.picker.pick(vim.tbl_deep_extend("force", {
     source = "select",
     live = true,
+    search = selector.default_query,
     finder = snacks_finder,
     ---@diagnostic disable-next-line: undefined-global
     format = Snacks.picker.format.ui_select({ format_item = function(item, _) return item.title end }),
