@@ -156,18 +156,11 @@ switch_provider:set_execute(function(data)
     providers
   )
   local provider_opts = vim.deepcopy(Config.selector.provider_opts or {})
-  if filter ~= "" then
-    provider_opts = vim.tbl_deep_extend("force", provider_opts, {
-      default_text = filter,
-      query = filter,
-      search = filter,
-      snacks = { search = filter },
-    })
-  end
   require("avante.ui.selector")
     :new({
       title = "Provider> ",
       items = items,
+      default_query = filter,
       provider = Config.selector.provider,
       provider_opts = provider_opts,
       on_select = function(selected)

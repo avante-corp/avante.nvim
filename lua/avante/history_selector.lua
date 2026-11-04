@@ -58,7 +58,9 @@ function M.open(bufnr, cb, session_id)
 
   current_selector = Selector:new({
     provider = Config.selector.provider, -- This should be 'native' for the current setup
+    provider_opts = vim.deepcopy(Config.selector.provider_opts or {}),
     title = "Avante History (Select, then choose action)", -- Updated title
+    default_query = session_id,
     items = vim
       .iter(selector_items)
       :map(
