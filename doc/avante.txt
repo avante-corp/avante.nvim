@@ -30,6 +30,7 @@ Configuration via variable ··························�
 Configuration ·················································· |avante-config|
 Avante API ························································ |avante-api|
 Commands (:AvanteAsk,...) ···································· |avante-commands|
+Abstraction over vim.ui.select ···························· |avante-ui-selector|
 Sidebar ······················································· |avante-sidebar|
 Slash commands ·········································· |avante-slashcommands|
 avante completion sources ·································· |avante-completion|
@@ -855,6 +856,47 @@ Commands (:AvanteAsk,...)                                      *avante-commands*
 
 M.setup()                                                *avante-commands.setup*
     Register the top-level Avante command.
+
+
+==============================================================================
+Abstraction over vim.ui.select                              *avante-ui-selector*
+
+vim.ui.select-like with a few added features, for instance a default filter.
+Abstracts over the following UI selectors:
+- fzf-lua
+- snacks
+- telescope
+- mini.pick
+- native provider with fewer features
+
+avante.ui.SelectorItem                                  *avante.ui.SelectorItem*
+
+    Fields: ~
+        {id}     (string)
+        {title}  (string)
+
+
+avante.ui.Selector                                          *avante.ui.Selector*
+
+    Fields: ~
+        {provider}             (avante.SelectorProvider)
+        {title}                (string)                      Prompt of the selector
+        {default_query}        (string|nil)                  Initial query entered in the selector
+        {items}                (avante.ui.SelectorItem[])
+        {default_item_id}      (string|nil)                  only used in native selector, marks it with a specific character. Duplicate of selected_item_ids ?
+        {selected_item_ids}    (string[]|nil)
+        {provider_opts}        (table|nil)                   provider-specific (fzf-lua/snacks) options forwarded to the provider
+        {on_select}            (fun(item_ids:string[]|nil))
+        {get_preview_content}  (fun(item_id:string):)
+
+
+Selector:new({opts})                                    *avante-ui-selector:new*
+
+    Parameters: ~
+        {opts}  (avante.ui.Selector)
+
+
+Selector:open()                                        *avante-ui-selector:open*
 
 
 ==============================================================================

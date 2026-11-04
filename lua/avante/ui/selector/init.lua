@@ -1,3 +1,13 @@
+---@mod avante-ui-selector    Abstraction over vim.ui.select
+---@brief [[
+---vim.ui.select-like with a few added features, for instance a default filter.
+---Abstracts over the following UI selectors:
+---- fzf-lua
+---- snacks
+---- telescope
+---- mini.pick
+---- native provider with fewer features
+---@brief ]]
 local Utils = require("avante.utils")
 
 ---@class avante.ui.SelectorItem
