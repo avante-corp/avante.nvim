@@ -65,6 +65,7 @@ docgen:
 		lua/avante/slashcommands.lua \
 		lua/cmp_avante/mentions.lua \
 		lua/avante/rag_service.lua \
+		lua/avante/history/render.lua \
 		lua/avante/llm_tools/init.lua \
 		lua/avante/llm_tools/bash.lua \
 		lua/avante/llm_tools/web_search.lua \
