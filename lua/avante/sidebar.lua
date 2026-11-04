@@ -1103,7 +1103,6 @@ local base_win_options = {
   winfixbuf = true,
   spell = false,
   signcolumn = "no",
-  foldcolumn = "0",
   number = false,
   relativenumber = false,
   winfixwidth = true,

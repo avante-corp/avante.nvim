@@ -6,6 +6,7 @@ local Config = require("avante.config")
 local sidebar = require("avante").get()
 
 vim.wo.signcolumn = "yes"
+vim.wo.foldcolumn = "0"
 
 -- Setup completion
 api.nvim_create_autocmd("InsertEnter", {
