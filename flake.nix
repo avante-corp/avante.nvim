@@ -284,6 +284,7 @@
               cargo
               rustc
               rustfmt
+              clippy
               lua5_1.pkgs.luacheck
               lua-language-server
               ripgrep

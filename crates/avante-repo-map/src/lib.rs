@@ -126,7 +126,7 @@ fn get_closest_ancestor_name(node: &Node, source: &str) -> String {
     while let Some(parent_node) = parent {
         let name_node = parent_node.child_by_field_name("name");
         if let Some(name_node) = name_node {
-            return get_node_text(&name_node, source.as_bytes()).to_string();
+            return get_node_text(&name_node, source.as_bytes());
         }
         parent = parent_node.parent();
     }
@@ -548,7 +548,7 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
                         .map(|n| n.utf8_text(source.as_bytes()).unwrap())
                         .unwrap_or("");
                     let variable = Variable {
-                        name: name.to_string(),
+                        name: name.clone(),
                         value_type: enum_type.to_string(),
                     };
                     enum_def.borrow_mut().items.push(variable);
@@ -570,7 +570,7 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
                         .map(|n| n.utf8_text(source.as_bytes()).unwrap())
                         .unwrap_or("");
                     let variable = Variable {
-                        name: name.to_string(),
+                        name: name.clone(),
                         value_type: union_type.to_string(),
                     };
                     union_def.borrow_mut().items.push(variable);
@@ -589,9 +589,8 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
                     }
                     if language == "java" {
                         let modifier_node = find_descendant_by_type(&node, "modifiers");
-                        if modifier_node.is_some() {
-                            let modifier_text =
-                                modifier_node.unwrap().utf8_text(source.as_bytes()).unwrap();
+                        if let Some(modifier_node) = modifier_node {
+                            let modifier_text = modifier_node.utf8_text(source.as_bytes()).unwrap();
                             if modifier_text.contains("private") {
                                 continue;
                             }
@@ -621,11 +620,9 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
                         if csharp_visibility.is_none() && !csharp_is_primary_constructor(&node) {
                             continue;
                         }
-                        if csharp_visibility.is_some() {
-                            let csharp_visibility_text = csharp_visibility
-                                .unwrap()
-                                .utf8_text(source.as_bytes())
-                                .unwrap();
+                        if let Some(csharp_visibility) = csharp_visibility {
+                            let csharp_visibility_text =
+                                csharp_visibility.utf8_text(source.as_bytes()).unwrap();
                             if csharp_visibility_text == "private" {
                                 continue;
                             }
@@ -690,11 +687,10 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
                     if language == "elixir" {
                         return_type = String::new();
                     }
-                    if return_type_node.is_some() {
-                        return_type = get_node_type(&return_type_node.unwrap(), source.as_bytes());
+                    if let Some(return_type_node) = return_type_node {
+                        return_type = get_node_type(&return_type_node, source.as_bytes());
                         if return_type.is_empty() {
                             return_type = return_type_node
-                                .unwrap()
                                 .utf8_text(source.as_bytes())
                                 .unwrap_or("void")
                                 .to_string();
@@ -739,7 +735,7 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
                             .unwrap_or("")
                             .to_string()
                     } else {
-                        get_closest_ancestor_name(&node, source).to_string()
+                        get_closest_ancestor_name(&node, source)
                     };
 
                     if language == "go" && !is_first_letter_uppercase(&class_name) {
@@ -764,9 +760,9 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
                     };
 
                     let func = Func {
-                        name: name.to_string(),
+                        name: name.clone(),
                         params: params.to_string(),
-                        return_type: return_type.to_string(),
+                        return_type: return_type.clone(),
                         accessibility_modifier: if accessibility_modifier.is_empty() {
                             None
                         } else {
@@ -788,9 +784,8 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
                     }
                     if language == "java" {
                         let modifier_node = find_descendant_by_type(&node, "modifiers");
-                        if modifier_node.is_some() {
-                            let modifier_text =
-                                modifier_node.unwrap().utf8_text(source.as_bytes()).unwrap();
+                        if let Some(modifier_node) = modifier_node {
+                            let modifier_text = modifier_node.utf8_text(source.as_bytes()).unwrap();
                             if modifier_text.contains("private") {
                                 continue;
                             }
@@ -823,7 +818,7 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
                     let class_def = class_def_map.get_mut(&class_name).unwrap();
                     let variable = Variable {
                         name: left.to_string(),
-                        value_type: value_type.to_string(),
+                        value_type: value_type.clone(),
                     };
                     class_def.borrow_mut().properties.push(variable);
                 }
@@ -846,9 +841,8 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
 
                     if language == "java" {
                         let modifier_node = find_descendant_by_type(&node, "modifiers");
-                        if modifier_node.is_some() {
-                            let modifier_text =
-                                modifier_node.unwrap().utf8_text(source.as_bytes()).unwrap();
+                        if let Some(modifier_node) = modifier_node {
+                            let modifier_text = modifier_node.utf8_text(source.as_bytes()).unwrap();
                             if modifier_text.contains("private") {
                                 continue;
                             }
@@ -876,13 +870,11 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
 
                     if language == "csharp" {
                         let csharp_visibility = find_descendant_by_type(&node, "modifier");
-                        if csharp_visibility.is_none() {
+                        let Some(csharp_visibility) = csharp_visibility else {
                             continue;
-                        }
-                        let csharp_visibility_text = csharp_visibility
-                            .unwrap()
-                            .utf8_text(source.as_bytes())
-                            .unwrap();
+                        };
+                        let csharp_visibility_text =
+                            csharp_visibility.utf8_text(source.as_bytes()).unwrap();
                         if csharp_visibility_text == "private" {
                             continue;
                         }
@@ -908,8 +900,8 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
                     ensure_class_def(language, &class_name, &mut class_def_map);
                     let class_def = class_def_map.get_mut(&class_name).unwrap();
                     let variable = Variable {
-                        name: name.to_string(),
-                        value_type: value_type.to_string(),
+                        name: name.clone(),
+                        value_type: value_type.clone(),
                     };
                     class_def.borrow_mut().properties.push(variable);
                 }
@@ -932,9 +924,8 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
 
                     if language == "java" {
                         let modifier_node = find_descendant_by_type(&node, "modifiers");
-                        if modifier_node.is_some() {
-                            let modifier_text =
-                                modifier_node.unwrap().utf8_text(source.as_bytes()).unwrap();
+                        if let Some(modifier_node) = modifier_node {
+                            let modifier_text = modifier_node.utf8_text(source.as_bytes()).unwrap();
                             if modifier_text.contains("private") {
                                 continue;
                             }
@@ -987,11 +978,10 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
                             .child_by_field_name("return_type")
                             .or_else(|| node.child_by_field_name("result")),
                     };
-                    if return_type_node.is_some() {
-                        return_type = get_node_type(&return_type_node.unwrap(), source.as_bytes());
+                    if let Some(return_type_node) = return_type_node {
+                        return_type = get_node_type(&return_type_node, source.as_bytes());
                         if return_type.is_empty() {
                             return_type = return_type_node
-                                .unwrap()
                                 .utf8_text(source.as_bytes())
                                 .unwrap_or("void")
                                 .to_string();
@@ -1005,9 +995,9 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
                         .unwrap_or("");
 
                     let func = Func {
-                        name: name.to_string(),
+                        name: name.clone(),
                         params: params.to_string(),
-                        return_type: return_type.to_string(),
+                        return_type: return_type.clone(),
                         accessibility_modifier: if accessibility_modifier.is_empty() {
                             None
                         } else {
@@ -1029,9 +1019,8 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
                     }
                     if language == "java" {
                         let modifier_node = find_descendant_by_type(&node, "modifiers");
-                        if modifier_node.is_some() {
-                            let modifier_text =
-                                modifier_node.unwrap().utf8_text(source.as_bytes()).unwrap();
+                        if let Some(modifier_node) = modifier_node {
+                            let modifier_text = modifier_node.utf8_text(source.as_bytes()).unwrap();
                             if modifier_text.contains("private") {
                                 continue;
                             }
@@ -1062,7 +1051,7 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
                     let value_type = get_node_type(&node, source.as_bytes());
                     let variable = Variable {
                         name: left.to_string(),
-                        value_type: value_type.to_string(),
+                        value_type: value_type.clone(),
                     };
                     definitions.push(Definition::Variable(variable));
                 }
@@ -1081,9 +1070,8 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
 
                     if language == "java" {
                         let modifier_node = find_descendant_by_type(&node, "modifiers");
-                        if modifier_node.is_some() {
-                            let modifier_text =
-                                modifier_node.unwrap().utf8_text(source.as_bytes()).unwrap();
+                        if let Some(modifier_node) = modifier_node {
+                            let modifier_text = modifier_node.utf8_text(source.as_bytes()).unwrap();
                             if modifier_text.contains("private") {
                                 continue;
                             }
@@ -1112,22 +1100,20 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
                         continue;
                     }
                     let value_node = node.child_by_field_name("value");
-                    if value_node.is_some() {
-                        let value_type = value_node.unwrap().kind();
+                    if let Some(value_node) = value_node {
+                        let value_type = value_node.kind();
                         if value_type == "arrow_function" {
-                            let params_node = value_node.unwrap().child_by_field_name("parameters");
+                            let params_node = value_node.child_by_field_name("parameters");
                             let params = params_node
                                 .map(|n| n.utf8_text(source.as_bytes()).unwrap())
                                 .unwrap_or("()");
                             let mut return_type = "void".to_string();
-                            let return_type_node =
-                                value_node.unwrap().child_by_field_name("return_type");
-                            if return_type_node.is_some() {
-                                return_type =
-                                    get_node_type(&return_type_node.unwrap(), source.as_bytes());
+                            let return_type_node = value_node.child_by_field_name("return_type");
+                            if let Some(return_type_node) = return_type_node {
+                                return_type = get_node_type(&return_type_node, source.as_bytes());
                             }
                             let func = Func {
-                                name: name.to_string(),
+                                name: name.clone(),
                                 params: params.to_string(),
                                 return_type,
                                 accessibility_modifier: None,
@@ -1143,14 +1129,14 @@ fn extract_definitions(language: &str, source: &str) -> Result<Vec<Definition>, 
                             value_type = zig_type;
                         } else {
                             continue;
-                        };
+                        }
                     }
                     if !name.is_empty() && language == "go" && !is_first_letter_uppercase(&name) {
                         continue;
                     }
                     let variable = Variable {
-                        name: name.to_string(),
-                        value_type: value_type.to_string(),
+                        name: name.clone(),
+                        value_type: value_type.clone(),
                     };
                     definitions.push(Definition::Variable(variable));
                 }
@@ -1271,8 +1257,7 @@ fn stringify_definitions(definitions: &Vec<Definition>) -> String {
 }
 
 pub fn get_definitions_string(language: &str, source: &str) -> LuaResult<String> {
-    let definitions =
-        extract_definitions(language, source).map_err(|e| LuaError::RuntimeError(e.to_string()))?;
+    let definitions = extract_definitions(language, source).map_err(LuaError::RuntimeError)?;
     let stringified = stringify_definitions(&definitions);
     Ok(stringified)
 }

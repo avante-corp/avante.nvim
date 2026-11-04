@@ -137,12 +137,12 @@ fn contained_loader(
     })
 }
 
-fn initialize(state: &State, cache_directory: String, project_directory: String) -> LuaResult<()> {
+fn initialize(state: &State, cache_directory: &str, project_directory: &str) -> LuaResult<()> {
     let mut environment_mutex = state.lock_environment()?;
     // Failed initialization must not retain a previous project's loader.
     *environment_mutex = None;
-    let cache_loader = contained_loader(&cache_directory)?;
-    let project_loader = contained_loader(&project_directory)?;
+    let cache_loader = contained_loader(cache_directory)?;
+    let project_loader = contained_loader(project_directory)?;
     let mut env = Environment::new();
 
     env.set_loader(move |name: &str| match cache_loader(name)? {
@@ -165,7 +165,7 @@ fn avante_templates(lua: &Lua) -> LuaResult<LuaTable> {
         "initialize",
         lua.create_function(
             move |_, (cache_directory, project_directory): (String, String)| {
-                initialize(&state, cache_directory, project_directory)
+                initialize(&state, &cache_directory, &project_directory)
             },
         )?,
     )?;
