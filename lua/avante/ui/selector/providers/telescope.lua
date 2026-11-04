@@ -27,6 +27,7 @@ function M.show(selector)
       {},
       vim.tbl_extend("force", {
         prompt_title = selector.title,
+        default_text = selector.default_query,
         finder = finders.new_table({
           results = items,
           entry_maker = function(entry)

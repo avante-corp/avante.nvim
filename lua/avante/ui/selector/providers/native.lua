@@ -3,8 +3,14 @@ local M = {}
 ---@param selector avante.ui.Selector
 function M.show(selector)
   local items = {}
+  local query = selector.default_query and selector.default_query:lower()
   for _, item in ipairs(selector.items) do
-    if not vim.list_contains(selector.selected_item_ids, item.id) then table.insert(items, item) end
+    if
+      not vim.list_contains(selector.selected_item_ids, item.id)
+      and (not query or item.title:lower():find(query, 1, true))
+    then
+      table.insert(items, item)
+    end
   end
   vim.ui.select(
     items,

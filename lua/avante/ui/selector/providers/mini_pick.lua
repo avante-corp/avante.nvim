@@ -11,9 +11,15 @@ function M.show(selector)
   end
   local items = {}
   local title_to_id = {}
+  local query = selector.default_query and selector.default_query:lower()
   for _, item in ipairs(selector.items) do
     title_to_id[item.title] = item.id
-    if not vim.list_contains(selector.selected_item_ids, item.id) then table.insert(items, item) end
+    if
+      not vim.list_contains(selector.selected_item_ids, item.id)
+      and (not query or item.title:lower():find(query, 1, true))
+    then
+      table.insert(items, item)
+    end
   end
   local function choose(item)
     if not item then
