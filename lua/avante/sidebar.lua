@@ -2138,6 +2138,7 @@ local _message_to_lines_lru_cache = LRUCache:new(100)
 ---@param ignore_record_prefix boolean | nil
 ---@return avante.ui.Line[]
 function Sidebar:get_message_lines(ctx, message, messages, ignore_record_prefix)
+  if message.is_usage_summary and not Config.behaviour.show_token_usage then return {} end
   local expanded = self.expanded_message_uuids[message.uuid]
   if message.state == "generating" or message.is_calling then
     local lines = self:_get_message_lines(ctx, message, messages, ignore_record_prefix)
@@ -2232,6 +2233,7 @@ end
 ---@return string | nil
 local function render_message(message, messages, ctx)
   if message.visible == false then return nil end
+  if message.is_usage_summary and not Config.behaviour.show_token_usage then return nil end
   local text = Render.message_to_text(message, messages)
   if text == "" then return nil end
   if message.is_user_submission then

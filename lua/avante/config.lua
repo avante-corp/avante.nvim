@@ -58,6 +58,7 @@
 ---       support_paste_from_clipboard = false,
 ---       minimize_diff = true,
 ---       enable_token_counting = true,
+---       show_token_usage = false,
 ---       auto_add_current_file = true,
 ---       auto_approve_tool_permissions = true,
 ---       confirmation_ui_style = "inline_buttons",
@@ -211,6 +212,7 @@ end
 ---@field minimize_diff? boolean Remove unchanged lines when applying a code block.
 ---@field enable_token_counting? boolean Enable token counting.
 ---Some APIs return the number of tokens consumed.
+---@field show_token_usage? boolean Show per-turn token usage summaries (defaults to false).
 ---@field use_cwd_as_project_root? boolean Use the current working directory as project root.
 ---@field auto_focus_on_diff_view? boolean Focus the diff view automatically.
 ---@field auto_approve_tool_permissions? boolean|string[] Auto-approve all tools, no tools, or only specific tool names.
@@ -655,6 +657,7 @@ M._defaults = {
     support_paste_from_clipboard = false,
     minimize_diff = true,
     enable_token_counting = true,
+    show_token_usage = false,
     use_cwd_as_project_root = false,
     auto_focus_on_diff_view = false,
     ---@type boolean | string[] -- true: auto-approve all tools, false: normal prompts, string[]: auto-approve specific tools by name

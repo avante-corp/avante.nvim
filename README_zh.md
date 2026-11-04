@@ -345,6 +345,7 @@ _请参见 [config.lua#L9](./lua/avante/config.lua) 以获取完整配置_
     support_paste_from_clipboard = false,
     minimize_diff = true, -- 是否在应用代码块时删除未更改的行
     enable_token_counting = true, -- 是否启用令牌计数。默认为 true。
+    show_token_usage = false, -- 是否显示每轮对话的令牌用量摘要。默认为 false；关闭后仍会统计并保存用量。
     auto_add_current_file = true, -- 打开新聊天时是否自动添加当前文件。默认为 true。
     enable_cursor_planning_mode = false, -- 是否启用 Cursor 规划模式。默认为 false。
     enable_claude_text_editor_tool_mode = false, -- 是否启用 Claude 文本编辑器工具模式。
