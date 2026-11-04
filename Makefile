@@ -60,6 +60,7 @@ docgen:
 		lua/avante/config.lua \
 		lua/avante/api.lua \
 		lua/avante/commands.lua \
+		lua/avante/ui/selector/init.lua \
 		lua/avante/sidebar.lua \
 		lua/avante/slashcommands.lua \
 		lua/cmp_avante/mentions.lua \
