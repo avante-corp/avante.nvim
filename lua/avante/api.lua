@@ -283,7 +283,7 @@ function M.select_acp_mode() require("avante.acp_config_selector").open_mode() e
 ---(e.g. in the agent's CLI), and resume the selected one in the sidebar
 function M.select_acp_session() require("avante.acp_session_selector").open() end
 
-function M.select_history()
+function M.select_history(session_id)
   local buf = vim.api.nvim_get_current_buf()
   require("avante.history_selector").open(buf, function(filename)
     vim.api.nvim_buf_call(buf, function()
@@ -302,7 +302,7 @@ function M.select_history()
       end
       vim.schedule(function() sidebar:focus_input() end)
     end)
-  end)
+  end, session_id)
 end
 
 function M.add_buffer_files()

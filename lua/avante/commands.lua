@@ -188,9 +188,9 @@ function M.setup()
 
   local parser = cmdparse.ParameterParser.new({ name = "Avante", help = "Avante commands" })
   local subparsers = parser:add_subparsers({ destination = "command" })
-  subparsers
-    :add_parser({ name = "resume", help = "Open a picker for previous chat sessions" })
-    :set_execute(function() require("avante.api").select_history() end)
+  local resume = subparsers:add_parser({ name = "resume", help = "Open a picker for previous chat sessions" })
+  resume:add_parameter({ name = "session_id", required = false, help = "Session ID or selector filter" })
+  resume:set_execute(function(data) require("avante.api").select_history(data.namespace.session_id) end)
   subparsers
     :add_parser({ name = "toggle", help = "Toggle the Avante sidebar" })
     :set_execute(function() require("avante").toggle() end)

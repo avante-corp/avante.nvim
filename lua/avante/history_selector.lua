@@ -22,10 +22,28 @@ end
 
 ---@param bufnr integer
 ---@param cb fun(filename: string)
-function M.open(bufnr, cb)
+---@param session_id? string can be an acp_session_id, the filename, basename
+function M.open(bufnr, cb, session_id)
   local selector_items = {}
 
   local histories = Path.history.list(bufnr)
+
+  if session_id and session_id ~= "" then
+    for _, history in ipairs(histories) do
+      local filename = history.filename or ""
+      local basename = vim.fs.basename(filename)
+      local stem = basename:gsub("%.json$", "")
+      if
+        history.acp_session_id == session_id
+        or filename == session_id
+        or basename == session_id
+        or stem == session_id
+      then
+        cb(filename)
+        return
+      end
+    end
+  end
 
   for _, history in ipairs(histories) do
     table.insert(selector_items, to_selector_item(history))
@@ -70,7 +88,7 @@ function M.open(bufnr, cb)
       end
       Path.history.delete(bufnr, item_id_to_delete) -- bufnr from M.open's scope
     end,
-    on_open = function() M.open(bufnr, cb) end,
+    on_open = function() M.open(bufnr, cb, session_id) end,
   })
   current_selector:open()
 end
