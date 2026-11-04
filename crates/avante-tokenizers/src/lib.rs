@@ -65,7 +65,7 @@ impl HuggingFaceTokenizer {
         std::fs::create_dir_all(&cache_dir).unwrap();
 
         // Extract filename from URL
-        let filename = url.split('/').last().unwrap();
+        let filename = url.split('/').next_back().unwrap();
 
         let cached_path = cache_dir.join(filename);
 

@@ -39,21 +39,21 @@ runs:
     - uses: actions/checkout@v7.0.1
 
     - uses: dtolnay/rust-toolchain@1.99.0
-      if: ${{ inputs.container == null }}
       with:
         targets: ${{ inputs.rust_target }}
 
     - uses: Swatinem/rust-cache@v2.9.2
-      if: ${{ inputs.container == null }}
       with:
+        prefix-key: ${{ inputs.container || 'v0-rust' }}
         key: ${{ inputs.rust_target }}-${{ inputs.feature }}
+        cache-workspace-crates: false
 
     - name: Install Nix
-      if: ${{ runner.os != 'Windows' && !(runner.os == 'macOS' && github.job == 'releases-matrix') }}
+      if: ${{ inputs.container == null && runner.os != 'Windows' && !(runner.os == 'macOS' && github.job == 'releases-matrix') }}
       uses: $/.github/actions/install-nix
 
     - name: Install avante dependencies
-      if: ${{ runner.os != 'Windows' && !(runner.os == 'macOS' && github.job == 'releases-matrix') }}
+      if: ${{ inputs.container == null && runner.os != 'Windows' && !(runner.os == 'macOS' && github.job == 'releases-matrix') }}
       shell: bash
       run: nix develop .#ci --command make setup-deps
 

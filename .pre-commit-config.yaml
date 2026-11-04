@@ -25,9 +25,14 @@ repos:
   hooks:
   - id: fmt
     files: \.rs$
-  - id: cargo-check
-    args: ['--features', 'luajit']
-    files: \.rs$
+- repo: local
+  hooks:
+    - id: clippy
+      name: Rust Clippy
+      entry: make rustlint
+      language: system
+      files: '(\.rs$|(^|/)Cargo\.(toml|lock)$|^\.cargo/)'
+      pass_filenames: false
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: v0.16.8
   hooks:
