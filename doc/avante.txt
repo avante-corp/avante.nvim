@@ -225,6 +225,7 @@ Common options:
        support_paste_from_clipboard = false,
        minimize_diff = true,
        enable_token_counting = true,
+       show_token_usage = false,
        auto_add_current_file = true,
        auto_approve_tool_permissions = true,
        confirmation_ui_style = "inline_buttons",
@@ -382,8 +383,9 @@ avante.Config.Behaviour                                *avante.Config.Behaviour*
         {support_paste_from_clipboard?}       (boolean)           Enable image paste support from clipboard when img-clip.nvim is available.
         {minimize_diff?}                      (boolean)           Remove unchanged lines when applying a code block.
         {enable_token_counting?}              (boolean)           Enable token counting.
-        {use_cwd_as_project_root?}            (boolean)           Use the current working directory as project root.
+        {show_token_usage?}                   (boolean)           Show per-turn token usage summaries (defaults to false).
                                                                   Some APIs return the number of tokens consumed.
+        {use_cwd_as_project_root?}            (boolean)           Use the current working directory as project root.
         {auto_focus_on_diff_view?}            (boolean)           Focus the diff view automatically.
         {auto_approve_tool_permissions?}      (boolean|string[])  Auto-approve all tools, no tools, or only specific tool names.
         {auto_check_diagnostics?}             (boolean)           Automatically check diagnostics.

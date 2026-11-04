@@ -543,6 +543,7 @@ _See [config.lua#L9](./lua/avante/config.lua) for the up to date full default co
     support_paste_from_clipboard = false,
     minimize_diff = true, -- Whether to remove unchanged lines when applying a code block
     enable_token_counting = true, -- Whether to enable token counting. Default to true.
+    show_token_usage = false, -- Whether to show per-turn token usage summaries. Default to false.
     auto_add_current_file = true, -- Whether to automatically add the current file when opening a new chat. Default to true.
     auto_approve_tool_permissions = true, -- Default: auto-approve all tools (no prompts)
     -- Examples:
@@ -889,7 +890,7 @@ Here's a complete blink.cmp configuration example with all Avante sources:
 
 Given its early stage, `avante.nvim` currently supports the following basic functionalities:
 
-Each completed conversation turn shows reported token usage, including tool-call continuations, separated from the reply by a blank line.
+With `behaviour.show_token_usage = true`, each completed conversation turn shows reported token usage, including tool-call continuations, separated from the reply by a blank line.
 The Usage heading is followed by Total, Input, Output, Cached, and Reasoning on separate lines.
 Total is uncached input + output, and Input excludes cached reads, matching Codex's counting convention.
 Cached includes the cache hit rate (cached / total input) to two decimal places when all requests report both counters and total input is greater than zero.
@@ -897,6 +898,7 @@ Cache writes are not shown separately; reasoning is included in output tokens.
 Missing counters show `not reported`; counters available for only some requests show `(partial)`.
 Uncached input and Total require cache-read counts; partial totals include only requests with all required counters.
 The summary is saved in chat history and excluded from subsequent model input.
+Summaries are hidden by default, including those in saved history; token tracking continues.
 
 > [!IMPORTANT]
 >
