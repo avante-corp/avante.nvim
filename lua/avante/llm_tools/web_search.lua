@@ -19,6 +19,7 @@
 --- - Firecrawl: `FIRECRAWL_API_KEY`
 --- - Serply: `SERPLY_API_KEY`
 --- - Outcrawl: `OUTCRAWL_API_KEY`
+--- - Sofya: `SOFYA_API_KEY`
 --- - SearXNG: `SEARXNG_API_URL`
 ---@brief ]]
 
@@ -35,6 +36,7 @@ local Utils = require("avante.utils")
 ---| '"firecrawl"'
 ---| '"serply"'
 ---| '"outcrawl"'
+---| '"sofya"'
 ---| '"searxng"'
 
 ---@alias WebSearchResponseFormatter fun(body: table): (string, string?)
@@ -441,6 +443,46 @@ local function web_search_outcrawl_func(input, opts)
 end
 
 ---@type AvanteLLMToolFunc<{ query: string }>
+---Expects SOFYA_API_KEY in environment
+local function web_search_sofya_func(input, opts)
+  log_search("sofya", input, opts)
+  local api_key, api_key_err = get_api_key("SOFYA_API_KEY")
+  if not api_key then return nil, api_key_err end
+  return request(
+    "POST",
+    "https://sofya.co/v1/search",
+    {
+      headers = {
+        ["Content-Type"] = "application/json",
+        ["Authorization"] = "Bearer " .. api_key,
+      },
+      body = vim.json.encode({
+        query = input.query,
+        search_depth = "snippets",
+        max_results = 10,
+      }),
+    },
+    opts,
+    function(body)
+      if body.results == nil then return "", body.detail end
+      local results = vim
+        .iter(body.results)
+        :map(
+          function(result)
+            return {
+              title = result.title,
+              url = result.url,
+              snippet = result.content,
+            }
+          end
+        )
+        :totable()
+      return vim.json.encode(results), nil
+    end
+  )
+end
+
+---@type AvanteLLMToolFunc<{ query: string }>
 local function web_search_searxng_func(input, opts)
   log_search("searxng", input, opts)
   local api_url = Utils.environment.parse("SEARXNG_API_URL")
@@ -506,6 +548,7 @@ M.web_search_brave = web_search_tool("brave", web_search_brave_func)
 M.web_search_firecrawl = web_search_tool("firecrawl", web_search_firecrawl_func)
 M.web_search_serply = web_search_tool("serply", web_search_serply_func)
 M.web_search_outcrawl = web_search_tool("outcrawl", web_search_outcrawl_func)
+M.web_search_sofya = web_search_tool("sofya", web_search_sofya_func)
 M.web_search_searxng = web_search_tool("searxng", web_search_searxng_func)
 
 return M
