@@ -18,7 +18,7 @@ print("new")
 - Use the file path shown in the supplied context, wrapped in <FILEPATH></FILEPATH> on its own line.
 - Put each SEARCH and REPLACE opening or closing tag on its own line.
 - SEARCH must exactly match the current file contents, including whitespace and comments. Include enough surrounding lines to identify a unique match.
-- Keep blocks focused and list them in the order they should be applied. Later blocks must match the state produced by earlier blocks.
+- Keep blocks focused and non-overlapping. Every SEARCH must match the original file contents supplied in the chat, not the result of another block. Combine dependent edits into a single block.
 - To create a file, use an empty SEARCH section and its complete contents in REPLACE.
 - To move code, use one block to delete it and another to insert it.
 - Do not include Markdown fences or source code outside SEARCH/REPLACE blocks.
