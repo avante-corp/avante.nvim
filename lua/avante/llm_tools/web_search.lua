@@ -479,7 +479,6 @@ local function web_search_tool(provider, func)
       fields = {
         { name = "query", description = "Query to search", type = "string" },
       },
-      usage = { query = "Query to search" },
     },
     returns = {
       { name = "result", description = "Result of the search", type = "string" },

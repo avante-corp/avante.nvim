@@ -78,10 +78,6 @@ Example:
       type = "string",
     },
   },
-  usage = {
-    path = "File path here",
-    the_diff = "Search and replace blocks here",
-  },
 }
 
 ---@type AvanteLLMToolReturn[]
