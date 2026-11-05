@@ -74,3 +74,50 @@ describe("web_search_outcrawl", function()
     )
   end)
 end)
+
+describe("web_search_keenable", function()
+  local function run(key)
+    Config.setup()
+    local parse = stub(Utils.environment, "parse", function() return key end)
+    local request = stub(
+      vim.net,
+      "request",
+      function(_, _, _, on_response)
+        on_response(nil, {
+          body = vim.json.encode({
+            results = {
+              { url = "https://neovim.io/", title = "Neovim", description = "Vim-based editor", snippet = "long" },
+              { title = "no url" },
+            },
+          }),
+        })
+      end
+    )
+    local result
+    WebSearch.web_search_keenable.func({ query = "neovim" }, { on_complete = function(r) result = r end })
+    local method, url, opts = unpack(request.calls[1].refs)
+    parse:revert()
+    request:revert()
+    assert.is_true(vim.wait(1000, function() return result ~= nil end), "web search did not complete")
+    return method, url, opts, result
+  end
+
+  it("uses the public endpoint without a key and maps results", function()
+    local method, url, opts, result = run(nil)
+    assert.equals("POST", method)
+    assert.equals("https://api.keenable.ai/v1/search/public", url)
+    assert.is_nil(opts.headers["X-API-Key"])
+    assert.equals("avante", opts.headers["X-Keenable-Title"])
+    assert.are.same({ query = "neovim", max_results = 10 }, vim.json.decode(opts.body))
+    assert.are.same(
+      { { title = "Neovim", url = "https://neovim.io/", snippet = "Vim-based editor" } },
+      vim.json.decode(result)
+    )
+  end)
+
+  it("uses the keyed endpoint when KEENABLE_API_KEY is set", function()
+    local _, url, opts = run("test-key")
+    assert.equals("https://api.keenable.ai/v1/search", url)
+    assert.equals("test-key", opts.headers["X-API-Key"])
+  end)
+end)
