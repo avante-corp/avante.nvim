@@ -598,9 +598,6 @@ M._tools = {
           type = "string",
         },
       },
-      usage = {
-        query = "Query to search",
-      },
     },
     returns = {
       {
@@ -633,10 +630,6 @@ M._tools = {
           type = "string",
         },
       },
-      usage = {
-        code = "Python code to run",
-        path = "Relative path to the project directory, as cwd",
-      },
     },
     returns = {
       {
@@ -663,9 +656,6 @@ M._tools = {
           description = "Scope for the git diff (e.g. specific files or directories)",
           type = "string",
         },
-      },
-      usage = {
-        scope = "Scope for the git diff (e.g. specific files or directories)",
       },
     },
     returns = {
@@ -699,10 +689,6 @@ M._tools = {
           type = "string",
           optional = true,
         },
-      },
-      usage = {
-        message = "Commit message to use",
-        scope = "Scope for staging files (e.g. specific files or directories)",
       },
     },
     returns = {
@@ -768,9 +754,6 @@ Then you can use the "read_definitions" tool to retrieve the source code definit
           type = "string",
         },
       },
-      usage = {
-        path = "Relative path to the file in current project scope",
-      },
     },
     returns = {
       {
@@ -818,9 +801,6 @@ Then you can use the "read_definitions" tool to retrieve the source code definit
           type = "string",
         },
       },
-      usage = {
-        abs_path = "Absolute path to the file in global scope",
-      },
     },
     returns = {
       {
@@ -867,10 +847,6 @@ Then you can use the "read_definitions" tool to retrieve the source code definit
           description = "Content to write to the file",
           type = "string",
         },
-      },
-      usage = {
-        abs_path = "The path to the file in the current project scope",
-        content = "The content to write to the file",
       },
     },
     returns = {
@@ -921,10 +897,6 @@ To move "directory1/a/something.txt" to "directory2/b/renamed.txt", provide a de
           type = "string",
         },
       },
-      usage = {
-        source_path = "The source path of the file or directory to move/rename",
-        destination_path = "The destination path where the file or directory should be moved/renamed to",
-      },
     },
     returns = {
       {
@@ -973,10 +945,6 @@ To copy "directory1/a/something.txt" to "directory2/b/copied.txt", provide a des
           type = "string",
         },
       },
-      usage = {
-        source_path = "The source path of the file or directory to copy",
-        destination_path = "The destination path where the file or directory should be copied to",
-      },
     },
     returns = {
       {
@@ -1014,9 +982,6 @@ You can delete the first file by providing a path of "directory1/a/something.txt
           type = "string",
         },
       },
-      usage = {
-        path = "Relative path to the file or directory in the current project scope",
-      },
     },
     returns = {
       {
@@ -1043,9 +1008,6 @@ You can delete the first file by providing a path of "directory1/a/something.txt
           description = "Relative path to the project directory",
           type = "string",
         },
-      },
-      usage = {
-        path = "Relative path to the project directory",
       },
     },
     returns = {
@@ -1080,9 +1042,6 @@ You can delete the first file by providing a path of "directory1/a/something.txt
           type = "string",
         },
       },
-      usage = {
-        url = "Url to fetch markdown from",
-      },
     },
     returns = {
       {
@@ -1116,10 +1075,6 @@ You can delete the first file by providing a path of "directory1/a/something.txt
           optional = true,
           default = false,
         },
-      },
-      usage = {
-        symbol_name = "The name of the symbol to retrieve the definition for, example: fibonacci",
-        show_line_numbers = "true or false",
       },
     },
     returns = {

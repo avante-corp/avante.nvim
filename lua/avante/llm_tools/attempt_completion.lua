@@ -33,10 +33,6 @@ M.param = {
       optional = true,
     },
   },
-  usage = {
-    result = "The result of the task. Formulate this result in a way that is final and does not require further input from the user. Don't end your result with questions or offers for further assistance.",
-    command = "A CLI command to demonstrate the result from the project root",
-  },
 }
 
 ---@type AvanteLLMToolReturn[]

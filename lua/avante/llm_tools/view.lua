@@ -64,11 +64,6 @@ If you want to access `file.txt` in `directory1`, you should use the path `direc
       optional = true,
     },
   },
-  usage = {
-    path = "The path to the file in the current project scope",
-    start_line = "The start line of the view range, 1-indexed",
-    end_line = "The end line of the view range, 1-indexed, and -1 for the end line means read to the end of the file",
-  },
 }
 
 ---@type AvanteLLMToolReturn[]

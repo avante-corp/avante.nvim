@@ -23,9 +23,6 @@ M.param = {
       type = "string",
     },
   },
-  usage = {
-    prompt = "The task for the agent to perform",
-  },
 }
 
 ---@type AvanteLLMToolReturn[]
