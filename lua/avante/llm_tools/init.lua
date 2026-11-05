@@ -320,25 +320,32 @@ function M.git_diff(input, opts)
   if not project_root then return nil, "Not in a git repository" end
 
   -- Check if we're in a git repository
-  local git_dir = vim.system({ "git", "rev-parse", "--git-dir" }, { text = true }):wait().stdout:gsub("\n", "")
-  if git_dir == "" then return nil, "Not a git repository" end
+  local repo_check = vim.system({ git_cmd, "rev-parse", "--git-dir" }, { text = true, cwd = project_root }):wait()
+  if repo_check.code ~= 0 then return nil, repo_check.stderr or "Not a git repository" end
 
   -- Get the diff
-  local scope = input.scope or ""
-  local cmd = { "git", "diff", "--cached", scope }
+  local scope = input.scope
+  local cmd = { git_cmd, "diff", "--cached", "--" }
+  if scope and scope ~= vim.NIL and scope ~= "" then table.insert(cmd, scope) end
   if on_log then on_log("Running command: " .. table.concat(cmd, " ")) end
-  local diff = vim.system(cmd, { text = true }):wait().stdout
-
-  if diff == "" then
-    -- If there's no staged changes, get unstaged changes
-    cmd = { "git", "diff", scope }
-    if on_log then on_log("No staged changes. Running command: " .. table.concat(cmd, " ")) end
-    diff = vim.system(cmd, { text = true }):wait().stdout
+  local result = vim.system(cmd, { text = true, cwd = project_root }):wait()
+  if result.code ~= 0 then
+    return nil, string.format("git diff failed (exit %d): %s", result.code, result.stderr or "")
   end
 
-  if diff == "" then return nil, "No changes detected" end
+  if result.stdout == "" then
+    -- Remove --cached to get unstaged changes when there are no staged changes.
+    table.remove(cmd, 3)
+    if on_log then on_log("No staged changes. Running command: " .. table.concat(cmd, " ")) end
+    result = vim.system(cmd, { text = true, cwd = project_root }):wait()
+    if result.code ~= 0 then
+      return nil, string.format("git diff failed (exit %d): %s", result.code, result.stderr or "")
+    end
+  end
 
-  return diff, nil
+  if result.stdout == "" then return nil, "No changes detected" end
+
+  return result.stdout, nil
 end
 
 ---@type AvanteLLMToolFunc<{ message: string, scope?: string }>
@@ -659,6 +666,7 @@ M._tools = {
           name = "scope",
           description = "Scope for the git diff (e.g. specific files or directories)",
           type = "string",
+          optional = true,
         },
       },
       usage = {
