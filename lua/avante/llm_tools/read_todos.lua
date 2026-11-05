@@ -11,7 +11,6 @@ M.description = "Read TODOs from the current task"
 M.param = {
   type = "table",
   fields = {},
-  usage = {},
 }
 
 ---@type AvanteLLMToolReturn[]

@@ -63,10 +63,6 @@ M.param = {
       default = 120000,
     },
   },
-  usage = {
-    path = "Relative path to the project directory, as cwd",
-    command = "Command to run",
-  },
 }
 
 ---@type AvanteLLMToolReturn[]

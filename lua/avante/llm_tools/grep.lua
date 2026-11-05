@@ -44,13 +44,6 @@ M.param = {
       optional = true,
     },
   },
-  usage = {
-    path = "Relative path to the project directory",
-    query = "Query to search for",
-    case_sensitive = "Whether to search case sensitively",
-    include_pattern = "Glob pattern to include files",
-    exclude_pattern = "Glob pattern to exclude files",
-  },
 }
 
 ---@type AvanteLLMToolReturn[]
