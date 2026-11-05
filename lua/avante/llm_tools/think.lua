@@ -42,12 +42,7 @@ M.returns = {
   {
     name = "success",
     description = "Whether the task was completed successfully",
-    type = "string",
-  },
-  {
-    name = "thoughts",
-    description = "The thoughts that guided the solution",
-    type = "string",
+    type = "boolean",
   },
 }
 
@@ -70,10 +65,6 @@ function M.on_render(input, opts)
 end
 
 ---@type AvanteLLMToolFunc<ThinkingInput>
-function M.func(_input, opts)
-  local on_complete = opts.on_complete
-  if not on_complete then return false, "on_complete not provided" end
-  on_complete(true, nil)
-end
+function M.func(_input, opts) opts.on_complete(true, nil) end
 
 return M
