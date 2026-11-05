@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.5.1](https://github.com/avante-corp/avante.nvim/compare/v0.5.0...v0.5.1) (2026-11-05)
+
+
+### Features
+
+* add markdown ft to Avante container ([74216b0](https://github.com/avante-corp/avante.nvim/commit/74216b091263bd9bb4d9d0c9b74094ba21d83891))
+* **Avante:** set ft=Avante options in its own file ([9fd188c](https://github.com/avante-corp/avante.nvim/commit/9fd188c5a037cf338b270387151702f0538c6bf1))
+* change prompt input to leverage markdown folds ([9794016](https://github.com/avante-corp/avante.nvim/commit/979401670dbdc638768b20302295946b07e981ca))
+* **contrib/avante:** support -h/--help ([8fb43d6](https://github.com/avante-corp/avante.nvim/commit/8fb43d62df73bb1a69f4d2799d75a6eac54c0c1d))
+* dont override foldcolumn config for "Avante" type ([786f1c8](https://github.com/avante-corp/avante.nvim/commit/786f1c858df3e2f19395ad3c7f30a2443328568f))
+* **resume:** now accepts a session id ([9307cb9](https://github.com/avante-corp/avante.nvim/commit/9307cb9846d421649d9c8ff27f921ce1aa53324a))
+* **Selector:** add default_query to Selector abstraction ([676bf02](https://github.com/avante-corp/avante.nvim/commit/676bf021f02efe9bae3c28023536f72b771d7183))
+* **web_search:** add Outcrawl search engine ([a9b9c79](https://github.com/avante-corp/avante.nvim/commit/a9b9c79ed62a74ab24e5c0db788c9a128107a475))
+* **web_search:** add Sofya search engine ([3615ff1](https://github.com/avante-corp/avante.nvim/commit/3615ff1a1a8d3640d126bb8f22ed4da0b70103a5))
+
+
+### Bug Fixes
+
+* **Avante:** fillchars and winbar are set later ([7094c3d](https://github.com/avante-corp/avante.nvim/commit/7094c3d7eb7d667572149f52179444fa71fc6ab8))
+* **ci:** align build toolchains and dependency paths ([188b793](https://github.com/avante-corp/avante.nvim/commit/188b793c264285ee147c74db14a9f78a22ca7b8f))
+* **ci:** fix macOS architecture and Lua runtime ([bbddb5a](https://github.com/avante-corp/avante.nvim/commit/bbddb5aaac78cf6dee7b4ca313c75ecea69a131b))
+* **llm_tools:** handle optional scope and command errors in git_diff ([c4b22e9](https://github.com/avante-corp/avante.nvim/commit/c4b22e95ce6fe3b76cef1bd7bc196a8f36543be3))
+
 ## [0.5.0](https://github.com/avante-corp/avante.nvim/compare/v0.5.0...v0.5.0) (2026-10-31)
 
 
