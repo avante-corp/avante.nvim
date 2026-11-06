@@ -274,7 +274,12 @@ local function start_request(provider, prompt_opts, handler_opts, on_response_he
   local function notify_stop(result)
     if stop_notified then return end
     stop_notified = true
-    if result.reason == "error" or result.reason == "cancelled" or result.reason == "rate_limit" then
+    if
+      result.reason == "error"
+      or result.reason == "aborted"
+      or result.reason == "cancelled"
+      or result.reason == "rate_limit"
+    then
       for _, part in ipairs(ctx.parts) do
         if type(part.content) == "string" and part.order ~= nil then
           local ok, err = pcall(StreamAdapter.add_message, part, "generated", handler_opts)
@@ -388,6 +393,9 @@ local function start_request(provider, prompt_opts, handler_opts, on_response_he
     elseif event.type == "cancelled" then
       cleanup()
       notify_stop({ reason = "cancelled" })
+    elseif event.type == "aborted" then
+      cleanup()
+      notify_stop({ reason = "aborted", error = event.message })
     elseif event.type == "error" then
       cleanup()
       if event.status == 429 then

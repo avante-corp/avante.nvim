@@ -201,7 +201,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field usage? avante.LLMTokenUsage
 ---
 ---@class AvanteLLMStopCallbackOptions
----@field reason "complete" | "tool_use" | "error" | "rate_limit" | "cancelled" | "max_tokens" | "usage"
+---@field reason "complete" | "tool_use" | "error" | "aborted" | "rate_limit" | "cancelled" | "max_tokens"
 ---@field error? string | table
 ---@field usage? avante.LLMTokenUsage
 ---@field retry_after? integer

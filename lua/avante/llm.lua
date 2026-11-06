@@ -1633,7 +1633,12 @@ function M.stream(opts)
     local original_on_stop = opts.on_stop
     opts.on_stop = vim.schedule_wrap(function(stop_opts)
       if is_completed then return end
-      if stop_opts.reason == "complete" or stop_opts.reason == "error" or stop_opts.reason == "cancelled" then
+      if
+        stop_opts.reason == "complete"
+        or stop_opts.reason == "error"
+        or stop_opts.reason == "aborted"
+        or stop_opts.reason == "cancelled"
+      then
         is_completed = true
       end
       return original_on_stop(stop_opts)
