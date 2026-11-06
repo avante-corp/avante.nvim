@@ -665,6 +665,26 @@ describe("Rig client adapter", function()
       assert.same(0, cancelled)
     end)
 
+    it("keeps only completed text when cancelling between blocks", function()
+      pending = {
+        { type = "content_start", index = 0, kind = "text" },
+        { type = "content_end", index = 0, order = 0, content = "completed" },
+        { type = "content_start", index = 1, kind = "tool_call", name = "lookup" },
+        { type = "content_start", index = 2, kind = "text" },
+        { type = "content_delta", index = 2, kind = "text", text = "unfinished" },
+      }
+      local history = {}
+      start(function() request:cancel() end, function(messages) history[messages[1].uuid] = messages[1] end)
+      assert.is_true(vim.wait(100, function() return #stopped > 0 end, 1))
+      assert.same("cancelled", stopped[1].reason)
+      local completed = vim.tbl_filter(
+        function(message) return message.state == "generated" end,
+        vim.tbl_values(history)
+      )
+      assert.same(1, #completed)
+      assert.same("completed", completed[1].message.content)
+    end)
+
     it("keeps completion terminal during final message callbacks", function()
       start(nil, function(messages)
         if messages[1].state == "generated" then request:cancel() end
