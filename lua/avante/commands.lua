@@ -9,6 +9,10 @@
 ---         Open a picker for previous chat sessions.
 --- :Avante toggle
 ---         Toggle the Avante sidebar.
+--- :Avante claude login
+---         Sign in to Claude Pro/Max in the browser (Linux/macOS).
+--- :Avante claude logout
+---         Remove Avante's locally stored Claude subscription credentials.
 --- :Avante rag start
 ---         Start the configured RAG service and index the current project.
 --- :Avante rag stop
@@ -194,6 +198,14 @@ function M.setup()
   subparsers
     :add_parser({ name = "toggle", help = "Toggle the Avante sidebar" })
     :set_execute(function() require("avante").toggle() end)
+
+  local claude = subparsers:add_parser({ name = "claude", help = "Manage Claude Pro/Max authentication" })
+  local claude_actions = claude:add_subparsers({ destination = "claude_command" })
+  for _, action in ipairs({ "login", "logout" }) do
+    claude_actions
+      :add_parser({ name = action, help = action .. " Claude Pro/Max" })
+      :set_execute(function() require("avante.libs.rig_client").claude_auth(action) end)
+  end
 
   local rag = subparsers:add_parser({ name = "rag", help = "Manage and query the RAG service" })
   local actions = rag:add_subparsers({ destination = "rag_command" })

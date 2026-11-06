@@ -94,7 +94,7 @@ function E.setup(opts)
 
   local var = opts.provider.api_key_name
 
-  if var == nil or var == "" then
+  if not E.require_api_key(opts.provider) then
     vim.g.avante_login = true
     return
   end
@@ -167,7 +167,10 @@ end
 E.REQUEST_LOGIN_PATTERN = "AvanteRequestLogin"
 
 ---@param provider AvanteDefaultBaseProvider
-function E.require_api_key(provider) return provider.api_key_name ~= nil and provider.api_key_name ~= "" end
+function E.require_api_key(provider)
+  if (provider._protocol or provider._name) == "claude" and provider.auth_type == "subscription" then return false end
+  return provider.api_key_name ~= nil and provider.api_key_name ~= ""
+end
 
 M.env = E
 
@@ -202,6 +205,14 @@ M = setmetatable(M, {
     if not supported_protocols[protocol] then
       error(string.format('Provider "%s" uses unsupported protocol "%s"', k, protocol), 2)
     end
+    local auth_type = provider_config.auth_type or "api_key"
+    if
+      (auth_type ~= "api_key" and auth_type ~= "subscription")
+      or (auth_type == "subscription" and protocol ~= "claude")
+    then
+      error(string.format('Provider "%s" does not support auth_type "%s"', k, tostring(auth_type)), 2)
+    end
+    provider_config.auth_type = auth_type
     provider_config._name = k
     provider_config._protocol = protocol
     t[k] = provider_config
@@ -224,7 +235,7 @@ M = setmetatable(M, {
     if rawget(t[k], "setup") == nil then
       local provider_conf = M.parse_config(t[k])
       t[k].setup = function()
-        if E.require_api_key(provider_conf) then
+        if E.require_api_key(t[k]) then
           if not (type(provider_conf.api_key_name) == "string" and provider_conf.api_key_name:match("^cmd:")) then
             t[k].parse_api_key()
           end

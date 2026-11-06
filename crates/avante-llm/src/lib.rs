@@ -1,3 +1,5 @@
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+mod claude_cloak;
 mod rig_compat;
 
 use rig_compat::{StreamingVertex, build_http_model, configure_openai};
@@ -11,6 +13,7 @@ use rig::completion::{
     AssistantContent, AssistantMessage, CompletionRequest, Message, ToolDefinition,
 };
 use rig::driver::DynModel;
+use rig::effect::{EffectId, EffectKind};
 use rig::http_client::middleware::HttpMiddleware;
 use rig::message::{
     CallId, ImageMediaType, MimeType, Native, Origin, Reasoning as MessageReasoning, StopReason,
@@ -18,7 +21,8 @@ use rig::message::{
 };
 use rig::operation::Completion;
 use rig::providers::openai::wire::{AZURE, by_name};
-use rig::streaming::{Item, PartKind, StreamEvent, parse_partial_arguments};
+use rig::serve::{Dispatch, ErasedHandler, adapters::ModelAdapter};
+use rig::streaming::{Item, PartKind, Relayed, StreamEvent, parse_partial_arguments};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::any::Any;
@@ -48,6 +52,7 @@ struct ProviderInput {
     base_url: Option<String>,
     api_key: Option<String>,
     auth: Option<AuthInput>,
+    auth_home: Option<String>,
     route: Option<RouteInput>,
     api_version: Option<String>,
     #[serde(default)]
@@ -81,6 +86,7 @@ enum ProtocolInput {
 #[serde(rename_all = "snake_case")]
 enum AuthInput {
     Bearer,
+    Subscription,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -157,6 +163,30 @@ struct ToolInput {
 
 impl Input {
     fn validate(&self) -> Result<(), String> {
+        if matches!(self.provider.auth, Some(AuthInput::Subscription)) {
+            if !matches!(self.provider.protocol, ProtocolInput::Claude) {
+                return Err("subscription authentication is only supported for Claude".to_owned());
+            }
+            if !cfg!(any(target_os = "linux", target_os = "macos")) {
+                return Err("Claude Pro/Max requires Linux or macOS".to_owned());
+            }
+            if self.provider.auth_home.as_deref().is_none_or(str::is_empty) {
+                return Err("Claude subscription credential directory is missing".to_owned());
+            }
+            if self
+                .provider
+                .base_url
+                .as_deref()
+                .is_some_and(|url| url.trim_end_matches('/') != "https://api.anthropic.com")
+                || self.provider.api_key.is_some()
+                || !self.provider.headers.is_empty()
+                || self.provider.replace_headers
+                || self.provider.proxy.is_some()
+                || self.provider.allow_insecure
+            {
+                return Err("Claude Pro/Max uses Cloak's HTTPS endpoint and credentials; custom endpoint, API key, headers, proxy and insecure TLS settings are unsupported".to_owned());
+            }
+        }
         if self.provider.name.trim().is_empty() {
             return Err("provider name must not be empty".to_owned());
         }
@@ -236,6 +266,11 @@ impl Input {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum Event {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    AuthStatus {
+        message: String,
+        complete: bool,
+    },
     ContentStart {
         index: usize,
         kind: ContentKind,
@@ -573,6 +608,9 @@ impl HttpMiddleware for CaptureHeaders {
 
 fn request_headers(input: Input) -> Result<BTreeMap<String, String>, String> {
     input.validate()?;
+    if matches!(input.provider.auth, Some(AuthInput::Subscription)) {
+        return Err("Claude Pro/Max request headers are managed by rig-claude-cloak".to_owned());
+    }
     if matches!(
         input.provider.protocol,
         ProtocolInput::Bedrock | ProtocolInput::Vertex
@@ -1182,9 +1220,12 @@ fn completion_request(
     Ok(request)
 }
 
-fn retry_after(error: &rig::error::ProviderError) -> Option<u64> {
+fn retry_after(error: &rig::error::ErrorReport) -> Option<u64> {
     error
-        .provider_response_headers()?
+        .provider_response
+        .as_ref()?
+        .headers
+        .as_ref()?
         .get("retry-after")?
         .to_str()
         .ok()?
@@ -1192,12 +1233,15 @@ fn retry_after(error: &rig::error::ProviderError) -> Option<u64> {
         .ok()
 }
 
-fn report_error(events: &Events, error: &rig::error::ProviderError, provider: &ProviderInput) {
-    if matches!(error.kind(), rig::error::ErrorKind::Cancelled) {
+fn report_error(events: &Events, error: &rig::error::ErrorReport, provider: &ProviderInput) {
+    if matches!(error.kind, rig::error::ErrorKind::Cancelled) {
         push(events, Event::Cancelled);
         return;
     }
     let mut message = error.to_string();
+    if matches!(provider.auth, Some(AuthInput::Subscription)) {
+        message = message.replace("/claude-cloak login", ":Avante claude login");
+    }
     // Gemini includes its API key in request URLs, which transport errors can echo.
     if let Some(key) = provider.api_key.as_deref().filter(|key| !key.is_empty()) {
         message = message.replace(key, "[REDACTED]");
@@ -1206,18 +1250,30 @@ fn report_error(events: &Events, error: &rig::error::ProviderError, provider: &P
         events,
         Event::Error {
             message,
-            status: error
-                .provider_response_status()
-                .map(|status| status.as_u16()),
+            status: error.http_status,
             retry_after: retry_after(error),
         },
     );
 }
 
+async fn build_handler(provider: &ProviderInput, events: &Events) -> Result<ErasedHandler, String> {
+    if matches!(provider.auth, Some(AuthInput::Subscription)) {
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        return claude_cloak::connect(provider, events);
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        return Err("Claude Pro/Max requires Linux or macOS".to_owned());
+    }
+    let model = build_model(provider, events).await?;
+    Ok(ErasedHandler::new(ModelAdapter::new(
+        provider.name.clone(),
+        model,
+    )))
+}
+
 async fn run(input: Input, events: Events, mut cancelled: watch::Receiver<bool>) {
     let Some(model) = Box::pin(run_until_cancelled(
         &mut cancelled,
-        build_model(&input.provider, &events),
+        build_handler(&input.provider, &events),
     ))
     .await
     else {
@@ -1253,13 +1309,23 @@ async fn run(input: Input, events: Events, mut cancelled: watch::Receiver<bool>)
             return;
         }
     };
-    let mut stream = match model.stream(request) {
-        Ok(stream) => stream,
-        Err(error) => {
-            report_error(&events, &error, &input.provider);
-            return;
-        }
+    let Some(reply) = run_until_cancelled(
+        &mut cancelled,
+        model.handle(
+            EffectKind::Completion {
+                request: Arc::new(request),
+                stream: true,
+            },
+            Dispatch::new(EffectId::from_raw(0), true),
+        ),
+    )
+    .await
+    else {
+        push(&events, Event::Cancelled);
+        return;
     };
+    let mut stream = reply.into_stream();
+    let mut response = None;
 
     let mut parts = BTreeMap::new();
     loop {
@@ -1278,7 +1344,14 @@ async fn run(input: Input, events: Events, mut cancelled: watch::Receiver<bool>)
                 return;
             }
         };
-        let Item::Event(event) = item else { continue };
+        let event = match item {
+            Relayed::Item(Item::Event(event)) => event,
+            Relayed::Done(done) => {
+                response = Some(done);
+                break;
+            }
+            _ => continue,
+        };
         match event {
             StreamEvent::Start { part, kind, name } => {
                 let kind = match kind {
@@ -1333,86 +1406,90 @@ async fn run(input: Input, events: Events, mut cancelled: watch::Receiver<bool>)
         }
     }
 
-    let Some(finished) = run_until_cancelled(&mut cancelled, stream.finish()).await else {
-        push(&events, Event::Cancelled);
-        return;
-    };
-    match finished {
-        Ok(response) => {
-            let response_id = response.response_id().map(str::to_owned);
-            let reason = match response.stop() {
-                StopReason::Length => DoneReason::Length,
-                StopReason::ToolUse => DoneReason::ToolUse,
-                StopReason::Stop => DoneReason::Complete,
-                StopReason::Aborted(message) => {
-                    push(&events, Event::Aborted { message });
-                    return;
-                }
-                StopReason::Error(message) => {
-                    push(
-                        &events,
-                        Event::Error {
-                            message,
-                            status: None,
-                            retry_after: None,
-                        },
-                    );
-                    return;
-                }
-                other => {
-                    push(
-                        &events,
-                        Event::Error {
-                            message: format!("unsupported provider stop reason: {other:?}"),
-                            status: None,
-                            retry_after: None,
-                        },
-                    );
-                    return;
-                }
-            };
-            if matches!(reason, DoneReason::ToolUse)
-                && let Some(call) = response
-                    .tool_calls()
-                    .find(|call| call.function.invalid_arguments.is_some())
-            {
+    if let Some(response) = response {
+        let response = Arc::unwrap_or_clone(response);
+        let response_id = response.response_id().map(str::to_owned);
+        let reason = match response.stop() {
+            StopReason::Length => DoneReason::Length,
+            StopReason::ToolUse => DoneReason::ToolUse,
+            StopReason::Stop => DoneReason::Complete,
+            StopReason::Aborted(message) => {
+                push(&events, Event::Aborted { message });
+                return;
+            }
+            StopReason::Error(message) => {
                 push(
                     &events,
                     Event::Error {
-                        message: format!("invalid JSON arguments for tool {}", call.function.name),
+                        message,
                         status: None,
                         retry_after: None,
                     },
                 );
                 return;
             }
-            for (order, content) in response.choice.into_iter().enumerate() {
-                let fingerprint = content.fingerprint();
-                let index = parts
-                    .iter()
-                    .find_map(|(&index, &previous)| (previous == fingerprint).then_some(index))
-                    .expect("completed content has a streamed part");
-                parts.remove(&index);
-                if let Some(event) = content_end(index, content, &turn_id, order) {
-                    push(&events, event);
-                }
+            other => {
+                push(
+                    &events,
+                    Event::Error {
+                        message: format!("unsupported provider stop reason: {other:?}"),
+                        status: None,
+                        retry_after: None,
+                    },
+                );
+                return;
             }
+        };
+        if matches!(reason, DoneReason::ToolUse)
+            && let Some(call) = response
+                .tool_calls()
+                .find(|call| call.function.invalid_arguments.is_some())
+        {
             push(
                 &events,
-                Event::Done {
-                    reason,
-                    usage: Box::new(response.usage.into()),
-                    response_id,
-                    origin: response.origin,
+                Event::Error {
+                    message: format!("invalid JSON arguments for tool {}", call.function.name),
+                    status: None,
+                    retry_after: None,
                 },
             );
+            return;
         }
-        Err(error) => report_error(&events, &error, &input.provider),
+        for (order, content) in response.choice.into_iter().enumerate() {
+            let fingerprint = content.fingerprint();
+            let index = parts
+                .iter()
+                .find_map(|(&index, &previous)| (previous == fingerprint).then_some(index))
+                .expect("completed content has a streamed part");
+            parts.remove(&index);
+            if let Some(event) = content_end(index, content, &turn_id, order) {
+                push(&events, event);
+            }
+        }
+        push(
+            &events,
+            Event::Done {
+                reason,
+                usage: Box::new(response.usage.into()),
+                response_id,
+                origin: response.origin,
+            },
+        );
+    } else {
+        report_error(&events, &rig::serve::stream_truncated(), &input.provider);
     }
 }
 
 fn start(input: Input) -> LuaResult<NativeRequest> {
     input.validate().map_err(LuaError::external)?;
+    spawn_worker(move |events, cancelled| run(input, events, cancelled))
+}
+
+fn spawn_worker<F, Fut>(work: F) -> LuaResult<NativeRequest>
+where
+    F: FnOnce(Events, watch::Receiver<bool>) -> Fut + Send + 'static,
+    Fut: Future<Output = ()>,
+{
     let events = Events::default();
     let (cancel, cancelled) = watch::channel(false);
     let worker_events = Arc::clone(&events);
@@ -1425,7 +1502,7 @@ fn start(input: Input) -> LuaResult<NativeRequest> {
                     .enable_all()
                     .build();
                 match runtime {
-                    Ok(runtime) => runtime.block_on(run(input, worker_events, cancelled)),
+                    Ok(runtime) => runtime.block_on(work(worker_events, cancelled)),
                     Err(error) => push(
                         &worker_events,
                         Event::Error {
@@ -1466,6 +1543,22 @@ fn avante_llm(lua: &Lua) -> LuaResult<LuaTable> {
             lua.to_value(&headers)
         })?,
     )?;
+    exports.set(
+        "claude_auth",
+        lua.create_function(|_, (action, home): (String, String)| {
+            if !matches!(action.as_str(), "login" | "logout") || home.is_empty() {
+                return Err(LuaError::external(
+                    "expected Claude login or logout and a credential directory",
+                ));
+            }
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            return spawn_worker(move |events, cancelled| {
+                claude_cloak::authenticate(action, home, events, cancelled)
+            });
+            #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+            Err::<NativeRequest, _>(LuaError::external("Claude Pro/Max requires Linux or macOS"))
+        })?,
+    )?;
     Ok(exports)
 }
 
@@ -1484,7 +1577,7 @@ mod tests {
     use std::time::Duration;
     use tokio::sync::mpsc;
 
-    fn prompt() -> PromptInput {
+    pub(super) fn prompt() -> PromptInput {
         PromptInput {
             system_prompt: "You are concise.".to_owned(),
             messages: vec![AvanteMessage {
@@ -1514,7 +1607,7 @@ mod tests {
         }
     }
 
-    fn provider(name: &str, route: Option<RouteInput>) -> ProviderInput {
+    pub(super) fn provider(name: &str, route: Option<RouteInput>) -> ProviderInput {
         ProviderInput {
             name: name.to_owned(),
             dialect: None,
@@ -1528,6 +1621,7 @@ mod tests {
             base_url: None,
             api_key: Some("token".to_owned()),
             auth: None,
+            auth_home: None,
             route,
             api_version: None,
             prompt_caching: false,

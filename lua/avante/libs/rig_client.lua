@@ -35,7 +35,8 @@ local M = {}
 ---@field deployment? string Azure deployment identifier
 ---@field baseUrl? string
 ---@field apiKey? string
----@field auth? "bearer"
+---@field auth? "bearer" | "subscription"
+---@field authHome? string
 ---@field route? "chat" | "responses"
 ---@field apiVersion? string
 ---@field promptCaching boolean
@@ -107,7 +108,7 @@ local function bedrock_config(provider, provider_conf)
   }
 end
 
-local function provider_credential(provider, provider_conf, protocol)
+local function provider_credential(provider, protocol)
   if protocol == "bedrock" or protocol == "vertex" then return nil end
   if protocol == "copilot" then
     local token = provider.get_session_token()
@@ -119,7 +120,7 @@ local function provider_credential(provider, provider_conf, protocol)
         .. " Avante currently reads credentials from github-copilot/hosts.json or apps.json; auth.db is not supported."
     )
   end
-  if not Providers.env.require_api_key(provider_conf) then return nil end
+  if not Providers.env.require_api_key(provider) then return nil end
   local credential = provider.parse_api_key()
   if not credential then error("API key is not set for provider: " .. tostring(provider._name)) end
   return credential
@@ -148,7 +149,7 @@ function M._build_request(provider, prompt_opts, session_ctx)
   local protocol = provider._protocol or provider._name
   local provider_conf, additional_params = Providers.parse_config(provider)
   local name = provider._name or protocol
-  local credential, session_endpoint = provider_credential(provider, provider_conf, protocol)
+  local credential, session_endpoint = provider_credential(provider, protocol)
   local route = nil
   if protocol == "openai" or protocol == "azure" or protocol == "copilot" then
     route = session_ctx and session_ctx.resolved_api_route or nil
@@ -182,8 +183,11 @@ function M._build_request(provider, prompt_opts, session_ctx)
   ---@type table<string, string>
   local headers = type(provider.extra_headers) == "function" and {} or Utils.tbl_override({}, provider.extra_headers)
   if vim.tbl_isempty(headers) then headers = vim.empty_dict() end
-  local auth = nil
+  local auth, auth_home
   if protocol == "azure" and provider_conf.entra then auth = "bearer" end
+  if protocol == "claude" and provider_conf.auth_type == "subscription" then
+    auth, auth_home = "subscription", M.claude_home()
+  end
 
   local tools = {}
   if not provider_conf.disable_tools then tools = tool_definitions(prompt_opts.tools) end
@@ -203,6 +207,7 @@ function M._build_request(provider, prompt_opts, session_ctx)
       baseUrl = session_endpoint or provider_conf.endpoint,
       apiKey = credential,
       auth = auth,
+      authHome = auth_home,
       route = route,
       apiVersion = rawget(provider_conf, "api_version"),
       promptCaching = provider.support_prompt_caching == true,
@@ -232,6 +237,58 @@ function M._build_request(provider, prompt_opts, session_ctx)
     input.provider.replaceHeaders = true
   end
   return input
+end
+
+function M.claude_home() return vim.fn.stdpath("data") .. "/avante/claude-cloak" end
+
+function M.claude_auth(action)
+  if M._claude_auth then return Utils.warn("Claude authentication is already running") end
+  local native, err = load_native()
+  if not native then return Utils.error(tostring(err)) end
+  local ok, request = pcall(native.claude_auth, action, M.claude_home())
+  if not ok then return Utils.error(tostring(request)) end
+  local timer = uv.new_timer()
+  if not timer then
+    request:cancel()
+    return Utils.error("Failed to create Claude authentication timer")
+  end
+  local autocmd
+  local terminal = false
+  local function cleanup()
+    if terminal then return end
+    terminal = true
+    M._claude_auth = nil
+    timer:stop()
+    if not timer:is_closing() then timer:close() end
+    if autocmd then pcall(api.nvim_del_autocmd, autocmd) end
+    pcall(request.cancel, request)
+  end
+  M._claude_auth = { cancel = cleanup }
+  autocmd = api.nvim_create_autocmd("User", { pattern = "AvanteLLMEscape", once = true, callback = cleanup })
+  timer:start(
+    0,
+    20,
+    vim.schedule_wrap(function()
+      if terminal then return end
+      local polled, events = pcall(request.poll, request)
+      if not polled then
+        cleanup()
+        return Utils.error(tostring(events))
+      end
+      for _, event in ipairs(events) do
+        if event.type == "auth_status" then
+          Utils.info(event.message)
+          if event.complete then cleanup() end
+        elseif event.type == "error" then
+          cleanup()
+          Utils.error(event.message)
+        elseif event.type == "cancelled" then
+          cleanup()
+        end
+      end
+    end)
+  )
+  return M._claude_auth
 end
 
 ---@param provider AvanteProviderFunctor

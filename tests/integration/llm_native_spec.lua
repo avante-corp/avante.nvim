@@ -62,6 +62,21 @@ describe("LLM native integration", function()
     Config.history.storage_path = original_history_storage_path
   end)
 
+  it("completes subscription logout through the native bridge without an account", function()
+    local request = require("avante_llm").claude_auth("logout", test_cwd .. "/cloak")
+    local terminal
+    local finished = vim.wait(5000, function()
+      for _, event in ipairs(request:poll()) do
+        if event.type == "error" or event.complete then terminal = event end
+      end
+      return terminal ~= nil
+    end, 10)
+    request:cancel()
+    assert.is_true(finished, "subscription logout timed out")
+    assert.same("auth_status", terminal.type, terminal.message)
+    assert.is_true(terminal.complete)
+  end)
+
   local function fake_openai(response_bodies, response_options)
     if type(response_bodies) == "string" then response_bodies = { response_bodies } end
     response_options = response_options or {}
@@ -1168,7 +1183,9 @@ describe("LLM native integration", function()
           messages[#messages + 1] = item
         end
       end,
-      on_stop = function(result) stopped = result end,
+      on_stop = function(result)
+        if not result.streaming_tool_use then stopped = result end
+      end,
     })
 
     assert.is_not_nil(request, stopped and stopped.error)
@@ -1180,9 +1197,7 @@ describe("LLM native integration", function()
     for _, message in ipairs(messages) do
       local content = message.message.content
       if type(content) == "table" and content[1] and content[1].type == "tool_use" then
-        if not partial_tool_input and message.state == "generating" and content[1].input.query then
-          partial_tool_input = content[1].input
-        end
+        if message.state == "generating" and content[1].input.query then partial_tool_input = content[1].input end
         tool_input = content[1].input
       end
     end

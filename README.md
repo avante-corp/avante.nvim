@@ -1165,11 +1165,31 @@ Compatibility with Rig 0.46 is isolated in `crates/avante-llm/src/rig_compat.rs`
 
 The native path supports OpenAI-compatible Chat Completions and Responses providers, Azure OpenAI, Anthropic API keys, Gemini, Cohere, Ollama, Copilot, AWS Bedrock, and Gemini on Vertex AI. Bedrock proxies use the AWS SDK transport. Vertex AI rejects endpoint overrides, extra headers, proxies, and insecure-TLS settings because its SDK transport does not expose those controls. ACP remains a separate mode and continues to use the official ACP Rust SDK.
 
-HTTP providers use a 30-second connection timeout and a 120-second read idle timeout. Each successful read resets the idle timeout, so an active stream has no total time limit. Rig 0.46 also has a five-minute idle timeout between decoded stream items. Bedrock and Vertex AI use their SDK timeout policies. When `dual_boost.timeout` expires, both reference streams are cancelled and the request reports an error; late results are ignored.
+API-key HTTP providers use a 30-second connection timeout and a 120-second read idle timeout. Each successful read resets the idle timeout, so an active stream has no total time limit. Rig 0.46 also has a five-minute idle timeout between decoded stream items; this applies to Cloak as well. Bedrock and Vertex AI use their SDK timeout policies. When `dual_boost.timeout` expires, both reference streams are cancelled and the request reports an error; late results are ignored.
 
-Upgrading from the Lua transport requires rebuilding the native libraries (`make`). Custom providers must use `__inherited_from`; Lua request builders, stream parsers, and ReAct tool emulation are no longer supported. The `claude-pro-max` OAuth flow, `vertex_claude`, and `watsonx_code_assistant` providers have been removed. Use an Anthropic API key or the `claude-code` ACP provider for Claude. Azure requires a nonempty `deployment`, which selects the Azure endpoint independently of `model`.
+Upgrading from the Lua transport requires rebuilding the native libraries (`make`). Custom providers must use `__inherited_from`; Lua request builders, stream parsers, and ReAct tool emulation are no longer supported. The old `claude-pro-max`, `vertex_claude`, and `watsonx_code_assistant` providers have been removed. For Claude, use an Anthropic API key, the subscription configuration below, or the `claude-code` ACP provider. Azure requires a nonempty `deployment`, which selects the Azure endpoint independently of `model`.
 
 Streamed blocks keep separate history identities. Lua stores opaque native metadata alongside each block; Rust and Rig validate its origin and fingerprint before replaying signatures, encrypted reasoning, and response phases. Editing a block invalidates its original native payload.
+
+### Claude Pro/Max subscriptions
+
+On Linux and macOS, Rig 0.46's `rig-claude-cloak` plugin supports subscription authentication while Avante continues to execute its own tools:
+
+```lua
+require("avante").setup({
+  provider = "claude",
+  providers = {
+    claude = {
+      auth_type = "subscription", -- Claude Pro or Max; no API key required
+      model = "claude-sonnet-5-5",
+    },
+  },
+})
+```
+
+Rebuild the native libraries with `make`, then run `:Avante claude login`. Cloak opens a browser and receives the OAuth callback on localhost; a browser with access to that machine is required. `:Avante claude logout` removes these credentials, and the normal Avante cancel action cancels a pending login. Credentials are managed by Cloak under `stdpath("data")/avante/claude-cloak/anthropic-oauth/`; old Avante credentials are not imported.
+
+Subscription requests use Cloak's Anthropic HTTPS endpoint and transport. Custom endpoints, headers, API keys, provider-level proxies, and insecure TLS settings are rejected for this mode. Cloak handles token refresh, request shaping, and tool-name translation. Omit `auth_type` (or set it to `"api_key"`) to use the existing Anthropic API-key path.
 
 ## ACP Support
 
