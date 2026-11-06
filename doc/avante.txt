@@ -746,6 +746,10 @@ Commands (:AvanteAsk,...)                                      *avante-commands*
          Open a picker for previous chat sessions.
  :Avante toggle
          Toggle the Avante sidebar.
+ :Avante claude login
+         Sign in to Claude Pro/Max in the browser (Linux/macOS).
+ :Avante claude logout
+         Remove Avante's locally stored Claude subscription credentials.
  :Avante rag start
          Start the configured RAG service and index the current project.
  :Avante rag stop

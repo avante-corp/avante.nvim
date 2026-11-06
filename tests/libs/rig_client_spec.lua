@@ -1,6 +1,71 @@
 local RigClient = require("avante.libs.rig_client")
 
 describe("Rig client adapter", function()
+  it("routes Claude subscriptions through Cloak without reading an API key", function()
+    local request = RigClient._build_request({
+      _name = "claude",
+      _protocol = "claude",
+      auth_type = "subscription",
+      api_key_name = "ANTHROPIC_API_KEY",
+      model = "claude-opus-4-8",
+      endpoint = "https://api.anthropic.com",
+      parse_api_key = function() error("must not read an API key") end,
+    }, { system_prompt = "system", messages = { { role = "user", content = "hello" } } })
+
+    assert.same("claude", request.provider.protocol)
+    assert.same("subscription", request.provider.auth)
+    assert.same(vim.fn.stdpath("data") .. "/avante/claude-cloak", request.provider.authHome)
+    assert.is_nil(request.provider.apiKey)
+  end)
+
+  describe("Claude authentication", function()
+    it("cancels a pending login through AvanteStop", function()
+      local loaded_native = package.loaded.avante_llm
+      local cancelled = false
+      package.loaded.avante_llm = {
+        claude_auth = function()
+          return {
+            poll = function() return {} end,
+            cancel = function() cancelled = true end,
+          }
+        end,
+      }
+      RigClient.claude_auth("login")
+      require("avante.api").stop()
+      package.loaded.avante_llm = loaded_native
+      assert.is_nil(RigClient._claude_auth)
+      assert.is_true(cancelled)
+    end)
+
+    for _, terminal in ipairs({
+      { type = "auth_status", message = "Signed in", complete = true },
+      { type = "error", message = "Authorization denied" },
+      { type = "cancelled" },
+    }) do
+      it("cleans up after " .. terminal.type, function()
+        local loaded_native = package.loaded.avante_llm
+        local cancelled = false
+        package.loaded.avante_llm = {
+          claude_auth = function(action, home)
+            assert.same("login", action)
+            assert.same(RigClient.claude_home(), home)
+            return {
+              poll = function() return { terminal } end,
+              cancel = function() cancelled = true end,
+            }
+          end,
+        }
+        local notify = stub(vim, "notify")
+        RigClient.claude_auth("login")
+        local finished = vim.wait(1000, function() return RigClient._claude_auth == nil end, 10)
+        package.loaded.avante_llm = loaded_native
+        notify:revert()
+        assert.is_true(finished)
+        assert.is_true(cancelled)
+      end)
+    end
+  end)
+
   local function provider(name, inherited, overrides)
     return vim.tbl_extend("force", {
       _name = name,

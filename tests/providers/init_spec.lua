@@ -76,6 +76,24 @@ describe("providers", function()
     assert.is_function(provider.parse_api_key)
   end)
 
+  it("sets up Claude subscriptions without prompting for an API key", function()
+    Config.override({
+      provider = "test_claude",
+      providers = {
+        test_claude = {
+          api_key_name = "ANTHROPIC_API_KEY",
+          auth_type = "subscription",
+          parse_api_key = function() error("subscription must not read API keys") end,
+        },
+      },
+    })
+    local Providers = require("avante.providers")
+    Providers.setup()
+    assert.is_false(Providers.env.require_api_key(Providers.test_claude))
+    assert.is_true(Providers.test_claude.is_env_set())
+    assert.is_true(vim.g.avante_login)
+  end)
+
   it("inherits and overrides OpenAI-compatible dialects", function()
     local Providers = require("avante.providers")
 
