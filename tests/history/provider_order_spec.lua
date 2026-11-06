@@ -56,4 +56,18 @@ describe("provider history order", function()
     assert.same({ edit, lookup, edit_result, lookup_result }, vim.list_slice(refreshed, 1, 4))
     assert.equals("view", refreshed[6].message.content[1].name)
   end)
+
+  it("refreshes only the latest edit with current file contents", function()
+    local view = require("avante.llm_tools.view")
+    local read = require("luassert.stub")(view, "func", function() return "current contents" end)
+    local first = assistant({ type = "tool_use", id = "old", name = "edit_file", input = { path = "test.txt" } }, 0)
+    local last = assistant({ type = "tool_use", id = "new", name = "edit_file", input = { path = "test.txt" } }, 1)
+    local refreshed = History.update_tool_invocation_history({ first, result("old"), last, result("new") }, nil, false)
+    local reads = #read.calls
+    read:revert()
+
+    assert.same(1, reads)
+    assert.matches("Please use the latest", refreshed[5].message.content[1].content, nil, true)
+    assert.same("current contents", refreshed[10].message.content[1].content)
+  end)
 end)
