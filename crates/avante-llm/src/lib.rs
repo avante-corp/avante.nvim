@@ -272,6 +272,9 @@ enum Event {
         #[serde(rename = "retryAfter", skip_serializing_if = "Option::is_none")]
         retry_after: Option<u64>,
     },
+    Aborted {
+        message: String,
+    },
     Cancelled,
 }
 
@@ -1190,6 +1193,10 @@ fn retry_after(error: &rig::error::ProviderError) -> Option<u64> {
 }
 
 fn report_error(events: &Events, error: &rig::error::ProviderError, provider: &ProviderInput) {
+    if matches!(error.kind(), rig::error::ErrorKind::Cancelled) {
+        push(events, Event::Cancelled);
+        return;
+    }
     let mut message = error.to_string();
     // Gemini includes its API key in request URLs, which transport errors can echo.
     if let Some(key) = provider.api_key.as_deref().filter(|key| !key.is_empty()) {
@@ -1337,7 +1344,11 @@ async fn run(input: Input, events: Events, mut cancelled: watch::Receiver<bool>)
                 StopReason::Length => DoneReason::Length,
                 StopReason::ToolUse => DoneReason::ToolUse,
                 StopReason::Stop => DoneReason::Complete,
-                StopReason::Error(message) | StopReason::Aborted(message) => {
+                StopReason::Aborted(message) => {
+                    push(&events, Event::Aborted { message });
+                    return;
+                }
+                StopReason::Error(message) => {
                     push(
                         &events,
                         Event::Error {
