@@ -35,7 +35,7 @@ local M = {}
 ---@field deployment? string Azure deployment identifier
 ---@field baseUrl? string
 ---@field apiKey? string
----@field auth? "bearer" | "subscription" | "chatgpt"
+---@field auth? "bearer" | "subscription" | "chatgpt" | "copilot"
 ---@field authHome? string
 ---@field route? "chat" | "responses"
 ---@field apiVersion? string
@@ -110,16 +110,7 @@ end
 
 local function provider_credential(provider, protocol)
   if protocol == "bedrock" or protocol == "vertex" then return nil end
-  if protocol == "copilot" then
-    local token = provider.get_session_token()
-    if token then return token.token, token.endpoints and token.endpoints.api end
-    error(
-      "Copilot session token is unavailable. Check your Copilot authentication and retry."
-        .. " If you use copilot.lua, run :Copilot auth; if you use copilot.vim, run :Copilot setup."
-        .. " After signing in, restart Neovim."
-        .. " Avante currently reads credentials from github-copilot/hosts.json or apps.json; auth.db is not supported."
-    )
-  end
+  if protocol == "copilot" then return nil end
   if not Providers.env.require_api_key(provider) then return nil end
   local credential = provider.parse_api_key()
   if not credential then error("API key is not set for provider: " .. tostring(provider._name)) end
@@ -150,7 +141,7 @@ function M._build_request(provider, prompt_opts, session_ctx)
   local provider_conf, additional_params = Providers.parse_config(provider)
   local chatgpt = protocol == "openai" and provider_conf.auth_type == "subscription"
   local name = provider._name or protocol
-  local credential, session_endpoint = provider_credential(provider, protocol)
+  local credential = provider_credential(provider, protocol)
   local route = nil
   if protocol == "openai" or protocol == "azure" or protocol == "copilot" then
     route = session_ctx and session_ctx.resolved_api_route or nil
@@ -194,6 +185,9 @@ function M._build_request(provider, prompt_opts, session_ctx)
   if chatgpt then
     auth, auth_home = "chatgpt", M.chatgpt_home()
   end
+  if protocol == "copilot" then
+    auth, auth_home = "copilot", M.copilot_home()
+  end
 
   local tools = {}
   if not provider_conf.disable_tools then tools = tool_definitions(prompt_opts.tools) end
@@ -210,7 +204,7 @@ function M._build_request(provider, prompt_opts, session_ctx)
       protocol = protocol,
       model = provider_conf.model or deployment,
       deployment = deployment,
-      baseUrl = session_endpoint or provider_conf.endpoint,
+      baseUrl = provider_conf.endpoint,
       apiKey = credential,
       auth = auth,
       authHome = auth_home,
@@ -248,7 +242,7 @@ end
 function M.claude_home() return vim.fn.stdpath("data") .. "/avante/claude-cloak" end
 
 local function authenticate(name, action, home)
-  local label = name == "claude" and "Claude" or "ChatGPT"
+  local label = ({ claude = "Claude", chatgpt = "ChatGPT", copilot = "Copilot" })[name]
   local state = "_" .. name .. "_auth"
   if M[state] then return Utils.warn(label .. " authentication is already running") end
   local native, err = load_native()
@@ -305,13 +299,17 @@ function M.chatgpt_home() return vim.fn.stdpath("data") .. "/avante/chatgpt" end
 
 function M.chatgpt_auth(action) return authenticate("chatgpt", action, M.chatgpt_home()) end
 
-function M.chatgpt_models()
+function M.copilot_home() return vim.fn.stdpath("data") .. "/avante/copilot" end
+
+function M.copilot_auth(action) return authenticate("copilot", action, M.copilot_home()) end
+
+local function list_models(name, ...)
   local native, err = load_native()
   if not native then
     Utils.error(tostring(err))
     return {}
   end
-  local ok, models = pcall(native.chatgpt_models)
+  local ok, models = pcall(native[name .. "_models"], ...)
   if not ok then
     Utils.error(tostring(models))
     return {}
@@ -319,13 +317,17 @@ function M.chatgpt_models()
   return models
 end
 
+function M.copilot_models(timeout) return list_models("copilot", M.copilot_home(), timeout) end
+
+function M.chatgpt_models() return list_models("chatgpt") end
+
 ---@param provider AvanteProviderFunctor
 ---@param prompt_opts AvantePromptOptions
 ---@param handler_opts AvanteHandlerOptions
 ---@param on_response_headers? fun(headers: table)
 ---@param session_ctx? table
 ---@return table|nil
-local function start_request(provider, prompt_opts, handler_opts, on_response_headers, session_ctx)
+function M.start(provider, prompt_opts, handler_opts, on_response_headers, session_ctx)
   local request_ok, request_config = pcall(M._build_request, provider, prompt_opts, session_ctx)
   if not request_ok then
     handler_opts.on_stop({ reason = "error", error = tostring(request_config) })
@@ -515,51 +517,6 @@ local function start_request(provider, prompt_opts, handler_opts, on_response_he
     callback = cancel,
   })
   return { cancel = cancel }
-end
-
----@param provider AvanteProviderFunctor
----@param prompt_opts AvantePromptOptions
----@param handler_opts AvanteHandlerOptions
----@param on_response_headers? fun(headers: table)
----@param session_ctx? table
----@return table|nil
-function M.start(provider, prompt_opts, handler_opts, on_response_headers, session_ctx)
-  if (provider._protocol or provider._name) ~= "copilot" then
-    return start_request(provider, prompt_opts, handler_opts, on_response_headers, session_ctx)
-  end
-
-  local request, autocmd
-  local waiting = true
-  local function finish_waiting()
-    if not waiting then return false end
-    waiting = false
-    pcall(api.nvim_del_autocmd, autocmd)
-    return true
-  end
-  local function cancel()
-    if request then
-      request:cancel()
-    elseif finish_waiting() then
-      handler_opts.on_stop({ reason = "cancelled" })
-    end
-  end
-  autocmd = api.nvim_create_autocmd("User", {
-    group = api.nvim_create_augroup("avante_llm", { clear = false }),
-    pattern = "AvanteLLMEscape",
-    once = true,
-    callback = cancel,
-  })
-  local function authenticated(err)
-    if not finish_waiting() then return end
-    if err then
-      handler_opts.on_stop({ reason = "error", error = tostring(err) })
-      return
-    end
-    request = start_request(provider, prompt_opts, handler_opts, on_response_headers, session_ctx)
-  end
-  local ok, err = pcall(provider.get_session_token, authenticated)
-  if not ok then authenticated(err) end
-  return request or { cancel = cancel }
 end
 
 return M

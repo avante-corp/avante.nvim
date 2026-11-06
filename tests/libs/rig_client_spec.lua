@@ -44,7 +44,7 @@ describe("Rig client adapter", function()
     assert.is_nil(request.prompt.additionalParams.previous_response_id)
   end)
 
-  for _, name in ipairs({ "claude", "chatgpt" }) do
+  for _, name in ipairs({ "claude", "chatgpt", "copilot" }) do
     describe(name .. " authentication", function()
       it("cancels a pending login through AvanteStop", function()
         local loaded_native = package.loaded.avante_llm
@@ -290,7 +290,6 @@ describe("Rig client adapter", function()
         provider("copilot", "copilot", {
           model = use_responses and "gpt-5" or "gpt-5-codex",
           use_response_api = use_responses,
-          get_session_token = function() return { token = "session-token" } end,
         }),
         { system_prompt = "system", messages = {} }
       )
@@ -298,31 +297,15 @@ describe("Rig client adapter", function()
     end
   end)
 
-  it("reads Copilot tokens from the live module after the provider is copied", function()
+  it("keeps Copilot credentials in Rust after the provider is copied", function()
     local Config = require("avante.config")
     if not Config.providers then Config.setup({}) end
     local Providers = require("avante.providers")
-    local Copilot = require("avante.providers.copilot")
-    local saved_provider, saved_state = rawget(Providers, "copilot"), Copilot.state
-    Copilot.state = nil
-    Providers.copilot = nil
-    local copied = Providers.copilot
-    local ok, err = pcall(function()
-      for _, token in ipairs({ "first-session", "refreshed-session" }) do
-        Copilot.state = {
-          github_token = {
-            token = token,
-            expires_at = os.time() + 3600,
-            endpoints = { api = "https://session.example.test" },
-          },
-        }
-        local request = RigClient._build_request(copied, { system_prompt = "system", messages = {} })
-        assert.same(token, request.provider.apiKey)
-        assert.same("https://session.example.test", request.provider.baseUrl)
-      end
-    end)
-    Providers.copilot, Copilot.state = saved_provider, saved_state
-    assert.is_true(ok, err)
+    local copied = vim.deepcopy(Providers.copilot)
+    local request = RigClient._build_request(copied, { system_prompt = "system", messages = {} })
+    assert.same("copilot", request.provider.auth)
+    assert.same(RigClient.copilot_home(), request.provider.authHome)
+    assert.is_nil(request.provider.apiKey)
   end)
 
   it("converts Avante tools to Rig tool definitions", function()

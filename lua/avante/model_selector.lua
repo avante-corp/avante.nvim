@@ -31,7 +31,8 @@ local function create_model_entries(provider_name, provider_cfg, timeout)
         models = cached_result
       else
         models = provider_cfg:list_models(timeout)
-        list_models_cached_result[cache_key] = models
+        -- Failed lookups return an empty list; retry after login or transient failures.
+        if models and #models > 0 then list_models_cached_result[cache_key] = models end
       end
     else
       if M.list_models_returned[provider_cfg.list_models] then return {} end

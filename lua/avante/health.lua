@@ -55,13 +55,8 @@ function M.check()
     H.ok("Using native input provider (no additional dependencies required)")
   end
 
-  -- Check Copilot if configured
-  if Config.provider and Config.provider == "copilot" then
-    if Utils.has("copilot.lua") or Utils.has("copilot.vim") or Utils.has("copilot") then
-      H.ok("Found Copilot plugin")
-    else
-      H.error("Copilot provider is configured but neither copilot.lua nor copilot.vim is installed")
-    end
+  if Config.provider == "copilot" then
+    H.info("Copilot authentication is managed by Rig. Sign in with :Avante copilot login")
   end
 
   -- Check TreeSitter dependencies

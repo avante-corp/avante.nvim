@@ -79,6 +79,7 @@ docgen:
 		lua/avante/providers/bedrock.lua \
 		lua/avante/providers/claude.lua \
 		lua/avante/providers/ollama.lua \
+		lua/avante/providers/copilot.lua \
 		lua/avante/providers/openai.lua \
 		lua/avante/html2md.lua \
 		lua/avante/path.lua \

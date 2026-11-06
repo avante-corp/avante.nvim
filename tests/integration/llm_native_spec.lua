@@ -62,7 +62,7 @@ describe("LLM native integration", function()
     Config.history.storage_path = original_history_storage_path
   end)
 
-  for _, name in ipairs({ "claude", "chatgpt" }) do
+  for _, name in ipairs({ "claude", "chatgpt", "copilot" }) do
     it("completes " .. name .. " logout through the native bridge without an account", function()
       local request = require("avante_llm")[name .. "_auth"]("logout", test_cwd .. "/" .. name)
       local terminal
@@ -79,29 +79,41 @@ describe("LLM native integration", function()
     end)
   end
 
-  it("requires explicit ChatGPT login before inference", function()
-    local input = RigClient._build_request({
-      _name = "openai",
-      _protocol = "openai",
-      auth_type = "subscription",
-      model = "gpt-6.1-sol",
-      api_key_name = "OPENAI_API_KEY",
-      endpoint = "https://api.openai.com/v1",
-      parse_api_key = function() error("must not read an API key") end,
-    }, { system_prompt = "system", messages = { { role = "user", content = "hello" } } })
-    input.provider.authHome = test_cwd .. "/missing-chatgpt"
-    local request = require("avante_llm").start(input)
-    local terminal
-    local finished = vim.wait(5000, function()
-      for _, event in ipairs(request:poll()) do
-        assert.is_not.equal("auth_status", event.type)
-        if event.type == "error" then terminal = event end
-      end
-      return terminal ~= nil
-    end, 10)
-    request:cancel()
-    assert.is_true(finished, "missing credentials must fail promptly")
-    assert.matches(":Avante chatgpt login", terminal.message, nil, true)
+  for _, name in ipairs({ "chatgpt", "copilot" }) do
+    it("requires explicit " .. name .. " login before inference", function()
+      local protocol = name == "chatgpt" and "openai" or "copilot"
+      local input = RigClient._build_request({
+        _name = protocol,
+        _protocol = protocol,
+        auth_type = "subscription",
+        model = "gpt-6.1-sol",
+        parse_api_key = function() error("must not read an API key") end,
+      }, { system_prompt = "system", messages = { { role = "user", content = "hello" } } })
+      input.provider.authHome = test_cwd .. "/missing-" .. name
+      local request = require("avante_llm").start(input)
+      local terminal
+      local finished = vim.wait(5000, function()
+        for _, event in ipairs(request:poll()) do
+          assert.is_not.equal("auth_status", event.type)
+          if event.type == "error" then terminal = event end
+        end
+        return terminal ~= nil
+      end, 10)
+      request:cancel()
+      assert.is_true(finished, "missing credentials must fail promptly")
+      assert.matches(":Avante " .. name .. " login", terminal.message, nil, true)
+    end)
+  end
+
+  it("requires login for Copilot model listing and validates auth commands", function()
+    local native = require("avante_llm")
+    local ok, err = pcall(native.copilot_models, test_cwd .. "/missing-copilot", 1000)
+    assert.is_false(ok)
+    assert.matches(":Avante copilot login", tostring(err), nil, true)
+    assert.has_error(function() native.copilot_auth("invalid", test_cwd) end)
+    assert.has_error(function() native.copilot_auth("login", " ") end)
+    assert.has_error(function() native.copilot_models(" ", 1000) end)
+    assert.has_error(function() native.copilot_models(test_cwd, 0) end)
   end)
 
   it("lists Rig's ChatGPT models without signing in and validates auth commands", function()
@@ -552,16 +564,22 @@ describe("LLM native integration", function()
       local provider = vim.deepcopy(require("avante.providers")[case.name])
       provider.endpoint = provider.endpoint:gsub("^https?://[^/]+", endpoint:gsub("/v1$", ""))
       provider.parse_api_key = function() return "test-key" end
-      if case.name == "copilot" then
-        provider.get_session_token = function(callback)
-          if callback then callback() end
-          return { token = "test-key", endpoints = { api = provider.endpoint } }
-        end
-      end
       if case.model then provider.model = case.model end
       if case.route ~= nil then provider.use_response_api = case.route end
       if case.effort then provider.extra_request_body.reasoning_effort = case.effort end
-      stream_reply(provider, { { role = "user", content = "hello" } })
+      local build_stub
+      if case.name == "copilot" then
+        local build = RigClient._build_request
+        -- Exercise the Copilot wire against a local server; OAuth itself uses trusted HTTPS hosts.
+        build_stub = stub(RigClient, "_build_request", function(...)
+          local input = build(...)
+          input.provider.auth, input.provider.authHome, input.provider.apiKey = nil, nil, "test-key"
+          return input
+        end)
+      end
+      local ok, err = pcall(stream_reply, provider, { { role = "user", content = "hello" } })
+      if build_stub then build_stub:revert() end
+      assert.is_true(ok, err)
       local raw = get_request()
       assert.same("POST " .. case.path .. " HTTP/1.1", raw:match("^[^\r\n]+"))
       local body = vim.json.decode(raw:match("\r\n\r\n(.*)"))
