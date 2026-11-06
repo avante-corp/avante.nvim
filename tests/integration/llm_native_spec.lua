@@ -270,6 +270,40 @@ describe("LLM native integration", function()
     return History.get_history_messages({ messages = history }), stopped.reason
   end
 
+  it("keeps completed text in history when a later Anthropic block fails", function()
+    local endpoint = fake_openai(sse({
+      {
+        type = "message_start",
+        message = { id = "msg", role = "assistant", content = {}, usage = { input_tokens = 1, output_tokens = 0 } },
+      },
+      { type = "content_block_start", index = 0, content_block = { type = "text", text = "" } },
+      { type = "content_block_delta", index = 0, delta = { type = "text_delta", text = "completed answer" } },
+      { type = "content_block_stop", index = 0 },
+      { type = "content_block_start", index = 1, content_block = { type = "text", text = "" } },
+      { type = "content_block_delta", index = 1, delta = { type = "text_delta", text = "unfinished answer" } },
+      { type = "error", error = { type = "overloaded_error", message = "stream failed" } },
+    }))
+    local history, stopped = {}, nil
+    RigClient.start({ _name = "claude", _protocol = "claude", model = "claude-sonnet-4-5", endpoint = endpoint }, {
+      system_prompt = "Be concise.",
+      messages = { { role = "user", content = "hello" } },
+    }, {
+      on_messages_add = function(items)
+        for _, item in ipairs(items) do
+          history[item.uuid] = item
+        end
+      end,
+      on_stop = function(result) stopped = result end,
+    })
+    assert.is_true(vim.wait(10000, function() return stopped ~= nil end, 10))
+    assert.same("error", stopped.reason)
+    local messages = require("avante.sidebar").get_history_messages_for_api({
+      chat_history = { messages = vim.tbl_values(history) },
+    })
+    assert.same(1, #messages)
+    assert.same("completed answer", messages[1].message.content)
+  end)
+
   local function chat_reply()
     return sse({
       {

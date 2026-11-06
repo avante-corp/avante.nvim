@@ -274,6 +274,17 @@ local function start_request(provider, prompt_opts, handler_opts, on_response_he
   local function notify_stop(result)
     if stop_notified then return end
     stop_notified = true
+    if result.reason == "error" or result.reason == "cancelled" or result.reason == "rate_limit" then
+      for _, part in ipairs(ctx.parts) do
+        if type(part.content) == "string" and part.order ~= nil then
+          local ok, err = pcall(StreamAdapter.add_message, part, "generated", handler_opts)
+          if not ok then
+            result = { reason = "error", error = tostring(err) }
+            break
+          end
+        end
+      end
+    end
     local ok, err = pcall(handler_opts.on_stop, result)
     if not ok then Utils.error("LLM stop callback failed: " .. tostring(err)) end
   end

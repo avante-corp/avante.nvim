@@ -1310,6 +1310,18 @@ async fn run(input: Input, events: Events, mut cancelled: watch::Receiver<bool>)
             }
             StreamEvent::End { part, content } => {
                 parts.insert(part.index(), content.fingerprint());
+                // Keep completed text if a later block fails; the final reply supplies replay metadata and order.
+                if let AssistantContent::Text(text) = content {
+                    push(
+                        &events,
+                        Event::ContentEnd {
+                            index: part.index(),
+                            order: part.index(),
+                            content: Value::String(text.text),
+                            native: None,
+                        },
+                    );
+                }
             }
         }
     }
