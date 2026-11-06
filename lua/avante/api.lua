@@ -298,7 +298,7 @@ function M.select_history(session_id)
       local sidebar = Avante.get()
       if was_open then
         sidebar:stop_acp_client()
-        sidebar:switch_to_history_and_reconnect()
+        sidebar:switch_to_history_and_reconnect(filename)
       end
       vim.schedule(function() sidebar:focus_input() end)
     end)
