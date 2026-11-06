@@ -116,7 +116,8 @@ function M.resume(bufnr, session)
 
   local history = histories_by_session_id(bufnr)[session.sessionId]
   local created = history == nil
-  local previous_filename = HistoryStorage.get_latest_filename(bufnr, false)
+  local previous_filename = sidebar and sidebar.chat_history and sidebar.chat_history.filename
+    or HistoryStorage.get_latest_filename(bufnr, false)
   if not history then
     history = HistoryStorage.new(bufnr)
     history.acp_session_id = session.sessionId
@@ -151,7 +152,7 @@ function M.resume(bufnr, session)
   }
 
   if sidebar:is_open() then
-    sidebar:switch_to_history_and_reconnect()
+    sidebar:switch_to_history_and_reconnect(history.filename)
   else
     vim.api.nvim_buf_call(bufnr, function() Avante.open_sidebar({}) end)
   end
