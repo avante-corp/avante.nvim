@@ -124,6 +124,7 @@ local SIDEBAR_CONTAINERS = {
 ---@field containers { result?: NuiSplit, todos?: NuiSplit, selected_code?: NuiSplit, selected_files?: NuiSplit, input?: NuiSplit }
 ---@field file_selector FileSelector
 ---@field chat_history avante.ChatHistory | nil
+---@field chat_history_dir string | nil history directory chat_history was loaded from
 ---@field current_state avante.GenerateState | nil
 ---@field state_timer table | nil
 ---@field state_spinner_chars string[]
@@ -212,6 +213,7 @@ function Sidebar:new(id)
     acp_client_generation = 0,
     pending_acp_import = nil,
     chat_history = nil,
+    chat_history_dir = nil,
     current_state = nil,
     state_timer = nil,
     state_spinner_chars = Config.windows.spinner.generating,
@@ -1873,7 +1875,7 @@ function Sidebar:initialize()
     if stat == nil or stat.type == "file" then self.file_selector:add_selected_file(filepath) end
   end
 
-  self:reload_chat_history()
+  self:reload_chat_history(Path.history.get_latest_filename(self.code.bufnr, false))
 
   return self
 end
@@ -2273,8 +2275,9 @@ function Sidebar.render_history_content(history)
   return table.concat(pieces, "\n\n" .. RESP_SEPARATOR .. "\n\n") .. "\n\n"
 end
 
-function Sidebar:update_content_with_history()
-  self:reload_chat_history()
+---@param filename? string
+function Sidebar:update_content_with_history(filename)
+  self:reload_chat_history(filename)
   self:update_content("")
 end
 
@@ -2502,7 +2505,7 @@ function Sidebar:new_chat(args, cb)
   local history = Path.history.new(self.code.bufnr)
   -- Only point at the new file; it is written once the chat has something to save
   Path.history.save_latest_filename(self.code.bufnr, history.filename)
-  self:reload_chat_history()
+  self:reload_chat_history(history.filename)
   self.current_state = nil
   self.expanded_message_uuids = {}
   self.tool_message_positions = {}
@@ -2552,13 +2555,14 @@ function Sidebar:resume_pending_acp_import()
   }
 end
 
----Show the latest chat history and reconnect the ACP agent for it
-function Sidebar:switch_to_history_and_reconnect()
+---Show a chat history and reconnect the ACP agent for it
+---@param filename? string chat to show; defaults to the one already shown
+function Sidebar:switch_to_history_and_reconnect(filename)
   self.current_state = nil
   self.expanded_message_uuids = {}
   self.tool_message_positions = {}
   self.current_tool_use_extmark_id = nil
-  self:update_content_with_history()
+  self:update_content_with_history(filename)
   self:create_todos_container()
   self:initialize_token_count()
   if Config.acp_providers[Config.provider] then
@@ -2631,7 +2635,11 @@ function Sidebar:fail_acp_import(import, err)
   self:discard_acp_import_chat(import)
   if not showing_import then return end
   if import.previous_filename then Path.history.save_latest_filename(self.code.bufnr, import.previous_filename) end
-  if self:is_open() then self:switch_to_history_and_reconnect() end
+  if self:is_open() then
+    self:switch_to_history_and_reconnect(
+      import.previous_filename or Path.history.get_latest_filename(self.code.bufnr, false)
+    )
+  end
 end
 
 ---Delete the chat an import created, as long as nothing was added to it
@@ -2867,10 +2875,18 @@ function Sidebar:show_selected_files_hint()
   )
 end
 
-function Sidebar:reload_chat_history()
+---@param filename? string chat to load; defaults to the one already shown
+function Sidebar:reload_chat_history(filename)
   self.token_count = nil
   if not self.code.bufnr or not api.nvim_buf_is_valid(self.code.bufnr) then return end
-  self.chat_history = Path.history.load(self.code.bufnr)
+  local history_dir = tostring(Path.history.get_history_dir(self.code.bufnr))
+  -- The project's latest chat in metadata.json is shared by every Neovim instance,
+  -- so keep the chat this sidebar shows rather than whichever was saved last
+  if not filename and self.chat_history and self.chat_history_dir == history_dir then
+    filename = self.chat_history.filename
+  end
+  self.chat_history = Path.history.load(self.code.bufnr, filename)
+  self.chat_history_dir = history_dir
   self._history_cache_invalidated = true
 end
 
@@ -3454,7 +3470,7 @@ function Sidebar:get_selected_code_container_height()
 end
 
 function Sidebar:get_todos_container_height()
-  local history = Path.history.load(self.code.bufnr)
+  local history = Path.history.load(self.code.bufnr, self.chat_history and self.chat_history.filename)
   if #history.todos == 0 then return 0 end
   return 3
 end
@@ -3758,7 +3774,7 @@ function Sidebar:create_selected_files_container()
 end
 
 function Sidebar:create_todos_container()
-  local history = Path.history.load(self.code.bufnr)
+  local history = Path.history.load(self.code.bufnr, self.chat_history and self.chat_history.filename)
   if #history.todos == 0 then
     if self.containers.todos and Utils.is_valid_container(self.containers.todos) then
       self.containers.todos:unmount()
