@@ -35,7 +35,7 @@ local M = {}
 ---@field deployment? string Azure deployment identifier
 ---@field baseUrl? string
 ---@field apiKey? string
----@field auth? "bearer" | "subscription"
+---@field auth? "bearer" | "subscription" | "chatgpt"
 ---@field authHome? string
 ---@field route? "chat" | "responses"
 ---@field apiVersion? string
@@ -148,6 +148,7 @@ end
 function M._build_request(provider, prompt_opts, session_ctx)
   local protocol = provider._protocol or provider._name
   local provider_conf, additional_params = Providers.parse_config(provider)
+  local chatgpt = protocol == "openai" and provider_conf.auth_type == "subscription"
   local name = provider._name or protocol
   local credential, session_endpoint = provider_credential(provider, protocol)
   local route = nil
@@ -155,8 +156,10 @@ function M._build_request(provider, prompt_opts, session_ctx)
     route = session_ctx and session_ctx.resolved_api_route or nil
     if route == nil then route = Providers.resolve_api_route(provider_conf, prompt_opts, protocol) end
   end
+  if chatgpt then route = "responses" end
   if
-    route == "responses"
+    not chatgpt
+    and route == "responses"
     and provider_conf.support_previous_response_id == true
     and session_ctx
     and session_ctx.previous_response_id
@@ -187,6 +190,9 @@ function M._build_request(provider, prompt_opts, session_ctx)
   if protocol == "azure" and provider_conf.entra then auth = "bearer" end
   if protocol == "claude" and provider_conf.auth_type == "subscription" then
     auth, auth_home = "subscription", M.claude_home()
+  end
+  if chatgpt then
+    auth, auth_home = "chatgpt", M.chatgpt_home()
   end
 
   local tools = {}
@@ -241,29 +247,31 @@ end
 
 function M.claude_home() return vim.fn.stdpath("data") .. "/avante/claude-cloak" end
 
-function M.claude_auth(action)
-  if M._claude_auth then return Utils.warn("Claude authentication is already running") end
+local function authenticate(name, action, home)
+  local label = name == "claude" and "Claude" or "ChatGPT"
+  local state = "_" .. name .. "_auth"
+  if M[state] then return Utils.warn(label .. " authentication is already running") end
   local native, err = load_native()
   if not native then return Utils.error(tostring(err)) end
-  local ok, request = pcall(native.claude_auth, action, M.claude_home())
+  local ok, request = pcall(native[name .. "_auth"], action, home)
   if not ok then return Utils.error(tostring(request)) end
   local timer = uv.new_timer()
   if not timer then
     request:cancel()
-    return Utils.error("Failed to create Claude authentication timer")
+    return Utils.error("Failed to create " .. label .. " authentication timer")
   end
   local autocmd
   local terminal = false
   local function cleanup()
     if terminal then return end
     terminal = true
-    M._claude_auth = nil
+    M[state] = nil
     timer:stop()
     if not timer:is_closing() then timer:close() end
     if autocmd then pcall(api.nvim_del_autocmd, autocmd) end
     pcall(request.cancel, request)
   end
-  M._claude_auth = { cancel = cleanup }
+  M[state] = { cancel = cleanup }
   autocmd = api.nvim_create_autocmd("User", { pattern = "AvanteLLMEscape", once = true, callback = cleanup })
   timer:start(
     0,
@@ -288,7 +296,27 @@ function M.claude_auth(action)
       end
     end)
   )
-  return M._claude_auth
+  return M[state]
+end
+
+function M.claude_auth(action) return authenticate("claude", action, M.claude_home()) end
+
+function M.chatgpt_home() return vim.fn.stdpath("data") .. "/avante/chatgpt" end
+
+function M.chatgpt_auth(action) return authenticate("chatgpt", action, M.chatgpt_home()) end
+
+function M.chatgpt_models()
+  local native, err = load_native()
+  if not native then
+    Utils.error(tostring(err))
+    return {}
+  end
+  local ok, models = pcall(native.chatgpt_models)
+  if not ok then
+    Utils.error(tostring(models))
+    return {}
+  end
+  return models
 end
 
 ---@param provider AvanteProviderFunctor
@@ -316,7 +344,8 @@ local function start_request(provider, prompt_opts, handler_opts, on_response_he
 
   local ctx = { turn_id = request_config.prompt.turnId, parts = {}, part_map = {} }
   local provider_conf = Providers.parse_config(provider)
-  local supports_previous_response_id = request_config.provider.route == "responses"
+  local supports_previous_response_id = request_config.provider.auth ~= "chatgpt"
+    and request_config.provider.route == "responses"
     and provider_conf.support_previous_response_id == true
   local timer = uv.new_timer()
   if not timer then

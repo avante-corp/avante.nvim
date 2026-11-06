@@ -94,6 +94,29 @@ describe("providers", function()
     assert.is_true(vim.g.avante_login)
   end)
 
+  it("sets up ChatGPT subscriptions without prompting for an API key", function()
+    Config.override({
+      providers = {
+        test_openai = {
+          api_key_name = "OPENAI_API_KEY",
+          auth_type = "subscription",
+          parse_api_key = function() error("subscription must not read API keys") end,
+        },
+      },
+    })
+    local Providers = require("avante.providers")
+    Providers.setup()
+    assert.is_false(Providers.env.require_api_key(Providers.test_openai))
+    assert.is_true(Providers.test_openai.is_env_set())
+  end)
+
+  it("does not inherit ChatGPT subscription authentication into API providers", function()
+    Config.override({ providers = { openai = { auth_type = "subscription" } } })
+    local Providers = require("avante.providers")
+    assert.same("api_key", Providers.deepseek.auth_type)
+    assert.is_true(Providers.env.require_api_key(Providers.deepseek))
+  end)
+
   it("inherits and overrides OpenAI-compatible dialects", function()
     local Providers = require("avante.providers")
 

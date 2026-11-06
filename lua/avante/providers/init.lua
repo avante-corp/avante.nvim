@@ -168,7 +168,9 @@ E.REQUEST_LOGIN_PATTERN = "AvanteRequestLogin"
 
 ---@param provider AvanteDefaultBaseProvider
 function E.require_api_key(provider)
-  if (provider._protocol or provider._name) == "claude" and provider.auth_type == "subscription" then return false end
+  local protocol = provider._protocol or provider._name
+  if protocol == "claude" and provider.auth_type == "subscription" then return false end
+  if protocol == "openai" and provider.auth_type == "subscription" then return false end
   return provider.api_key_name ~= nil and provider.api_key_name ~= ""
 end
 
@@ -186,7 +188,12 @@ M = setmetatable(M, {
       local base_provider_config = M.get_config(provider_config.__inherited_from)
       local ok, module = pcall(require, "avante.providers." .. provider_config.__inherited_from)
       if not ok then error("Failed to load provider: " .. provider_config.__inherited_from, 2) end
+      local auth_type = provider_config.auth_type
       provider_config = Utils.deep_extend_with_metatable("force", module, base_provider_config, provider_config)
+      -- OpenAI-compatible providers must opt in to ChatGPT subscriptions independently.
+      if provider_config.__inherited_from == "openai" and base_provider_config.auth_type == "subscription" then
+        provider_config.auth_type = auth_type
+      end
     else
       local ok, module = pcall(require, "avante.providers." .. k)
       if ok then
@@ -208,7 +215,7 @@ M = setmetatable(M, {
     local auth_type = provider_config.auth_type or "api_key"
     if
       (auth_type ~= "api_key" and auth_type ~= "subscription")
-      or (auth_type == "subscription" and protocol ~= "claude")
+      or (auth_type == "subscription" and protocol ~= "claude" and protocol ~= "openai")
     then
       error(string.format('Provider "%s" does not support auth_type "%s"', k, tostring(auth_type)), 2)
     end

@@ -62,19 +62,57 @@ describe("LLM native integration", function()
     Config.history.storage_path = original_history_storage_path
   end)
 
-  it("completes subscription logout through the native bridge without an account", function()
-    local request = require("avante_llm").claude_auth("logout", test_cwd .. "/cloak")
+  for _, name in ipairs({ "claude", "chatgpt" }) do
+    it("completes " .. name .. " logout through the native bridge without an account", function()
+      local request = require("avante_llm")[name .. "_auth"]("logout", test_cwd .. "/" .. name)
+      local terminal
+      local finished = vim.wait(5000, function()
+        for _, event in ipairs(request:poll()) do
+          if event.type == "error" or event.complete then terminal = event end
+        end
+        return terminal ~= nil
+      end, 10)
+      request:cancel()
+      assert.is_true(finished, "subscription logout timed out")
+      assert.same("auth_status", terminal.type, terminal.message)
+      assert.is_true(terminal.complete)
+    end)
+  end
+
+  it("requires explicit ChatGPT login before inference", function()
+    local input = RigClient._build_request({
+      _name = "openai",
+      _protocol = "openai",
+      auth_type = "subscription",
+      model = "gpt-6.1-sol",
+      api_key_name = "OPENAI_API_KEY",
+      endpoint = "https://api.openai.com/v1",
+      parse_api_key = function() error("must not read an API key") end,
+    }, { system_prompt = "system", messages = { { role = "user", content = "hello" } } })
+    input.provider.authHome = test_cwd .. "/missing-chatgpt"
+    local request = require("avante_llm").start(input)
     local terminal
     local finished = vim.wait(5000, function()
       for _, event in ipairs(request:poll()) do
-        if event.type == "error" or event.complete then terminal = event end
+        assert.is_not.equal("auth_status", event.type)
+        if event.type == "error" then terminal = event end
       end
       return terminal ~= nil
     end, 10)
     request:cancel()
-    assert.is_true(finished, "subscription logout timed out")
-    assert.same("auth_status", terminal.type, terminal.message)
-    assert.is_true(terminal.complete)
+    assert.is_true(finished, "missing credentials must fail promptly")
+    assert.matches(":Avante chatgpt login", terminal.message, nil, true)
+  end)
+
+  it("lists Rig's ChatGPT models without signing in and validates auth commands", function()
+    local native = require("avante_llm")
+    local models = native.chatgpt_models()
+    assert.is_true(#models > 0)
+    assert.is_string(models[1].id)
+    assert.is_string(models[1].display_name)
+    assert.same("chatgpt/" .. models[1].id, models[1].name)
+    assert.has_error(function() native.chatgpt_auth("invalid", test_cwd) end)
+    assert.has_error(function() native.chatgpt_auth("login", " ") end)
   end)
 
   local function fake_openai(response_bodies, response_options)

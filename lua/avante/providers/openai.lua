@@ -1,4 +1,20 @@
 ---@mod avante-providers-openai OpenAI provider
+---
+---@brief [[
+---Set `providers.openai.auth_type = "subscription"` to use Rig's built-in ChatGPT
+---subscription OAuth, then run `:Avante chatgpt login`. Omit `auth_type` or set
+---it to `"api_key"` for API-key authentication. Rig uses a browser in a graphical
+---session or a device code over SSH. `:Avante chatgpt logout` revokes and removes
+---saved credentials; the normal cancel action stops a pending login.
+---
+---Credentials remain in `stdpath("data")/avante/chatgpt/` and are refreshed by Rig.
+---Requests use the fixed ChatGPT Codex HTTPS endpoint and full conversation
+---history. Custom endpoints, headers, API keys, provider-level proxies, insecure
+---TLS and stored-response continuation are unsupported. Set `auth_type`
+---explicitly on inherited subscription providers. The model picker lists Rig's
+---bundled catalog, which does not guarantee model access for your account.
+---@brief ]]
+
 local Config = require("avante.config")
 local Providers = require("avante.providers")
 local Utils = require("avante.utils")
@@ -11,12 +27,13 @@ M.api_key_name = "OPENAI_API_KEY"
 ---@param timeout? integer Timeout in milliseconds
 ---@return AvanteProviderModelList
 function M:list_models(timeout)
-  Utils.info("Asking remote for available models")
   if self == nil or self == M then
     local ok, provider = pcall(function() return Providers[Config.provider] end)
     if not ok or provider.list_models ~= M.list_models then provider = Providers.openai end
     self = provider
   end
+  if self.auth_type == "subscription" then return require("avante.libs.rig_client").chatgpt_models() end
+  Utils.info("Asking remote for available models")
   if self._model_list_cache then return self._model_list_cache end
 
   local provider_conf = Providers.parse_config(self)

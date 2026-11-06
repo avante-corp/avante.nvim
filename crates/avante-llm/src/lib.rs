@@ -1,3 +1,4 @@
+mod chatgpt;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod claude_cloak;
 mod rig_compat;
@@ -87,6 +88,7 @@ enum ProtocolInput {
 enum AuthInput {
     Bearer,
     Subscription,
+    Chatgpt,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -187,6 +189,41 @@ impl Input {
                 return Err("Claude Pro/Max uses Cloak's HTTPS endpoint and credentials; custom endpoint, API key, headers, proxy and insecure TLS settings are unsupported".to_owned());
             }
         }
+        if matches!(self.provider.auth, Some(AuthInput::Chatgpt)) {
+            if !matches!(self.provider.protocol, ProtocolInput::Openai)
+                || !matches!(self.provider.route, Some(RouteInput::Responses))
+                || self
+                    .provider
+                    .dialect
+                    .as_deref()
+                    .is_some_and(|name| name != "openai")
+            {
+                return Err(
+                    "ChatGPT authentication requires the OpenAI Responses protocol".to_owned(),
+                );
+            }
+            if self
+                .provider
+                .auth_home
+                .as_deref()
+                .is_none_or(|home| home.trim().is_empty())
+            {
+                return Err("ChatGPT credential directory is missing".to_owned());
+            }
+            if self.provider.base_url.as_deref().is_some_and(|url| {
+                !matches!(
+                    url.trim_end_matches('/'),
+                    "https://api.openai.com/v1" | "https://chatgpt.com/backend-api/codex"
+                )
+            }) || self.provider.api_key.is_some()
+                || !self.provider.headers.is_empty()
+                || self.provider.replace_headers
+                || self.provider.proxy.is_some()
+                || self.provider.allow_insecure
+            {
+                return Err("ChatGPT subscriptions use Rig's HTTPS endpoint and OAuth credentials; custom endpoint, API key, headers, proxy and insecure TLS settings are unsupported".to_owned());
+            }
+        }
         if self.provider.name.trim().is_empty() {
             return Err("provider name must not be empty".to_owned());
         }
@@ -266,7 +303,6 @@ impl Input {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum Event {
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
     AuthStatus {
         message: String,
         complete: bool,
@@ -608,8 +644,11 @@ impl HttpMiddleware for CaptureHeaders {
 
 fn request_headers(input: Input) -> Result<BTreeMap<String, String>, String> {
     input.validate()?;
-    if matches!(input.provider.auth, Some(AuthInput::Subscription)) {
-        return Err("Claude Pro/Max request headers are managed by rig-claude-cloak".to_owned());
+    if matches!(
+        input.provider.auth,
+        Some(AuthInput::Subscription | AuthInput::Chatgpt)
+    ) {
+        return Err("Subscription request headers are managed by Rig".to_owned());
     }
     if matches!(
         input.provider.protocol,
@@ -759,6 +798,9 @@ async fn build_model(
     events: &Events,
 ) -> Result<DynModel<Completion>, String> {
     let model = provider.model.as_str();
+    if matches!(provider.auth, Some(AuthInput::Chatgpt)) {
+        return chatgpt::connect(provider, events, build_http(provider, events)?).await;
+    }
     if matches!(provider.protocol, ProtocolInput::Bedrock) {
         let settings = provider
             .bedrock
@@ -991,6 +1033,9 @@ fn legacy_origin(provider: &ProviderInput, kind: &str) -> Option<Origin> {
         {
             AZURE.name
         }
+        "reasoning" | "phase" if matches!(provider.auth, Some(AuthInput::Chatgpt)) => {
+            rig::providers::chatgpt::PROVIDER_NAME
+        }
         "reasoning" | "phase"
             if matches!(provider.protocol, ProtocolInput::Openai)
                 && matches!(provider.route, Some(RouteInput::Responses)) =>
@@ -1006,7 +1051,9 @@ fn messages(prompt: &PromptInput, provider: &ProviderInput) -> Result<Vec<Messag
     let mut messages = Vec::with_capacity(prompt.messages.len() + 1);
     messages.push(Message::system(prompt.system_prompt.clone()));
     let mut tool_calls = HashMap::new();
-    let continues_stored_response = matches!(provider.route, Some(RouteInput::Responses))
+    // ChatGPT uses store=false, so tool continuations must replay the full local history.
+    let continues_stored_response = !matches!(provider.auth, Some(AuthInput::Chatgpt))
+        && matches!(provider.route, Some(RouteInput::Responses))
         && prompt
             .additional_params
             .as_ref()
@@ -1559,6 +1606,26 @@ fn avante_llm(lua: &Lua) -> LuaResult<LuaTable> {
             Err::<NativeRequest, _>(LuaError::external("Claude Pro/Max requires Linux or macOS"))
         })?,
     )?;
+    exports.set(
+        "chatgpt_auth",
+        lua.create_function(|_, (action, home): (String, String)| {
+            if !matches!(action.as_str(), "login" | "logout") || home.trim().is_empty() {
+                return Err(LuaError::external(
+                    "expected ChatGPT login or logout and a credential directory",
+                ));
+            }
+            spawn_worker(move |events, cancelled| {
+                chatgpt::authenticate(action, home, events, cancelled)
+            })
+        })?,
+    )?;
+    exports.set("chatgpt_models", lua.create_function(|lua, ()| {
+        let models: Vec<_> = rig::catalog::Catalog::builtin().iter()
+            .filter(|model| model.provider.vendor() == "chatgpt" && !model.deprecated)
+            .map(|model| serde_json::json!({ "id": model.id, "name": format!("chatgpt/{}", model.id), "display_name": model.display_name, "version": "" }))
+            .collect();
+        lua.to_value(&models)
+    })?)?;
     Ok(exports)
 }
 
