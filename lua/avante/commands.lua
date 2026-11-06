@@ -17,6 +17,10 @@
 ---         Sign in to ChatGPT with Rig (browser or device code over SSH).
 --- :Avante chatgpt logout
 ---         Revoke and remove Avante's stored ChatGPT credentials.
+--- :Avante copilot login
+---         Sign in to GitHub Copilot using Rig's device-code flow.
+--- :Avante copilot logout
+---         Remove Avante's local Copilot credentials (does not revoke GitHub access).
 --- :Avante rag start
 ---         Start the configured RAG service and index the current project.
 --- :Avante rag stop
@@ -217,6 +221,14 @@ function M.setup()
     chatgpt_actions
       :add_parser({ name = action, help = action .. " ChatGPT" })
       :set_execute(function() require("avante.libs.rig_client").chatgpt_auth(action) end)
+  end
+
+  local copilot = subparsers:add_parser({ name = "copilot", help = "Manage Copilot subscription authentication" })
+  local copilot_actions = copilot:add_subparsers({ destination = "copilot_command" })
+  for _, action in ipairs({ "login", "logout" }) do
+    copilot_actions
+      :add_parser({ name = action, help = action .. " Copilot" })
+      :set_execute(function() require("avante.libs.rig_client").copilot_auth(action) end)
   end
 
   local rag = subparsers:add_parser({ name = "rag", help = "Manage and query the RAG service" })

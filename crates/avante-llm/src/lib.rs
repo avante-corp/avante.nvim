@@ -1,6 +1,7 @@
 mod chatgpt;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod claude_cloak;
+mod copilot;
 mod rig_compat;
 
 use rig_compat::{StreamingVertex, build_http_model, configure_openai};
@@ -89,6 +90,7 @@ enum AuthInput {
     Bearer,
     Subscription,
     Chatgpt,
+    Copilot,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -165,6 +167,9 @@ struct ToolInput {
 
 impl Input {
     fn validate(&self) -> Result<(), String> {
+        if matches!(self.provider.auth, Some(AuthInput::Copilot)) {
+            copilot::validate(&self.provider)?;
+        }
         if matches!(self.provider.auth, Some(AuthInput::Subscription)) {
             if !matches!(self.provider.protocol, ProtocolInput::Claude) {
                 return Err("subscription authentication is only supported for Claude".to_owned());
@@ -646,7 +651,7 @@ fn request_headers(input: Input) -> Result<BTreeMap<String, String>, String> {
     input.validate()?;
     if matches!(
         input.provider.auth,
-        Some(AuthInput::Subscription | AuthInput::Chatgpt)
+        Some(AuthInput::Subscription | AuthInput::Chatgpt | AuthInput::Copilot)
     ) {
         return Err("Subscription request headers are managed by Rig".to_owned());
     }
@@ -798,6 +803,9 @@ async fn build_model(
     events: &Events,
 ) -> Result<DynModel<Completion>, String> {
     let model = provider.model.as_str();
+    if matches!(provider.auth, Some(AuthInput::Copilot)) {
+        return copilot::connect(provider, events, build_http(provider, events)?).await;
+    }
     if matches!(provider.auth, Some(AuthInput::Chatgpt)) {
         return chatgpt::connect(provider, events, build_http(provider, events)?).await;
     }
@@ -1617,6 +1625,38 @@ fn avante_llm(lua: &Lua) -> LuaResult<LuaTable> {
             spawn_worker(move |events, cancelled| {
                 chatgpt::authenticate(action, home, events, cancelled)
             })
+        })?,
+    )?;
+    exports.set(
+        "copilot_auth",
+        lua.create_function(|_, (action, home): (String, String)| {
+            if !matches!(action.as_str(), "login" | "logout") || home.trim().is_empty() {
+                return Err(LuaError::external(
+                    "expected Copilot login or logout and a credential directory",
+                ));
+            }
+            spawn_worker(move |events, cancelled| {
+                copilot::authenticate(action, home, events, cancelled)
+            })
+        })?,
+    )?;
+    exports.set(
+        "copilot_models",
+        lua.create_function(|lua, (home, timeout): (String, Option<u64>)| {
+            let timeout = timeout.unwrap_or(10_000);
+            if home.trim().is_empty() || timeout == 0 {
+                return Err(LuaError::external(
+                    "expected a Copilot credential directory and positive timeout",
+                ));
+            }
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(LuaError::external)?;
+            let models = runtime
+                .block_on(copilot::list_models(&home, timeout))
+                .map_err(LuaError::external)?;
+            lua.to_value(&models)
         })?,
     )?;
     exports.set("chatgpt_models", lua.create_function(|lua, ()| {

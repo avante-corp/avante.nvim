@@ -110,6 +110,22 @@ describe("providers", function()
     assert.is_true(Providers.test_openai.is_env_set())
   end)
 
+  it("sets up Copilot without external plugins or API keys", function()
+    Config.override({
+      provider = "copilot",
+      providers = {
+        copilot = {
+          api_key_name = "IGNORED_API_KEY",
+          parse_api_key = function() error("Copilot authentication belongs in Rust") end,
+        },
+      },
+    })
+    local Providers = require("avante.providers")
+    Providers.setup()
+    assert.is_false(Providers.env.require_api_key(Providers.copilot))
+    assert.is_true(Providers.copilot.is_env_set())
+  end)
+
   it("does not inherit ChatGPT subscription authentication into API providers", function()
     Config.override({ providers = { openai = { auth_type = "subscription" } } })
     local Providers = require("avante.providers")

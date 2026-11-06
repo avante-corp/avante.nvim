@@ -161,7 +161,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field _shellenv? string
 ---@field disable_tools? boolean disable if prompt consumes too many tokens
 ---@field entra? boolean
----@field auth_type? "api_key" | "subscription" Defaults to api_key
+---@field auth_type? "api_key" | "subscription" Defaults to api_key; Copilot defaults to subscription and supports only subscription
 ---@field hide_in_model_selector? boolean Dont show provider in |:AvanteSwitchProvider|
 ---@field context_window? integer Context window used to trigger local compaction
 ---@field use_response_api? boolean | fun(provider: AvanteDefaultBaseProvider, ctx?: any): boolean

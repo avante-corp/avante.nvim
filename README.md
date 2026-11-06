@@ -211,7 +211,6 @@ For building binary if you wish to build from source, then `cargo` is required. 
     "ibhagwan/fzf-lua", -- for file_selector provider fzf
     "folke/snacks.nvim", -- for input provider snacks
     "nvim-tree/nvim-web-devicons", -- or echasnovski/mini.icons
-    "zbirenbaum/copilot.lua", -- for providers='copilot'
     {
       -- support for image pasting
       "HakonHarnes/img-clip.nvim",
@@ -284,7 +283,6 @@ vim.pack.add({
   'https://github.com/hrsh7th/nvim-cmp',
   'https://github.com/nvim-tree/nvim-web-devicons', -- or 'echasnovski/mini.icons'
   'https://github.com/HakonHarnes/img-clip.nvim',
-  'https://github.com/zbirenbaum/copilot.lua',
   'https://github.com/folke/snacks.nvim', -- for modern input UI
 })
 
@@ -325,7 +323,6 @@ Plug 'MeanderingProgrammer/render-markdown.nvim'
 Plug 'hrsh7th/nvim-cmp'
 Plug 'nvim-tree/nvim-web-devicons' "or Plug 'echasnovski/mini.icons'
 Plug 'HakonHarnes/img-clip.nvim'
-Plug 'zbirenbaum/copilot.lua'
 Plug 'folke/snacks.nvim' " for modern input UI
 
 " Yay, pass source=true if you want to build from source
@@ -362,14 +359,12 @@ add({
 })
 --- optional
 add({ source = 'hrsh7th/nvim-cmp' })
-add({ source = 'zbirenbaum/copilot.lua' })
 add({ source = 'HakonHarnes/img-clip.nvim' })
 add({ source = 'MeanderingProgrammer/render-markdown.nvim' })
 
 later(function() require('render-markdown').setup({...}) end)
 later(function()
   require('img-clip').setup({...}) -- config img-clip
-  require("copilot").setup({...}) -- setup copilot to your liking
   require("avante").setup({...}) -- config for avante.nvim
 end)
 ```
@@ -419,9 +414,6 @@ require('cmp').setup ({
   -- use recommended settings from above
 })
 require('img-clip').setup ({
-  -- use recommended settings from above
-})
-require('copilot').setup ({
   -- use recommended settings from above
 })
 require('render-markdown').setup ({
@@ -1213,6 +1205,16 @@ Rig stores credentials privately under `stdpath("data")/avante/chatgpt/` and ref
 
 Subscription requests use Rig's fixed HTTPS ChatGPT endpoint, stream Responses with `store = false`, and replay the full context instead of using `previous_response_id`. Custom endpoints, API keys, headers, provider-level proxies, and insecure TLS are rejected. The model picker uses Rig's bundled ChatGPT catalog; listing a model does not establish that your plan can access it. Omit `auth_type` (or set it to `"api_key"`) to use OpenAI API-key authentication.
 
+### GitHub Copilot subscriptions
+
+Copilot authentication uses Rig 0.46 directly with `auth_type = "subscription"` by default. Select `provider = "copilot"`, rebuild the native libraries with `make`, then run `:Avante copilot login`. Rig displays a GitHub device-code URL and code, stores credentials privately under `stdpath("data")/avante/copilot/`, and exchanges or refreshes the Copilot session token before inference and model listing. The normal Avante cancel action stops a pending login or request.
+
+Avante does not require copilot.lua or copilot.vim and does not import their credentials or the previous `avante/github-copilot.json` cache. Existing users must sign in once with the new command. Inference and model listing never start an interactive login; missing or invalid credentials report the login command. Model listing still uses your account's live catalog and preserves model policy and token limits.
+
+`:Avante copilot logout` removes Avante's local credentials. It does not revoke GitHub authorization; revoke the app separately in GitHub account settings when needed. Credentials owned by other plugins are untouched.
+
+Rig's Copilot OAuth flow uses github.com and the HTTPS Copilot service endpoint returned by GitHub. Custom endpoints (including GHE authentication hosts), API keys, headers, provider-level proxies, and insecure TLS settings are rejected. Other Copilot client plugins may still be installed independently for completion features.
+
 ## ACP Support
 
 Avante.nvim now supports the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/overview/introduction), enabling seamless integration with AI agents that follow this standardized communication protocol. ACP provides a unified way for AI agents to interact with development environments, offering enhanced capabilities for code editing, file operations, and tool execution.
@@ -1614,7 +1616,6 @@ We would like to express our heartfelt gratitude to the contributors of the foll
 | [git-conflict.nvim](https://github.com/akinsho/git-conflict.nvim)     | No License         | Diff comparison functionality | [lua/avante/diff.lua](https://github.com/yetone/avante.nvim/blob/main/lua/avante/diff.lua)                                             |
 | [ChatGPT.nvim](https://github.com/jackMort/ChatGPT.nvim)              | Apache 2.0 License | Calculation of tokens count   | [lua/avante/utils/tokens.lua](https://github.com/yetone/avante.nvim/blob/main/lua/avante/utils/tokens.lua)                             |
 | [img-clip.nvim](https://github.com/HakonHarnes/img-clip.nvim)         | MIT License        | Clipboard image support       | [lua/avante/clipboard.lua](https://github.com/yetone/avante.nvim/blob/main/lua/avante/clipboard.lua)                                   |
-| [copilot.lua](https://github.com/zbirenbaum/copilot.lua)              | MIT License        | Copilot support               | [lua/avante/providers/copilot.lua](https://github.com/yetone/avante.nvim/blob/main/lua/avante/providers/copilot.lua)                   |
 | [codecompanion.nvim](https://github.com/olimorris/codecompanion.nvim) | MIT License        | Secrets logic support         | [lua/avante/providers/init.lua](https://github.com/yetone/avante.nvim/blob/main/lua/avante/providers/init.lua)                         |
 | [aider](https://github.com/paul-gauthier/aider)                       | Apache 2.0 License | Planning mode user prompt     | [lua/avante/templates/planning.avanterules](https://github.com/yetone/avante.nvim/blob/main/lua/avante/templates/planning.avanterules) |
 

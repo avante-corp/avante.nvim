@@ -169,6 +169,7 @@ E.REQUEST_LOGIN_PATTERN = "AvanteRequestLogin"
 ---@param provider AvanteDefaultBaseProvider
 function E.require_api_key(provider)
   local protocol = provider._protocol or provider._name
+  if protocol == "copilot" then return false end
   if protocol == "claude" and provider.auth_type == "subscription" then return false end
   if protocol == "openai" and provider.auth_type == "subscription" then return false end
   return provider.api_key_name ~= nil and provider.api_key_name ~= ""
@@ -212,10 +213,11 @@ M = setmetatable(M, {
     if not supported_protocols[protocol] then
       error(string.format('Provider "%s" uses unsupported protocol "%s"', k, protocol), 2)
     end
-    local auth_type = provider_config.auth_type or "api_key"
+    local auth_type = provider_config.auth_type or (protocol == "copilot" and "subscription" or "api_key")
     if
       (auth_type ~= "api_key" and auth_type ~= "subscription")
-      or (auth_type == "subscription" and protocol ~= "claude" and protocol ~= "openai")
+      or (auth_type == "subscription" and protocol ~= "claude" and protocol ~= "openai" and protocol ~= "copilot")
+      or (auth_type == "api_key" and protocol == "copilot")
     then
       error(string.format('Provider "%s" does not support auth_type "%s"', k, tostring(auth_type)), 2)
     end

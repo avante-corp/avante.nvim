@@ -48,6 +48,7 @@ Model providers ································
 Bedrock provider ···································· |avante-providers-bedrock|
 Anthropic provider ··································· |avante-providers-claude|
 Ollama provider ······································ |avante-providers-ollama|
+GitHub Copilot subscriptions ····························· |avante-copilot-auth|
 OpenAI provider ······································ |avante-providers-openai|
 Converts html to markdown ····································· |avante-html2md|
 Prompt generation and history ···································· |avante-path|
@@ -754,6 +755,10 @@ Commands (:AvanteAsk,...)                                      *avante-commands*
          Sign in to ChatGPT with Rig (browser or device code over SSH).
  :Avante chatgpt logout
          Revoke and remove Avante's stored ChatGPT credentials.
+ :Avante copilot login
+         Sign in to GitHub Copilot using Rig's device-code flow.
+ :Avante copilot logout
+         Remove Avante's local Copilot credentials (does not revoke GitHub access).
  :Avante rag start
          Start the configured RAG service and index the current project.
  :Avante rag stop
@@ -3380,6 +3385,34 @@ M:list_models({timeout?})                  *avante-providers-ollama:list_models*
 
 
 M.check_endpoint_alive()          *avante-providers-ollama.check_endpoint_alive*
+
+
+==============================================================================
+GitHub Copilot subscriptions                               *avante-copilot-auth*
+
+Copilot defaults to `auth_type = "subscription"`; API-key authentication is
+unsupported. Set `provider = "copilot"`, rebuild the native libraries, and run
+`:Avante copilot login`. Rig displays a GitHub device-code URL and code, saves
+credentials privately in `stdpath("data")/avante/copilot/`, and resolves or
+refreshes the session before inference and account model listing. The normal
+cancel action stops pending authentication or requests.
+
+No copilot.lua or copilot.vim plugin is required. Existing plugin credentials
+and the old `avante/github-copilot.json` cache are not imported: sign in once
+with the new command. Missing credentials require an explicit login.
+
+`:Avante copilot logout` removes local credentials only. Revoke authorization
+separately in GitHub account settings when needed. Other clients' credentials
+remain untouched. Custom endpoints (including GHE authentication hosts), API
+keys, headers, provider-level proxies and insecure TLS are unsupported.
+
+M:list_models({timeout?})                      *avante-copilot-auth:list_models*
+
+    Parameters: ~
+        {timeout?}  (integer)
+
+    Returns: ~
+        (AvanteProviderModelList)
 
 
 ==============================================================================
