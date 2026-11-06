@@ -1,4 +1,4 @@
-//! Provider configuration and compatibility with Rig 0.45.
+//! Provider configuration and compatibility with Rig 0.46.
 //! Keep protocol workarounds here so upstream support can replace them without changing the Lua bridge.
 
 use super::{AuthInput, ProtocolInput, ProviderInput, RouteInput};
