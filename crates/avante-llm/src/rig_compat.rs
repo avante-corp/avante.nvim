@@ -395,6 +395,10 @@ pub(super) fn apply_generation_params(
             };
             request.options.reasoning = Some(reasoning);
         }
+        if matches!(provider.auth, Some(AuthInput::Chatgpt)) {
+            params.shift_remove("previous_response_id");
+            params.shift_remove("conversation");
+        }
         if !params.is_empty() {
             request.additional_params = Some(Value::Object(params));
         }
@@ -402,6 +406,7 @@ pub(super) fn apply_generation_params(
         return Err("additionalParams must be a JSON object".to_owned());
     }
     let vendor = match provider.protocol {
+        ProtocolInput::Openai if matches!(provider.auth, Some(AuthInput::Chatgpt)) => "chatgpt",
         ProtocolInput::Openai => provider.dialect.as_deref().unwrap_or(OPENAI.name),
         ProtocolInput::Azure | ProtocolInput::Copilot => OPENAI.name,
         ProtocolInput::Claude => rig::providers::anthropic::PROVIDER_NAME,

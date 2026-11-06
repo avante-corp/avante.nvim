@@ -1191,6 +1191,28 @@ Rebuild the native libraries with `make`, then run `:Avante claude login`. Cloak
 
 Subscription requests use Cloak's Anthropic HTTPS endpoint and transport. Custom endpoints, headers, API keys, provider-level proxies, and insecure TLS settings are rejected for this mode. Cloak handles token refresh, request shaping, and tool-name translation. Omit `auth_type` (or set it to `"api_key"`) to use the existing Anthropic API-key path.
 
+### ChatGPT subscriptions
+
+Rig 0.46's built-in ChatGPT provider supports subscription OAuth while Avante continues to manage context and execute tools. It connects directly to the ChatGPT Codex backend; the Codex CLI is not required.
+
+```lua
+require("avante").setup({
+  provider = "openai",
+  providers = {
+    openai = {
+      auth_type = "subscription",
+      model = "gpt-6.1-sol",
+    },
+  },
+})
+```
+
+Rebuild the native libraries with `make`, then run `:Avante chatgpt login`. Rig opens a browser when a graphical session is available and otherwise shows a device-code URL and code, including over SSH. The normal Avante cancel action stops a pending login. `:Avante chatgpt logout` revokes the saved credentials and removes the local token file; any unconfirmed server revocation is reported.
+
+Rig stores credentials privately under `stdpath("data")/avante/chatgpt/` and refreshes them before inference as needed. Existing Codex or other clients' credentials are not imported. Missing credentials prompt you to run the login command; inference never starts an interactive sign-in. Authentication is not inherited from `openai` by other providers: set `auth_type` explicitly on each subscription provider.
+
+Subscription requests use Rig's fixed HTTPS ChatGPT endpoint, stream Responses with `store = false`, and replay the full context instead of using `previous_response_id`. Custom endpoints, API keys, headers, provider-level proxies, and insecure TLS are rejected. The model picker uses Rig's bundled ChatGPT catalog; listing a model does not establish that your plan can access it. Omit `auth_type` (or set it to `"api_key"`) to use OpenAI API-key authentication.
+
 ## ACP Support
 
 Avante.nvim now supports the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/overview/introduction), enabling seamless integration with AI agents that follow this standardized communication protocol. ACP provides a unified way for AI agents to interact with development environments, offering enhanced capabilities for code editing, file operations, and tool execution.

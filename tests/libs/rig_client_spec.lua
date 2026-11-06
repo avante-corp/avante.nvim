@@ -18,53 +18,81 @@ describe("Rig client adapter", function()
     assert.is_nil(request.provider.apiKey)
   end)
 
-  describe("Claude authentication", function()
-    it("cancels a pending login through AvanteStop", function()
-      local loaded_native = package.loaded.avante_llm
-      local cancelled = false
-      package.loaded.avante_llm = {
-        claude_auth = function()
-          return {
-            poll = function() return {} end,
-            cancel = function() cancelled = true end,
-          }
-        end,
-      }
-      RigClient.claude_auth("login")
-      require("avante.api").stop()
-      package.loaded.avante_llm = loaded_native
-      assert.is_nil(RigClient._claude_auth)
-      assert.is_true(cancelled)
-    end)
+  it("routes ChatGPT subscriptions through Responses without API keys or stored-response continuation", function()
+    local request = RigClient._build_request({
+      _name = "openai",
+      _protocol = "openai",
+      auth_type = "subscription",
+      api_key_name = "OPENAI_API_KEY",
+      model = "gpt-6.1-sol",
+      endpoint = "https://api.openai.com/v1",
+      use_response_api = false,
+      support_previous_response_id = true,
+      parse_api_key = function() error("must not read an API key") end,
+    }, {
+      system_prompt = "system",
+      messages = {
+        { role = "user", content = { { type = "tool_result", tool_use_id = "call_1", content = "result" } } },
+      },
+    }, { previous_response_id = "resp_old", resolved_api_route = "chat" })
 
-    for _, terminal in ipairs({
-      { type = "auth_status", message = "Signed in", complete = true },
-      { type = "error", message = "Authorization denied" },
-      { type = "cancelled" },
-    }) do
-      it("cleans up after " .. terminal.type, function()
+    assert.same("openai", request.provider.protocol)
+    assert.same("chatgpt", request.provider.auth)
+    assert.same("responses", request.provider.route)
+    assert.same(vim.fn.stdpath("data") .. "/avante/chatgpt", request.provider.authHome)
+    assert.is_nil(request.provider.apiKey)
+    assert.is_nil(request.prompt.additionalParams.previous_response_id)
+  end)
+
+  for _, name in ipairs({ "claude", "chatgpt" }) do
+    describe(name .. " authentication", function()
+      it("cancels a pending login through AvanteStop", function()
         local loaded_native = package.loaded.avante_llm
         local cancelled = false
         package.loaded.avante_llm = {
-          claude_auth = function(action, home)
-            assert.same("login", action)
-            assert.same(RigClient.claude_home(), home)
+          [name .. "_auth"] = function()
             return {
-              poll = function() return { terminal } end,
+              poll = function() return {} end,
               cancel = function() cancelled = true end,
             }
           end,
         }
-        local notify = stub(vim, "notify")
-        RigClient.claude_auth("login")
-        local finished = vim.wait(1000, function() return RigClient._claude_auth == nil end, 10)
+        RigClient[name .. "_auth"]("login")
+        require("avante.api").stop()
         package.loaded.avante_llm = loaded_native
-        notify:revert()
-        assert.is_true(finished)
+        assert.is_nil(RigClient["_" .. name .. "_auth"])
         assert.is_true(cancelled)
       end)
-    end
-  end)
+
+      for _, terminal in ipairs({
+        { type = "auth_status", message = "Signed in", complete = true },
+        { type = "error", message = "Authorization denied" },
+        { type = "cancelled" },
+      }) do
+        it("cleans up after " .. terminal.type, function()
+          local loaded_native = package.loaded.avante_llm
+          local cancelled = false
+          package.loaded.avante_llm = {
+            [name .. "_auth"] = function(action, home)
+              assert.same("login", action)
+              assert.same(RigClient[name .. "_home"](), home)
+              return {
+                poll = function() return { terminal } end,
+                cancel = function() cancelled = true end,
+              }
+            end,
+          }
+          local notify = stub(vim, "notify")
+          RigClient[name .. "_auth"]("login")
+          local finished = vim.wait(1000, function() return RigClient["_" .. name .. "_auth"] == nil end, 10)
+          package.loaded.avante_llm = loaded_native
+          notify:revert()
+          assert.is_true(finished)
+          assert.is_true(cancelled)
+        end)
+      end
+    end)
+  end
 
   local function provider(name, inherited, overrides)
     return vim.tbl_extend("force", {

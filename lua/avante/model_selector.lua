@@ -21,7 +21,8 @@ local function create_model_entries(provider_name, provider_cfg, timeout)
   local res = {}
   if provider_cfg.list_models then
     local models
-    local cache_key = provider_cfg.endpoint
+    -- API keys and subscriptions can expose different models at the same endpoint.
+    local cache_key = (provider_cfg.auth_type or "api_key") .. ":" .. (provider_cfg.endpoint or provider_name)
     if type(provider_cfg.list_models) == "function" then
       if M.list_models_invoked[cache_key] then return {} end
       M.list_models_invoked[cache_key] = true
