@@ -305,7 +305,7 @@ local function refresh_history(messages, tools, files, add_diagnostic, tools_to_
         -- If this is the last operation for this file, generate synthetic "view"
         -- invocation to provide the up-to-date file contents.
         if not tool_info.result.is_error then
-          local view_msgs = generate_view_messages(result_use, path, result_use.id == file_info.last_tool_id)
+          local view_msgs = generate_view_messages(result_use, path, result_use.id ~= file_info.last_tool_id)
           Utils.debug("Added", #view_msgs, "'view' tool messages for", path)
           vim.list_extend(pending_messages, view_msgs)
         end
