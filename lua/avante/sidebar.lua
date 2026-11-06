@@ -1941,7 +1941,7 @@ function Sidebar:initialize()
     if stat == nil or stat.type == "file" then self.file_selector:add_selected_file(filepath) end
   end
 
-  self:reload_chat_history()
+  self:reload_chat_history(HistoryStorage.get_latest_filename(self.code.bufnr, false))
 
   return self
 end
@@ -2373,8 +2373,9 @@ function Sidebar.render_history_content(history)
   return table.concat(pieces, "\n\n" .. RESP_SEPARATOR .. "\n\n") .. "\n\n"
 end
 
-function Sidebar:update_content_with_history()
-  self:reload_chat_history()
+---@param filename? string
+function Sidebar:update_content_with_history(filename)
+  self:reload_chat_history(filename)
   self:render_result_header()
   self:update_content("")
 end
@@ -2645,7 +2646,7 @@ function Sidebar:new_chat(args, cb)
   local history = HistoryStorage.new(self.code.bufnr)
   -- Only point at the new file; it is written once the chat has something to save
   HistoryStorage.save_latest_filename(self.code.bufnr, history.filename)
-  self:reload_chat_history()
+  self:reload_chat_history(history.filename)
   self.current_state = nil
   self.expanded_message_uuids = {}
   self.tool_message_positions = {}
@@ -2696,13 +2697,14 @@ function Sidebar:resume_pending_acp_import()
   }
 end
 
----Show the latest chat history and reconnect the ACP agent for it
-function Sidebar:switch_to_history_and_reconnect()
+---Show a chat history and reconnect the ACP agent for it
+---@param filename? string chat to show; defaults to the one already shown
+function Sidebar:switch_to_history_and_reconnect(filename)
   self.current_state = nil
   self.expanded_message_uuids = {}
   self.tool_message_positions = {}
   self.current_tool_use_extmark_id = nil
-  self:update_content_with_history()
+  self:update_content_with_history(filename)
   self:create_todos_container()
   self:initialize_token_count()
   if Api.is_acp_provider() then
@@ -2783,7 +2785,11 @@ function Sidebar:fail_acp_import(import, err)
   self:discard_acp_import_chat(import)
   if not showing_import then return end
   if import.previous_filename then HistoryStorage.save_latest_filename(self.code.bufnr, import.previous_filename) end
-  if self:is_open() then self:switch_to_history_and_reconnect() end
+  if self:is_open() then
+    self:switch_to_history_and_reconnect(
+      import.previous_filename or HistoryStorage.get_latest_filename(self.code.bufnr, false)
+    )
+  end
 end
 
 ---Delete the chat an import created, as long as nothing was added to it
@@ -3043,6 +3049,11 @@ function Sidebar:reload_chat_history(filename, project_root)
   self.token_count = nil
   if not self.code.bufnr or not api.nvim_buf_is_valid(self.code.bufnr) then return end
   project_root = project_root or Utils.root.get({ buf = self.code.bufnr })
+  -- The project's latest chat in metadata.json is shared by every Neovim instance,
+  -- so keep the chat this sidebar shows rather than whichever was saved last
+  if not filename and self.chat_history and self.chat_history_project_root == project_root then
+    filename = self.chat_history.filename
+  end
   -- Keep follow-ups and stream callbacks attached to the same active history.
   if
     not (
