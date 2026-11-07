@@ -338,6 +338,21 @@ function M.start(provider, prompt_opts, handler_opts, on_response_headers, sessi
     handler_opts.on_stop({ reason = "error", error = tostring(request_config) })
     return
   end
+  if handler_opts.on_request then
+    local params = request_config.prompt.additionalParams
+    local recorded, record_error = pcall(handler_opts.on_request, {
+      turn_id = request_config.prompt.turnId,
+      provider = request_config.provider.name,
+      model = request_config.provider.model,
+      reasoning_effort = (type(params.reasoning) == "table" and params.reasoning.effort or nil)
+        or params.reasoning_effort,
+      project_root = session_ctx and session_ctx.project_root,
+    })
+    if not recorded then
+      handler_opts.on_stop({ reason = "error", error = tostring(record_error) })
+      return
+    end
+  end
   local native, native_error = load_native()
   if not native then
     handler_opts.on_stop({ reason = "error", error = native_error })

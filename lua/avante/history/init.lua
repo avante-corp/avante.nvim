@@ -7,6 +7,14 @@ local M = {}
 M.Helpers = Helpers
 M.Message = Message
 
+---@param history avante.ChatHistory
+---@param context avante.TurnContext
+function M.record_turn(history, context)
+  history.turn_contexts = history.turn_contexts or {}
+  context.timestamp = Utils.get_timestamp()
+  table.insert(history.turn_contexts, context)
+end
+
 ---Sorts contiguous assistant messages with the same `turn_id` by ascending `order`.
 ---Each message in a group must have both `turn_id` and `order` values.
 ---Updates and returns the original list.

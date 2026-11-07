@@ -1277,6 +1277,7 @@ function M._stream(opts)
 
   ---@type AvanteHandlerOptions
   local handler_opts = {
+    on_request = opts.on_request,
     on_messages_add = opts.on_messages_add,
     on_state_change = opts.on_state_change,
     update_tokens_usage = opts.update_tokens_usage,
@@ -1583,6 +1584,7 @@ function M._dual_boost_stream(opts, Provider1, Provider2)
         if collector[1] ~= nil and collector[2] ~= nil then finish() end
       end,
     })
+    stream_opts.on_request = nil
     stream_opts.session_ctx = vim.deepcopy(opts.session_ctx or {})
     stream_opts.session_ctx.resolved_api_route = nil
     rawset(stream_opts, "_request_state", { cancelled = false })
@@ -1651,9 +1653,9 @@ function M.stream(opts)
   }
 
   opts.mode = opts.mode or Config.mode
-
+  local dual_boost = Config.dual_boost.enabled and valid_dual_boost_modes[opts.mode] or false
   rawset(opts, "_request_state", nil)
-  if Config.dual_boost.enabled and valid_dual_boost_modes[opts.mode] then
+  if dual_boost then
     M._dual_boost_stream(
       opts,
       Providers[Config.dual_boost.first_provider],
