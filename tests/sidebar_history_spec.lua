@@ -137,6 +137,36 @@ describe("Sidebar request history", function()
     assert.equals(updated, sidebar.chat_history)
   end)
 
+  it("restores the latest turn settings even when reselecting the current session", function()
+    local history = {
+      filename = "restored.json",
+      turn_contexts = {
+        { provider = "openai", model = "old-model" },
+        { provider = "openai", model = "saved-model", reasoning_effort = "high" },
+      },
+    }
+    local restored
+    stubs[#stubs + 1] = stub(Config, "override").invokes(function(opts) restored = opts end)
+    stubs[#stubs + 1] = stub(Path.history, "load").returns(history)
+    local sidebar = setmetatable({ code = { bufnr = bufnr }, update_content = function() end }, { __index = Sidebar })
+    stubs[#stubs + 1] = stub(sidebar, "render_result_header").invokes(
+      function() assert.equals("saved-model", restored.providers.openai.model) end
+    )
+
+    sidebar:reload_chat_history(history.filename, "/project")
+
+    assert.equals("openai", restored.provider)
+    assert.equals("saved-model", restored.providers.openai.model)
+    assert.equals("high", restored.providers.openai.extra_request_body.reasoning_effort)
+
+    sidebar:reload_chat_history(nil, "/project")
+    assert.stub(Config.override).was_called(2)
+
+    sidebar:update_content_with_history()
+    assert.stub(Config.override).was_called(3)
+    assert.stub(sidebar.render_result_header).was_called(1)
+  end)
+
   it("reports Codex-style usage after each turn and preserves latest context usage", function()
     local history = { filename = "usage.json", messages = {} }
     local stream_opts

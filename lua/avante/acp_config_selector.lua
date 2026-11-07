@@ -94,7 +94,7 @@ function M.open(category, prompt_label)
             return
           end
           Utils.info("ACP " .. category .. " updated")
-          if sidebar:is_open() then sidebar:render_result() end
+          if sidebar:is_open() then sidebar:render_result_header() end
         end)
       end)
     end)

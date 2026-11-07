@@ -1197,7 +1197,7 @@ function Sidebar:render_header(winid, bufnr, header_text, hl, reverse_hl, opts)
 end
 
 --- @see render_header
-function Sidebar:render_result()
+function Sidebar:render_result_header()
   if not Utils.is_valid_container(self.containers.result) then return end
   self:render_header(
     self.containers.result.winid,
@@ -1638,7 +1638,7 @@ function Sidebar:on_mount(opts)
     callback = function() self:unbind_sidebar_keys() end,
   })
 
-  self:render_result()
+  self:render_result_header()
   self:render_input(opts.ask)
   self:render_selected_code()
 
@@ -1789,7 +1789,7 @@ function Sidebar:resize()
       end
     end
   end
-  self:render_result()
+  self:render_result_header()
   self:render_input()
   self:render_selected_code()
   vim.defer_fn(function() vim.cmd("AvanteRefresh") end, 200)
@@ -2293,6 +2293,7 @@ end
 
 function Sidebar:update_content_with_history()
   self:reload_chat_history()
+  self:render_result_header()
   self:update_content("")
 end
 
@@ -2934,6 +2935,22 @@ function Sidebar:reload_chat_history(filename, project_root)
     )
   then
     self.chat_history = Path.history.load(self.code.bufnr, filename, project_root)
+    local history = self.chat_history
+    local contexts = history and history.turn_contexts or {}
+    local context = contexts[#contexts]
+    -- New sessions keep the current defaults; saved sessions restore their latest turn settings.
+    if not self.is_generating and context then
+      local params = vim.deepcopy(Providers[context.provider].extra_request_body or {})
+      params.reasoning_effort = context.reasoning_effort
+      -- An existing nested effort takes precedence when building requests.
+      if type(params.reasoning) == "table" then params.reasoning.effort = context.reasoning_effort end
+      Config.override({
+        provider = context.provider,
+        providers = { [context.provider] = { model = context.model, extra_request_body = params } },
+      })
+      -- Rebuild the cached provider from the restored settings on next access.
+      Providers[context.provider] = nil
+    end
   end
   self.chat_history_project_root = project_root
   self._history_cache_invalidated = true
@@ -3410,7 +3427,7 @@ function Sidebar:handle_submit(request)
         return true
       end,
       on_acp_config_change = vim.schedule_wrap(function()
-        if is_current_request() then self:render_result() end
+        if is_current_request() then self:render_result_header() end
       end),
       acp_session_id = chat_history.acp_session_id,
       acp_session_cwd = chat_history.acp_session_cwd,

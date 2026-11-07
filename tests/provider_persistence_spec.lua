@@ -1,5 +1,7 @@
 describe("provider persistence", function()
+  local stub = require("luassert.stub")
   local Config
+  local selector_stub
   local state_dir
   local original_stdpath
   local previous_avante
@@ -22,7 +24,7 @@ describe("provider persistence", function()
   end
 
   local function restart(provider)
-    for _, name in ipairs({ "avante.config", "avante.providers", "avante.api" }) do
+    for _, name in ipairs({ "avante.config", "avante.providers", "avante.api", "avante.model_selector" }) do
       package.loaded[name] = nil
     end
     Config = require("avante.config")
@@ -44,11 +46,13 @@ describe("provider persistence", function()
   end)
 
   after_each(function()
+    if selector_stub then selector_stub:revert() end
+    selector_stub = nil
     vim.fn.stdpath = original_stdpath
     vim.fn.delete(state_dir, "rf")
     vim.g.avante = previous_avante
     package.loaded["avante"] = previous_avante_module
-    for _, name in ipairs({ "avante.config", "avante.providers", "avante.api" }) do
+    for _, name in ipairs({ "avante.config", "avante.providers", "avante.api", "avante.model_selector" }) do
       package.loaded[name] = nil
     end
   end)
@@ -60,12 +64,19 @@ describe("provider persistence", function()
     assert.are.equal("jedha-model", Config.providers.jedha.model)
   end)
 
-  it("keeps switches without --save temporary", function()
+  it("keeps provider and model switches temporary without --save", function()
+    Config.override({ providers = { jedha = { list_models = false, model_names = { "another-model" } } } })
     require("avante.api").switch_provider("jedha")
-    assert.are.equal("jedha", Config.provider)
-    restart("claude")
-    assert.are.equal("claude", Config.provider)
+    selector_stub = stub(require("avante.ui.selector"), "new").invokes(function(_, opts)
+      return { open = function() opts.on_select({ "jedha/another-model" }) end }
+    end)
+    require("avante.model_selector").open()
+
+    assert.equals("jedha", Config.provider)
+    assert.equals("another-model", Config.providers.jedha.model)
     assert.is_nil(vim.uv.fs_stat(vim.fs.joinpath(state_dir, "avante", "config.json")))
+    restart("claude")
+    assert.equals("claude", Config.provider)
   end)
 
   it("does not overwrite a saved choice with a temporary switch", function()
