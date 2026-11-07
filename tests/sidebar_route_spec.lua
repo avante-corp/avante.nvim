@@ -87,4 +87,33 @@ describe("Sidebar API route", function()
     assert.same("responses", request.provider.route)
     assert.same(1, calls)
   end)
+
+  it("reuses the ChatGPT session key across turns and separates chats and projects", function()
+    Config.providers[provider_name].auth_type = "subscription"
+    local sidebar = setmetatable({
+      code = { bufnr = bufnr },
+      chat_history = { filename = "0.json", messages = {} },
+      chat_history_project_root = "/project-a",
+      file_selector = { selected_filepaths = {} },
+    }, { __index = Sidebar })
+    local function cache_key()
+      local opts
+      sidebar:get_generate_prompts_options("hello", function(value) opts = value end)
+      return RigClient._build_request(
+        Providers[provider_name],
+        { system_prompt = "system", messages = {} },
+        opts.session_ctx
+      ).prompt.additionalParams.prompt_cache_key
+    end
+
+    local first = cache_key()
+    assert.is_string(first)
+    sidebar.chat_history = { filename = "0.json", messages = {} }
+    assert.same(first, cache_key())
+    sidebar.chat_history.filename = "1.json"
+    assert.is_not.equal(first, cache_key())
+    sidebar.chat_history.filename = "0.json"
+    sidebar.chat_history_project_root = "/project-b"
+    assert.is_not.equal(first, cache_key())
+  end)
 end)

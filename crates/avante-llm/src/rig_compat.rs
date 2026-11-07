@@ -396,6 +396,11 @@ pub(super) fn apply_generation_params(
             request.options.reasoning = Some(reasoning);
         }
         if matches!(provider.auth, Some(AuthInput::Chatgpt)) {
+            request.options.cache_key = match params.shift_remove("prompt_cache_key") {
+                Some(Value::String(key)) => Some(key),
+                Some(_) => return Err("prompt_cache_key must be a string".to_owned()),
+                None => None,
+            };
             params.shift_remove("previous_response_id");
             params.shift_remove("conversation");
         }
