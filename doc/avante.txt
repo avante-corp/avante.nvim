@@ -996,7 +996,7 @@ avante.Sidebar                                                  *avante.Sidebar*
         {containers}                 ({result?:NuiSplit,todos?:NuiSplit,selected_code?:NuiSplit,selected_files?:NuiSplit,input?:NuiSplit})
         {file_selector}              (FileSelector)
         {chat_history}               (avante.ChatHistory|nil)
-        {chat_history_project_root}  (string|nil)
+        {chat_history_project_root}  (string|nil)                                                                                           Project owning the loaded history; keeps async saves in that project after buffer or cwd changes
         {current_state}              (avante.GenerateState|nil)
         {state_timer}                (table|nil)
         {state_spinner_chars}        (string[])
