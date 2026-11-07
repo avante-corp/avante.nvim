@@ -79,6 +79,20 @@ describe("Sidebar active request lifecycle", function()
     sidebar:handle_submit("initial question")
   end
 
+  it("preserves the reply filetype without retriggering FileType on updates", function()
+    local result_buf = sidebar.containers.result.bufnr
+    local filetype_events = 0
+    vim.api.nvim_create_autocmd("FileType", {
+      buffer = result_buf,
+      callback = function() filetype_events = filetype_events + 1 end,
+    })
+    sidebar:update_content("First")
+    sidebar:update_content("Second")
+
+    assert.equals("markdown.Avante", vim.bo[result_buf].filetype)
+    assert.equals(0, filetype_events)
+  end)
+
   for _, entry in ipairs({
     { name = "Ask", open = function() Api.ask({ question = "other project", floating = false }) end },
     { name = "Toggle", open = function() Avante.toggle_sidebar({}) end },
