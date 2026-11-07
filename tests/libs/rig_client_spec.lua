@@ -387,7 +387,11 @@ describe("Rig client adapter", function()
             first_poll = false
             return {
               { type = "content_start", kind = "tool_call", index = 0, name = "replace_in_file" },
-              { type = "tool_call_delta", index = 0, arguments = { path = "README.md", the_diff = "partial" } },
+              {
+                type = "tool_call_delta",
+                index = 0,
+                arguments = { path = "README.md", the_diff = "partial" },
+              },
               {
                 type = "content_end",
                 index = 0,
@@ -614,7 +618,9 @@ describe("Rig client adapter", function()
     RigClient.start(
       provider("openai", "openai", { use_response_api = true, support_previous_response_id = true }),
       { system_prompt = "system", messages = { { role = "user", content = "hello" } } },
-      { on_stop = function(result) stopped = result end },
+      {
+        on_stop = function(result) stopped = result end,
+      },
       nil,
       session_ctx
     )
@@ -630,7 +636,9 @@ describe("Rig client adapter", function()
     local cancelled = false
     package.loaded.avante_llm = {
       start = function()
-        return { cancel = function() cancelled = true end }
+        return {
+          cancel = function() cancelled = true end,
+        }
       end,
     }
     local timer_stub = stub(vim.uv or vim.loop, "new_timer").returns(nil)
@@ -639,7 +647,9 @@ describe("Rig client adapter", function()
     local request = RigClient.start(
       provider("openai", "openai"),
       { system_prompt = "system", messages = { { role = "user", content = "hello" } } },
-      { on_stop = function(result) stopped = result end }
+      {
+        on_stop = function(result) stopped = result end,
+      }
     )
     timer_stub:revert()
     package.loaded.avante_llm = loaded_native
@@ -820,6 +830,53 @@ describe("Rig client adapter", function()
         error_stub = nil
       end
       package.loaded.avante_llm = loaded_native
+    end)
+
+    it("reports common request settings without credentials or protocol-specific parameters", function()
+      local sent, context
+      local collaboration = { mode = "agentic", dual_boost = false }
+      package.loaded.avante_llm.start = function(input)
+        sent = input
+        error("stop before sending")
+      end
+      RigClient.start(
+        provider("openai", "openai", {
+          auth_type = "subscription",
+          extra_headers = { Authorization = "secret header" },
+          extra_request_body = {
+            reasoning_effort = "low",
+            reasoning = { effort = "high" },
+            thinking = { budget_tokens = 1024 },
+            api_key = "secret parameter",
+          },
+        }),
+        { system_prompt = "Final system", messages = {} },
+        {
+          on_request = function(settings) context = settings end,
+          on_stop = function() end,
+        },
+        nil,
+        { project_root = "/project", resolved_api_route = "chat", collaboration_mode = collaboration }
+      )
+      assert.same({
+        turn_id = sent.prompt.turnId,
+        provider = "openai",
+        model = "test-model",
+        reasoning_effort = "high",
+        project_root = "/project",
+      }, context)
+    end)
+
+    it("reports history write failures before starting the request", function()
+      request = RigClient.start(provider("openai", "openai"), { system_prompt = "system", messages = {} }, {
+        on_request = function() error("history write failed") end,
+        on_stop = function(result) stops[#stops + 1] = result end,
+      })
+
+      assert.is_nil(request)
+      assert.stub(timer_stub).was_not_called()
+      assert.same("error", stops[1].reason)
+      assert.matches("history write failed", stops[1].error, nil, true)
     end)
 
     for _, state in ipairs({ "generating", "generated" }) do

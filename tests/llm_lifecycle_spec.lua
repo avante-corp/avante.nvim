@@ -98,6 +98,11 @@ describe("non-ACP LLM lifecycle", function()
   it("isolates cached routes between dual-boost providers", function()
     local streams = {}
     Config.dual_boost = { timeout = 1000, prompt = "{{provider1_output}}{{provider2_output}}" }
+    Config.dual_boost.enabled = true
+    Config.dual_boost.first_provider, Config.dual_boost.second_provider = "openai", "claude"
+    local provider_meta = getmetatable(require("avante.providers"))
+    local lookup = add_stub(provider_meta, "__index").returns({})
+    provider_meta.__index = function(...) return lookup(...) end
     add_stub(vim.uv, "new_timer").returns({
       start = function() end,
       stop = function() end,
@@ -107,8 +112,14 @@ describe("non-ACP LLM lifecycle", function()
     add_stub(Llm, "_stream").invokes(function(opts) streams[#streams + 1] = opts end)
     local session_ctx = { resolved_api_route = "responses" }
 
-    Llm._dual_boost_stream({ on_stop = function() end, session_ctx = session_ctx }, {}, {})
+    Llm.stream({
+      on_stop = function() end,
+      on_request = function() error("only the final merged request should record turn context") end,
+      session_ctx = session_ctx,
+    })
 
+    assert.is_nil(streams[1].on_request)
+    assert.is_nil(streams[2].on_request)
     assert.is_not.equal(session_ctx, streams[1].session_ctx)
     assert.is_not.equal(streams[1].session_ctx, streams[2].session_ctx)
     assert.is_nil(streams[1].session_ctx.resolved_api_route)

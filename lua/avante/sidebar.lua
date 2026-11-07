@@ -2389,6 +2389,7 @@ function Sidebar:clear_history(args, cb)
     local function clear_local_history()
       chat_history.messages = {}
       chat_history.entries = {}
+      chat_history.turn_contexts = nil
       chat_history.acp_session_id = nil
       Path.history.save(code_bufnr, chat_history)
       if self.chat_history == chat_history then
@@ -3362,16 +3363,19 @@ function Sidebar:handle_submit(request)
     end, 0)
   end
 
+  local user_message
   if request and request ~= "" then
+    user_message = History.Message:new("user", request, {
+      is_user_submission = true,
+      selected_filepaths = selected_filepaths,
+      selected_code = selected_code,
+    })
     self:add_history_messages({
-      History.Message:new("user", request, {
-        is_user_submission = true,
-        selected_filepaths = selected_filepaths,
-        selected_code = selected_code,
-      }),
+      user_message,
     }, { history = chat_history, bufnr = code_bufnr, project_root = history_project_root })
   end
 
+  local turn_context_saved = false
   self:get_generate_prompts_options(request, function(generate_prompts_options)
     if not is_current_request() then return end
     local acp_import = self.pending_acp_import
@@ -3388,6 +3392,13 @@ function Sidebar:handle_submit(request)
       on_tool_log = on_tool_log,
       on_messages_add = on_messages_add,
       on_state_change = on_state_change,
+      on_request = function(context)
+        if not is_current_request() or turn_context_saved then return end
+        context.user_message_uuid = user_message and user_message.uuid
+        History.record_turn(chat_history, context)
+        Path.history.write(code_bufnr, chat_history, history_project_root)
+        turn_context_saved = true
+      end,
       acp_client = self.acp_client,
       on_save_acp_client = function(client)
         if not is_current_request() then

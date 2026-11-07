@@ -30,6 +30,24 @@ describe("History paths", function()
     vim.fn.delete(project_root, "rf")
   end)
 
+  it("preserves each turn's request settings after saving", function()
+    local History = require("avante.history")
+    local root = Config.history.storage_path .. "/project"
+    local history = Path.history.new(0, root)
+    History.record_turn(history, {
+      turn_id = "turn-1",
+      model = "model-1",
+      reasoning_effort = "high",
+    })
+    History.record_turn(history, { turn_id = "turn-2", model = "model-2", reasoning_effort = "low" })
+    Path.history.save(0, history, root)
+    local loaded = Path.history.load(0, history.filename, root)
+
+    assert.equals(2, #loaded.turn_contexts)
+    assert.same(history.turn_contexts, loaded.turn_contexts)
+    assert.is_string(loaded.turn_contexts[1].timestamp)
+  end)
+
   it("does not select an old chat when its delayed save runs after a new chat is selected", function()
     local Sidebar = require("avante.sidebar")
     local project_root = Config.history.storage_path .. "/project"
