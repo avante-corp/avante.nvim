@@ -1981,7 +1981,6 @@ function Sidebar:update_content(content, opts)
 
   self.old_result_lines = history_lines
 
-  api.nvim_set_option_value("filetype", "markdown.Avante", { buf = bufnr })
   Utils.lock_buf(bufnr)
 
   vim.defer_fn(function()
