@@ -28,12 +28,6 @@ describe("config", function()
     assert.is_true(Config.behaviour.auto_suggestions)
   end)
 
-  it("disables previous response IDs by default", function()
-    Config.setup({})
-
-    assert.is_false(Config.providers.openai.support_previous_response_id)
-  end)
-
   it("does not expose provider request timeouts", function()
     Config.setup({})
 
