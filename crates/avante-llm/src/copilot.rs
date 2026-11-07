@@ -38,7 +38,7 @@ pub(super) fn validate(provider: &ProviderInput) -> Result<(), String> {
         || provider.proxy.is_some()
         || provider.allow_insecure
     {
-        return Err("Copilot OAuth uses Rig's GitHub endpoints and credentials; custom endpoints (including GHE), API keys, headers, proxy and insecure TLS settings are unsupported".into());
+        return Err("Copilot OAuth does not support custom endpoints (including GHE), API keys, headers, proxies, or insecure TLS settings".into());
     }
     Ok(())
 }
@@ -391,7 +391,7 @@ mod tests {
         assert!(
             crate::request_headers(input)
                 .unwrap_err()
-                .contains("managed by Rig")
+                .contains("does not expose request headers")
         );
         for base in [
             "http://api.githubcopilot.com",

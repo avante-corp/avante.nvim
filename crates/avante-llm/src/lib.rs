@@ -191,7 +191,7 @@ impl Input {
                 || self.provider.proxy.is_some()
                 || self.provider.allow_insecure
             {
-                return Err("Claude Pro/Max uses Cloak's HTTPS endpoint and credentials; custom endpoint, API key, headers, proxy and insecure TLS settings are unsupported".to_owned());
+                return Err("Claude Pro/Max subscriptions do not support custom endpoints, API keys, headers, proxies, or insecure TLS settings".to_owned());
             }
         }
         if matches!(self.provider.auth, Some(AuthInput::Chatgpt)) {
@@ -226,7 +226,7 @@ impl Input {
                 || self.provider.proxy.is_some()
                 || self.provider.allow_insecure
             {
-                return Err("ChatGPT subscriptions use Rig's HTTPS endpoint and OAuth credentials; custom endpoint, API key, headers, proxy and insecure TLS settings are unsupported".to_owned());
+                return Err("ChatGPT subscriptions do not support custom endpoints, API keys, headers, proxies, or insecure TLS settings".to_owned());
             }
         }
         if self.provider.name.trim().is_empty() {
@@ -284,19 +284,14 @@ impl Input {
         }
         if matches!(self.provider.protocol, ProtocolInput::Vertex) {
             if self.provider.base_url.is_some() {
-                return Err(
-                    "Vertex AI endpoint overrides are not exposed by Rig's SDK transport"
-                        .to_owned(),
-                );
+                return Err("Avante does not support endpoint overrides for Vertex AI".to_owned());
             }
             if !self.provider.headers.is_empty() {
-                return Err(
-                    "Vertex AI extra headers are not exposed by Rig's SDK transport".to_owned(),
-                );
+                return Err("Avante does not support extra headers for Vertex AI".to_owned());
             }
             if self.provider.proxy.is_some() || self.provider.allow_insecure {
                 return Err(
-                    "Vertex AI proxy and allow_insecure are not exposed by Rig's SDK transport"
+                    "Avante does not support proxy or allow_insecure settings for Vertex AI"
                         .to_owned(),
                 );
             }
@@ -653,7 +648,7 @@ fn request_headers(input: Input) -> Result<BTreeMap<String, String>, String> {
         input.provider.auth,
         Some(AuthInput::Subscription | AuthInput::Chatgpt | AuthInput::Copilot)
     ) {
-        return Err("Subscription request headers are managed by Rig".to_owned());
+        return Err("Subscription authentication does not expose request headers".to_owned());
     }
     if matches!(
         input.provider.protocol,
@@ -672,7 +667,7 @@ fn request_headers(input: Input) -> Result<BTreeMap<String, String>, String> {
         .lock()
         .expect("header capture lock")
         .take()
-        .ok_or_else(|| "Rig did not generate request headers".to_owned())?;
+        .ok_or_else(|| "Failed to generate request headers".to_owned())?;
     headers
         .iter()
         .map(|(name, value)| {

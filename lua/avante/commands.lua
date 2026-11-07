@@ -14,11 +14,11 @@
 --- :Avante claude logout
 ---         Remove Avante's locally stored Claude subscription credentials.
 --- :Avante chatgpt login
----         Sign in to ChatGPT with Rig (browser or device code over SSH).
+---         Sign in to ChatGPT (browser or device code over SSH).
 --- :Avante chatgpt logout
 ---         Revoke and remove Avante's stored ChatGPT credentials.
 --- :Avante copilot login
----         Sign in to GitHub Copilot using Rig's device-code flow.
+---         Sign in to GitHub Copilot using a device code.
 --- :Avante copilot logout
 ---         Remove Avante's local Copilot credentials (does not revoke GitHub access).
 --- :Avante rag start
