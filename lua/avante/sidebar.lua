@@ -124,7 +124,7 @@ local SIDEBAR_CONTAINERS = {
 ---@field containers { result?: NuiSplit, todos?: NuiSplit, selected_code?: NuiSplit, selected_files?: NuiSplit, input?: NuiSplit }
 ---@field file_selector FileSelector
 ---@field chat_history avante.ChatHistory | nil
----@field chat_history_project_root string | nil
+---@field chat_history_project_root string | nil Project owning the loaded history; keeps async saves in that project after buffer or cwd changes
 ---@field current_state avante.GenerateState | nil
 ---@field state_timer table | nil
 ---@field state_spinner_chars string[]
