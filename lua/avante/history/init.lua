@@ -7,6 +7,9 @@ local M = {}
 M.Helpers = Helpers
 M.Message = Message
 
+---Sorts contiguous assistant messages with the same `turn_id` by ascending `order`.
+---Each message in a group must have both `turn_id` and `order` values.
+---Updates and returns the original list.
 ---@param messages avante.HistoryMessage[]
 ---@return avante.HistoryMessage[]
 function M.sort_messages(messages)
