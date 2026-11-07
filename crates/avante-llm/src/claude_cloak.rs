@@ -20,7 +20,10 @@ fn app(home: &str) -> Result<App, String> {
 }
 
 pub(super) fn connect(provider: &ProviderInput, events: &Events) -> Result<ErasedHandler, String> {
-    let mut app = app(provider.auth_home.as_deref().ok_or("missing Cloak home")?)?;
+    let mut app = app(provider
+        .auth_home
+        .as_deref()
+        .ok_or("Claude subscription credential directory is missing")?)?;
     let events = Arc::clone(events);
     let mut models = app.world_mut().resource_mut::<Models>();
     models.0.wrap_http(move |http| {

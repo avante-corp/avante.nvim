@@ -55,9 +55,7 @@ function M.check()
     H.ok("Using native input provider (no additional dependencies required)")
   end
 
-  if Config.provider == "copilot" then
-    H.info("Copilot authentication is managed by Rig. Sign in with :Avante copilot login")
-  end
+  if Config.provider == "copilot" then H.info("Authenticate to Copilot with :Avante copilot login") end
 
   -- Check TreeSitter dependencies
   M.check_treesitter()

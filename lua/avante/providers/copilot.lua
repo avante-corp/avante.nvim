@@ -3,7 +3,7 @@
 ---@brief [[
 ---Copilot defaults to `auth_type = "subscription"`; API-key authentication is
 ---unsupported. Set `provider = "copilot"`, rebuild the native libraries, and run
----`:Avante copilot login`. Rig displays a GitHub device-code URL and code, saves
+---`:Avante copilot login`. Avante displays a GitHub device-code URL and code, saves
 ---credentials privately in `stdpath("data")/avante/copilot/`, and resolves or
 ---refreshes the session before inference and account model listing. The normal
 ---cancel action stops pending authentication or requests.

@@ -206,7 +206,7 @@ mod tests {
         assert!(
             crate::request_headers(input)
                 .unwrap_err()
-                .contains("managed by Rig")
+                .contains("does not expose request headers")
         );
     }
 
