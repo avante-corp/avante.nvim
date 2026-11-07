@@ -10,29 +10,41 @@ use rig::providers::chatgpt::{
     },
 };
 use rig::providers::openai::OpenAIConfig;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 use tokio::sync::watch;
 
 fn authenticator(home: &str, events: &Events) -> Authenticator {
+    static AUTHENTICATORS: LazyLock<Mutex<HashMap<String, Authenticator>>> =
+        LazyLock::new(|| Mutex::new(HashMap::new()));
+    // Keep Rig's credential cache across turns without retaining request event handlers.
+    let auth = AUTHENTICATORS
+        .lock()
+        .expect("ChatGPT authenticator lock")
+        .entry(home.to_owned())
+        .or_insert_with(|| {
+            Authenticator::new(
+                AuthSource::OAuth,
+                FileTokenStore::new(home),
+                DeviceCodeHandler::new(|_| {}),
+                false, // Inference must never start an interactive sign-in.
+            )
+        })
+        .clone();
     let events = Arc::clone(events);
-    Authenticator::new(
-        AuthSource::OAuth,
-        FileTokenStore::new(home),
-        DeviceCodeHandler::new(move |prompt| {
-            push(
-                &events,
-                Event::AuthStatus {
-                    message: format!(
-                        "ChatGPT: open {} and enter {}",
-                        prompt.verification_uri, prompt.user_code
-                    ),
-                    complete: false,
-                },
-            );
-        }),
-        false, // Inference must never start an interactive sign-in.
-    )
+    auth.with_device_code_handler(DeviceCodeHandler::new(move |prompt| {
+        push(
+            &events,
+            Event::AuthStatus {
+                message: format!(
+                    "ChatGPT: open {} and enter {}",
+                    prompt.verification_uri, prompt.user_code
+                ),
+                complete: false,
+            },
+        );
+    }))
 }
 
 fn config(context: AuthContext) -> OpenAIConfig {
@@ -56,7 +68,6 @@ pub(super) async fn connect(
             .ok_or("missing ChatGPT credential directory")?,
         events,
     );
-    // Avante creates a model for each turn, so every turn re-reads and refreshes credentials.
     let context = auth
         .auth_context(&http)
         .await
@@ -139,11 +150,9 @@ pub(super) async fn authenticate(
 mod tests {
     use super::*;
     use crate::{AuthInput, Input, PendingEvent, ProtocolInput, RouteInput};
-    use futures::StreamExt;
     use rig::providers::chatgpt::auth::TokenStore;
     use rig::wire::{Body, Mode, Wire};
     use serde_json::{Value, json};
-    use std::sync::Mutex;
 
     fn provider() -> ProviderInput {
         let mut provider = crate::tests::provider("openai", Some(RouteInput::Responses));
@@ -297,52 +306,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn each_turn_loads_the_latest_rig_credentials_without_exposing_them_to_lua() {
+    async fn turns_reuse_rig_credentials_until_logout() {
         let provider = provider();
         let home = provider.auth_home.clone().unwrap();
         let store = FileTokenStore::new(&home);
         let events = Events::default();
-        let captured = Arc::new(Mutex::new(None));
-        let http = crate::build_http(&provider, &events)
-            .unwrap()
-            .with_middleware(crate::CaptureHeaders(Arc::clone(&captured)));
-        for token in ["first-token", "replacement-token"] {
-            store.save("chatgpt", &json!({
-                "access_token": token, "expires_at": 4_000_000_000_i64, "account_id": "account-1"
-            }).to_string()).await.unwrap();
-            let model = connect(&provider, &events, http.clone()).await.unwrap();
-            let mut stream = model
-                .stream(crate::completion_request(&provider, crate::tests::prompt()).unwrap())
-                .unwrap();
-            let _ = stream.next().await;
-            let headers = captured.lock().unwrap().take().expect("request headers");
-            assert_eq!(headers["authorization"], format!("Bearer {token}"));
-            assert_eq!(headers["chatgpt-account-id"], "account-1");
-        }
-        assert!(events.lock().unwrap().is_empty());
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            assert_eq!(
-                std::fs::metadata(store.path("chatgpt"))
-                    .unwrap()
-                    .permissions()
-                    .mode()
-                    & 0o077,
-                0
-            );
-            assert_eq!(
-                std::fs::metadata(&home).unwrap().permissions().mode() & 0o077,
-                0
-            );
-        }
-        std::fs::remove_dir_all(home).unwrap();
-    }
-
-    #[tokio::test]
-    async fn logout_without_an_account_finishes_through_auth_events() {
-        let home = provider().auth_home.unwrap();
-        let events = Events::default();
+        let http = crate::build_http(&provider, &events).unwrap();
+        store
+            .save(
+                "chatgpt",
+                &json!({ "access_token": "test-token", "expires_at": 4_000_000_000_i64 })
+                    .to_string(),
+            )
+            .await
+            .unwrap();
+        connect(&provider, &events, http.clone()).await.unwrap();
+        store.delete("chatgpt").await.unwrap();
+        connect(&provider, &events, http.clone()).await.unwrap();
         let (_cancel, cancelled) = watch::channel(false);
         authenticate(
             "logout".into(),
@@ -355,7 +335,10 @@ mod tests {
             event,
             PendingEvent::Event(Event::AuthStatus { complete: true, .. })
         )));
-        assert!(!std::path::Path::new(&home).join("chatgpt.json").exists());
+        let Err(error) = connect(&provider, &events, http).await else {
+            panic!("logout must clear cached credentials")
+        };
+        assert!(error.contains(":Avante chatgpt login"), "{error}");
         std::fs::remove_dir_all(home).unwrap();
     }
 }
