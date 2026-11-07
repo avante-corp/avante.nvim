@@ -147,7 +147,12 @@ function M._build_request(provider, prompt_opts, session_ctx)
     route = session_ctx and session_ctx.resolved_api_route or nil
     if route == nil then route = Providers.resolve_api_route(provider_conf, prompt_opts, protocol) end
   end
-  if chatgpt then route = "responses" end
+  if chatgpt then
+    route = "responses"
+    session_ctx = session_ctx or {}
+    session_ctx.session_id = session_ctx.session_id or Utils.uuid()
+    additional_params = vim.tbl_extend("keep", additional_params, { prompt_cache_key = session_ctx.session_id })
+  end
   if
     not chatgpt
     and route == "responses"

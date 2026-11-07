@@ -231,8 +231,9 @@ mod tests {
             is_dummy: false,
             content: json!({ "type": "tool_result", "tool_use_id": "call-1", "content": "found" }),
         });
-        prompt.additional_params =
-            Some(json!({ "previous_response_id": "resp-old", "conversation": "conv-old" }));
+        prompt.additional_params = Some(json!({
+            "previous_response_id": "resp-old", "conversation": "conv-old", "prompt_cache_key": "chat-1"
+        }));
         let request = crate::completion_request(&provider, prompt).unwrap();
         let wire = rig::providers::openai::wire::OpenAiWire::new(config(context), &provider.model);
         let encoded = wire.encode(request, Mode::Streaming).unwrap();
@@ -245,6 +246,7 @@ mod tests {
             "Bearer oauth-token"
         );
         assert_eq!(encoded.request.headers()["chatgpt-account-id"], "account-1");
+        assert_eq!(encoded.request.headers()["session-id"], "chat-1");
         let Body::Bytes(bytes) = encoded.request.into_body() else {
             panic!("expected JSON body")
         };

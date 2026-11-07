@@ -2997,6 +2997,10 @@ function Sidebar:get_generate_prompts_options(request, cb)
   local session_ctx = {
     project_root = self.chat_history_project_root or Utils.root.get({ buf = self.code.bufnr }),
   }
+  if self.chat_history.filename then
+    -- Keep cache routing stable across turns without exposing local paths.
+    session_ctx.session_id = fn.sha256(session_ctx.project_root .. "/" .. self.chat_history.filename)
+  end
   if not Config.acp_providers[Config.provider] then
     session_ctx.resolved_api_route = Providers.resolve_api_route(Providers[Config.provider], nil)
   end
