@@ -33,8 +33,6 @@ local M = {}
 
 M.api_key_name = "BEDROCK_KEYS"
 
-function M.setup() return true end
-
 function M.is_env_set() return true end
 
 return M
