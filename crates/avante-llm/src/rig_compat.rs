@@ -1,4 +1,4 @@
-//! Provider configuration and compatibility with Rig 0.46.
+//! Map Avante's Lua provider configuration to Rig models and generation parameters.
 //! Keep protocol workarounds here so upstream support can replace them without changing the Lua bridge.
 
 use super::{AuthInput, ProtocolInput, ProviderInput, RouteInput};
