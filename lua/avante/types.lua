@@ -344,7 +344,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field on_messages_add? fun(messages: avante.HistoryMessage[]): nil
 ---@field on_state_change? fun(state: avante.GenerateState): nil
 ---@field update_tokens_usage? fun(usage: avante.LLMTokenUsage): nil
----@field _request_state? avante.LLMRequestState
+---@field private _request_state? avante.LLMRequestState
 ---
 ---@class AvanteLLMToolFuncOpts
 ---@field session_ctx table

@@ -3463,7 +3463,8 @@ function Sidebar:handle_submit(request)
         function(memory, failure)
           if not is_current_request() then return end
           if failure then return on_stop(failure) end
-          if stream_options._request_state and stream_options._request_state.finished then return end
+          local request_state = rawget(stream_options, "_request_state")
+          if request_state and request_state.finished then return end
           if memory then
             chat_history.memory = memory
             Path.history.save(code_bufnr, chat_history, history_project_root)

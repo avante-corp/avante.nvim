@@ -248,7 +248,8 @@ function M.agent_loop(opts)
     end
     M.summarize_memory(memory_content, pending_compaction_history_messages or {}, function(memory, failure)
       if failure then return on_stop(failure) end
-      if stream_options._request_state and stream_options._request_state.finished then return end
+      local request_state = rawget(stream_options, "_request_state")
+      if request_state and request_state.finished then return end
       if memory then stream_options.memory = memory.content end
       local new_history_messages = {}
       for _, msg in ipairs(history_messages) do
@@ -1213,8 +1214,8 @@ function M._stream(opts)
 
   local provider = opts.provider or Providers[Config.provider]
   opts.session_ctx = opts.session_ctx or {}
-  local request_state = opts._request_state or { cancelled = false }
-  opts._request_state = request_state
+  local request_state = rawget(opts, "_request_state") or { cancelled = false }
+  rawset(opts, "_request_state", request_state)
   if request_state.cancelled then
     if finish_request(request_state) then opts.on_stop({ reason = "cancelled" }) end
     return
@@ -1310,7 +1311,7 @@ function M._stream(opts)
           local new_opts = vim.tbl_deep_extend("force", opts, {
             history_messages = opts.get_history_messages and opts.get_history_messages() or {},
           })
-          new_opts._request_state = request_state
+          rawset(new_opts, "_request_state", request_state)
           if provider.get_rate_limit_sleep_time then
             local sleep_time = provider:get_rate_limit_sleep_time(resp_headers)
             if sleep_time and sleep_time > 0 then
@@ -1420,7 +1421,7 @@ function M._stream(opts)
           local new_opts = vim.tbl_deep_extend("force", opts, {
             history_messages = opts.get_history_messages(),
           })
-          new_opts._request_state = request_state
+          rawset(new_opts, "_request_state", request_state)
           if provider.get_rate_limit_sleep_time then
             local sleep_time = provider:get_rate_limit_sleep_time(resp_headers)
             if sleep_time and sleep_time > 0 then
@@ -1554,7 +1555,7 @@ function M._dual_boost_stream(opts, Provider1, Provider2)
     if not timer:is_closing() then timer:close() end
     if result then
       for _, stream_opts in ipairs(streams) do
-        local state = stream_opts._request_state
+        local state = rawget(stream_opts, "_request_state")
         local request = state.request
         state.cancelled = true
         finish_request(state)
@@ -1584,7 +1585,7 @@ function M._dual_boost_stream(opts, Provider1, Provider2)
     })
     stream_opts.session_ctx = vim.deepcopy(opts.session_ctx or {})
     stream_opts.session_ctx.resolved_api_route = nil
-    stream_opts._request_state = { cancelled = false }
+    rawset(stream_opts, "_request_state", { cancelled = false })
     return stream_opts
   end
 
@@ -1651,7 +1652,7 @@ function M.stream(opts)
 
   opts.mode = opts.mode or Config.mode
 
-  opts._request_state = nil
+  rawset(opts, "_request_state", nil)
   if Config.dual_boost.enabled and valid_dual_boost_modes[opts.mode] then
     M._dual_boost_stream(
       opts,
