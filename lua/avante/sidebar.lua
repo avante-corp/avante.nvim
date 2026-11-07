@@ -3555,7 +3555,6 @@ function Sidebar:create_input_container()
       swapfile = false,
       buftype = "nofile",
     },
-    win_options = vim.tbl_deep_extend("force", base_win_options, { wrap = Config.windows.wrap }),
     position = get_position(),
     size = get_size(),
   })
