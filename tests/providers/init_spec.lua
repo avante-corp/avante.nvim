@@ -47,7 +47,7 @@ describe("providers", function()
       get = function()
         return {
           is_open = function() return true end,
-          render_result = function() rendered = rendered + 1 end,
+          render_result_header = function() rendered = rendered + 1 end,
         }
       end,
     }

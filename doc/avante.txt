@@ -1204,7 +1204,7 @@ Sidebar:render_header()                           *avante-sidebar:render_header*
     else it will be set as
 
 
-Sidebar:render_result()                           *avante-sidebar:render_result*
+Sidebar:render_result_header()             *avante-sidebar:render_result_header*
      @see render_header
 
 

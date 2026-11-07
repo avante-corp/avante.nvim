@@ -64,7 +64,7 @@ describe("Sidebar ACP request lifecycle", function()
       "save_history",
       "clear_state",
       "render_state",
-      "render_result",
+      "render_result_header",
       "create_todos_container",
     }) do
       sidebar[name] = function() end
@@ -215,7 +215,7 @@ describe("Sidebar ACP request lifecycle", function()
     local expected_todos = vim.deepcopy(new_chat.todos)
     local expected_usage = vim.deepcopy(new_chat.tokens_usage)
     local renders = 0
-    sidebar.render_result = function() renders = renders + 1 end
+    sidebar.render_result_header = function() renders = renders + 1 end
     replace(vim, "schedule", function(fn) fn() end)
 
     callbacks.on_state_change("tool calling")
