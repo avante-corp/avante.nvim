@@ -94,18 +94,9 @@ describe("Sidebar active request lifecycle", function()
   end)
 
   for _, entry in ipairs({
-    {
-      name = "Ask",
-      open = function() Api.ask({ question = "other project", floating = false }) end,
-    },
-    {
-      name = "Toggle",
-      open = function() Avante.toggle_sidebar({}) end,
-    },
-    {
-      name = "open_sidebar",
-      open = function() Avante.open_sidebar({}) end,
-    },
+    { name = "Ask", open = function() Api.ask({ question = "other project", floating = false }) end },
+    { name = "Toggle", open = function() Avante.toggle_sidebar({}) end },
+    { name = "open_sidebar", open = function() Avante.open_sidebar({}) end },
   }) do
     it("rejects " .. entry.name .. " for another project while the active sidebar is hidden", function()
       start_captured_request()
@@ -207,10 +198,7 @@ describe("Sidebar active request lifecycle", function()
   local function start_async_tool()
     local tool_started = false
     local tools = {
-      {
-        name = "waiting_tool",
-        func = function() tool_started = true end,
-      },
+      { name = "waiting_tool", func = function() tool_started = true end },
     }
     stubs[#stubs + 1] = stub(Llm, "generate_prompts").returns({ tools = tools, messages = {} })
     stubs[#stubs + 1] = stub(Llm, "request").invokes(function(opts)
@@ -234,7 +222,11 @@ describe("Sidebar active request lifecycle", function()
     start_async_tool()
     local filename = sidebar.chat_history.filename
     local root = sidebar.chat_history_project_root
-    History.record_turn(sidebar.chat_history, { turn_id = "turn-to-clear" })
+    History.record_turn(
+      sidebar.chat_history,
+      { turn_id = "turn-to-clear" },
+      { system_prompt = "instructions to clear" }
+    )
 
     sidebar:clear_history()
     assert.equals(0, #sidebar.chat_history.messages)
@@ -242,6 +234,7 @@ describe("Sidebar active request lifecycle", function()
 
     local saved = Path.history.load(code_buf, filename, root)
     assert.same({ 0, 0 }, { #sidebar.chat_history.messages, #saved.messages })
+    assert.is_nil(saved.prompt_snapshots)
     assert.is_nil(saved.turn_contexts)
   end)
 

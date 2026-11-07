@@ -347,7 +347,7 @@ function M.start(provider, prompt_opts, handler_opts, on_response_headers, sessi
       reasoning_effort = (type(params.reasoning) == "table" and params.reasoning.effort or nil)
         or params.reasoning_effort,
       project_root = session_ctx and session_ctx.project_root,
-    })
+    }, { system_prompt = request_config.prompt.systemPrompt, instructions = prompt_opts.instructions })
     if not recorded then
       handler_opts.on_stop({ reason = "error", error = tostring(record_error) })
       return

@@ -9,8 +9,13 @@ M.Message = Message
 
 ---@param history avante.ChatHistory
 ---@param context avante.TurnContext
-function M.record_turn(history, context)
+---@param snapshot avante.PromptSnapshot
+function M.record_turn(history, context, snapshot)
+  local id = vim.fn.sha256(vim.json.encode({ snapshot.system_prompt, snapshot.instructions or "" }))
+  history.prompt_snapshots = history.prompt_snapshots or {}
+  history.prompt_snapshots[id] = history.prompt_snapshots[id] or snapshot
   history.turn_contexts = history.turn_contexts or {}
+  context.prompt_snapshot_id = id
   context.timestamp = Utils.get_timestamp()
   table.insert(history.turn_contexts, context)
 end
