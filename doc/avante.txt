@@ -3350,9 +3350,6 @@ See https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html.
 AvanteBedrockProviderFunctor                      *AvanteBedrockProviderFunctor*
 
 
-M.setup()                                       *avante-providers-bedrock.setup*
-
-
 M.is_env_set()                             *avante-providers-bedrock.is_env_set*
 
 
