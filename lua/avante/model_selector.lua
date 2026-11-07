@@ -21,7 +21,8 @@ local function create_model_entries(provider_name, provider_cfg, timeout)
   local res = {}
   if provider_cfg.list_models then
     local models
-    local cache_key = provider_cfg.endpoint
+    -- API keys and subscriptions can expose different models at the same endpoint.
+    local cache_key = (provider_cfg.auth_type or "api_key") .. ":" .. (provider_cfg.endpoint or provider_name)
     if type(provider_cfg.list_models) == "function" then
       if M.list_models_invoked[cache_key] then return {} end
       M.list_models_invoked[cache_key] = true
@@ -30,7 +31,8 @@ local function create_model_entries(provider_name, provider_cfg, timeout)
         models = cached_result
       else
         models = provider_cfg:list_models(timeout)
-        list_models_cached_result[cache_key] = models
+        -- Failed lookups return an empty list; retry after login or transient failures.
+        if models and #models > 0 then list_models_cached_result[cache_key] = models end
       end
     else
       if M.list_models_returned[provider_cfg.list_models] then return {} end
@@ -156,13 +158,10 @@ function M.open(all, timeout)
     if provider_cfg then provider_cfg.model = choice.model end
 
     if Config.windows.sidebar_header.include_model then
-      if sidebar and sidebar:is_open() then sidebar:render_result() end
+      if sidebar and sidebar:is_open() then sidebar:render_result_header() end
     else
       Utils.info("Switched to model: " .. choice.name)
     end
-
-    -- Persist last used provider and model
-    Config.save_last_model(choice.model, choice.provider_name)
   end
 
   local selector = Selector:new({

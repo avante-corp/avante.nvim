@@ -61,10 +61,9 @@
     providers = {
       claude = {
         endpoint = "https://api.anthropic.com",
-        model = "claude-sonnet-4-20250514",
+        model = "claude-sonnet-5-5",
         timeout = 30000, -- Timeout in milliseconds
           extra_request_body = {
-            temperature = 0.75,
             max_tokens = 20480,
           },
       },
@@ -346,6 +345,7 @@ _请参见 [config.lua#L9](./lua/avante/config.lua) 以获取完整配置_
     support_paste_from_clipboard = false,
     minimize_diff = true, -- 是否在应用代码块时删除未更改的行
     enable_token_counting = true, -- 是否启用令牌计数。默认为 true。
+    show_token_usage = false, -- 是否显示每轮对话的令牌用量摘要。默认为 false；关闭后仍会统计并保存用量。
     auto_add_current_file = true, -- 打开新聊天时是否自动添加当前文件。默认为 true。
     enable_cursor_planning_mode = false, -- 是否启用 Cursor 规划模式。默认为 false。
     enable_claude_text_editor_tool_mode = false, -- 是否启用 Claude 文本编辑器工具模式。
@@ -796,7 +796,7 @@ Avante 提供了一组默认提供者，但用户也可以创建自己的提供�
 
 ## Cursor 规划模式
 
-因为 avante.nvim 一直使用 Aider 的方法进行规划应用，但其提示对模型要求很高，需要像 claude-3.5-sonnet 或 gpt-4o 这样的模型才能正常工作。
+因为 avante.nvim 一直使用 Aider 的方法进行规划应用，但其提示对模型要求很高，需要具备较强代码编辑能力的模型才能正常工作。
 
 因此，我采用了 Cursor 的方法来实现规划应用。有关实现的详细信息，请参阅 [cursor-planning-mode.md](./cursor-planning-mode.md)
 

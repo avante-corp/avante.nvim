@@ -13,7 +13,6 @@
 --- - `copilot`
 --- - `bedrock`
 --- - `ollama`
---- - `watsonx_code_assistant`
 --- - `mistral`
 --- - ...
 --- Please refer to the provider's help section under the tag avante-providers-NAME
@@ -34,9 +33,19 @@ local Utils = require("avante.utils")
 ---@field mistral AvanteProviderFunctor
 ---@field ollama AvanteProviderFunctor
 ---@field openai AvanteProviderFunctor
----@field vertex_claude AvanteProviderFunctor
----@field watsonx_code_assistant AvanteProviderFunctor
 local M = {}
+
+local supported_protocols = {
+  openai = true,
+  claude = true,
+  azure = true,
+  gemini = true,
+  vertex = true,
+  cohere = true,
+  ollama = true,
+  bedrock = true,
+  copilot = true,
+}
 
 ---@class EnvironmentHandler
 local E = {}
@@ -85,7 +94,7 @@ function E.setup(opts)
 
   local var = opts.provider.api_key_name
 
-  if var == nil or var == "" then
+  if not E.require_api_key(opts.provider) then
     vim.g.avante_login = true
     return
   end
@@ -158,7 +167,13 @@ end
 E.REQUEST_LOGIN_PATTERN = "AvanteRequestLogin"
 
 ---@param provider AvanteDefaultBaseProvider
-function E.require_api_key(provider) return provider.api_key_name ~= nil and provider.api_key_name ~= "" end
+function E.require_api_key(provider)
+  local protocol = provider._protocol or provider._name
+  if protocol == "copilot" then return false end
+  if protocol == "claude" and provider.auth_type == "subscription" then return false end
+  if protocol == "openai" and provider.auth_type == "subscription" then return false end
+  return provider.api_key_name ~= nil and provider.api_key_name ~= ""
+end
 
 M.env = E
 
@@ -174,21 +189,41 @@ M = setmetatable(M, {
       local base_provider_config = M.get_config(provider_config.__inherited_from)
       local ok, module = pcall(require, "avante.providers." .. provider_config.__inherited_from)
       if not ok then error("Failed to load provider: " .. provider_config.__inherited_from, 2) end
+      local auth_type = provider_config.auth_type
       provider_config = Utils.deep_extend_with_metatable("force", module, base_provider_config, provider_config)
+      -- OpenAI-compatible providers must opt in to ChatGPT subscriptions independently.
+      if provider_config.__inherited_from == "openai" and base_provider_config.auth_type == "subscription" then
+        provider_config.auth_type = auth_type
+      end
     else
       local ok, module = pcall(require, "avante.providers." .. k)
       if ok then
         provider_config = Utils.deep_extend_with_metatable("force", module, provider_config)
-      elseif provider_config.parse_curl_args == nil then
+      else
         error(
           string.format(
-            'The configuration of your provider "%s" is incorrect, missing the `__inherited_from` attribute or a custom `parse_curl_args` function. Please fix your provider configuration. For more details, see: https://github.com/avante-corp/avante.nvim/wiki/Custom-providers',
+            'The configuration of provider "%s" must set `__inherited_from`; custom `parse_curl_args` functions are no longer used. See: https://github.com/avante-corp/avante.nvim/wiki/Custom-providers',
             k
           )
         )
       end
     end
 
+    local protocol = rawget(provider_config, "__inherited_from") or k
+    if not supported_protocols[protocol] then
+      error(string.format('Provider "%s" uses unsupported protocol "%s"', k, protocol), 2)
+    end
+    local auth_type = provider_config.auth_type or (protocol == "copilot" and "subscription" or "api_key")
+    if
+      (auth_type ~= "api_key" and auth_type ~= "subscription")
+      or (auth_type == "subscription" and protocol ~= "claude" and protocol ~= "openai" and protocol ~= "copilot")
+      or (auth_type == "api_key" and protocol == "copilot")
+    then
+      error(string.format('Provider "%s" does not support auth_type "%s"', k, tostring(auth_type)), 2)
+    end
+    provider_config.auth_type = auth_type
+    provider_config._name = k
+    provider_config._protocol = protocol
     t[k] = provider_config
 
     if rawget(t[k], "parse_api_key") == nil then t[k].parse_api_key = function() return E.parse_envvar(t[k]) end end
@@ -209,7 +244,7 @@ M = setmetatable(M, {
     if rawget(t[k], "setup") == nil then
       local provider_conf = M.parse_config(t[k])
       t[k].setup = function()
-        if E.require_api_key(provider_conf) then
+        if E.require_api_key(t[k]) then
           if not (type(provider_conf.api_key_name) == "string" and provider_conf.api_key_name:match("^cmd:")) then
             t[k].parse_api_key()
           end
@@ -263,21 +298,21 @@ function M.refresh(provider_name)
     E.setup({ provider = p, refresh = true })
   end
   if sidebar and sidebar:is_open() then
-    sidebar:render_result()
+    sidebar:render_result_header()
     -- Initialize ACP config options for the model/mode header without sending a prompt.
     if Config.acp_providers[provider_name] then sidebar:handle_submit("") end
   end
   Utils.info("Switch to provider: " .. provider_name, { once = true, title = "Avante" })
 end
 
----@param opts AvanteProvider | AvanteSupportedProvider | AvanteAnthropicProvider | AvanteProviderFunctor | AvanteBedrockProviderFunctor
+---@param opts AvanteProvider | AvanteSupportedProvider | AvanteProviderFunctor | AvanteBedrockProviderFunctor
 ---@return AvanteDefaultBaseProvider provider_opts
 ---@return table<string, any> request_body
 function M.parse_config(opts)
   local provider_opts = {}
 
   for key, value in pairs(opts) do
-    if key ~= "extra_request_body" then provider_opts[key] = value end
+    if key ~= "extra_request_body" and key ~= "_name" and key ~= "_protocol" then provider_opts[key] = value end
   end
 
   ---@type table<string, any>
@@ -300,6 +335,17 @@ function M.resolve_use_response_api(provider_conf, ctx)
     return result == true
   end
   return value == true
+end
+
+---@param provider_conf AvanteDefaultBaseProvider | nil
+---@param ctx any
+---@param protocol? AvanteNativeLLMProtocol
+---@return "chat" | "responses" | nil
+function M.resolve_api_route(provider_conf, ctx, protocol)
+  if not provider_conf then return nil end
+  protocol = protocol or provider_conf._protocol or provider_conf._name
+  if protocol ~= "openai" and protocol ~= "azure" and protocol ~= "copilot" then return nil end
+  return M.resolve_use_response_api(provider_conf, ctx) and "responses" or "chat"
 end
 
 ---@param provider_name avante.ProviderName

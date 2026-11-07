@@ -186,19 +186,15 @@ For building binary if you wish to build from source, then `cargo` is required. 
     providers = {
       claude = {
         endpoint = "https://api.anthropic.com",
-        model = "claude-sonnet-4-20250514",
-        timeout = 30000, -- Timeout in milliseconds
-          extra_request_body = {
-            temperature = 0.75,
-            max_tokens = 20480,
-          },
+        model = "claude-sonnet-5-5",
+        extra_request_body = {
+          max_tokens = 20480,
+        },
       },
       moonshot = {
         endpoint = "https://api.moonshot.ai/v1",
-        model = "kimi-k2-0711-preview",
-        timeout = 30000, -- Timeout in milliseconds
+        model = "kimi-k3",
         extra_request_body = {
-          temperature = 0.75,
           max_tokens = 32768,
         },
       },
@@ -215,7 +211,6 @@ For building binary if you wish to build from source, then `cargo` is required. 
     "ibhagwan/fzf-lua", -- for file_selector provider fzf
     "folke/snacks.nvim", -- for input provider snacks
     "nvim-tree/nvim-web-devicons", -- or echasnovski/mini.icons
-    "zbirenbaum/copilot.lua", -- for providers='copilot'
     {
       -- support for image pasting
       "HakonHarnes/img-clip.nvim",
@@ -288,7 +283,6 @@ vim.pack.add({
   'https://github.com/hrsh7th/nvim-cmp',
   'https://github.com/nvim-tree/nvim-web-devicons', -- or 'echasnovski/mini.icons'
   'https://github.com/HakonHarnes/img-clip.nvim',
-  'https://github.com/zbirenbaum/copilot.lua',
   'https://github.com/folke/snacks.nvim', -- for modern input UI
 })
 
@@ -329,7 +323,6 @@ Plug 'MeanderingProgrammer/render-markdown.nvim'
 Plug 'hrsh7th/nvim-cmp'
 Plug 'nvim-tree/nvim-web-devicons' "or Plug 'echasnovski/mini.icons'
 Plug 'HakonHarnes/img-clip.nvim'
-Plug 'zbirenbaum/copilot.lua'
 Plug 'folke/snacks.nvim' " for modern input UI
 
 " Yay, pass source=true if you want to build from source
@@ -366,14 +359,12 @@ add({
 })
 --- optional
 add({ source = 'hrsh7th/nvim-cmp' })
-add({ source = 'zbirenbaum/copilot.lua' })
 add({ source = 'HakonHarnes/img-clip.nvim' })
 add({ source = 'MeanderingProgrammer/render-markdown.nvim' })
 
 later(function() require('render-markdown').setup({...}) end)
 later(function()
   require('img-clip').setup({...}) -- config img-clip
-  require("copilot").setup({...}) -- setup copilot to your liking
   require("avante").setup({...}) -- config for avante.nvim
 end)
 ```
@@ -423,9 +414,6 @@ require('cmp').setup ({
   -- use recommended settings from above
 })
 require('img-clip').setup ({
-  -- use recommended settings from above
-})
-require('copilot').setup ({
   -- use recommended settings from above
 })
 require('render-markdown').setup ({
@@ -517,10 +505,8 @@ _See [config.lua#L9](./lua/avante/config.lua) for the up to date full default co
   providers = {
     claude = {
       endpoint = "https://api.anthropic.com",
-      auth_type = "api", -- Set to "max" to sign in with Claude Pro/Max subscription
-      model = "claude-3-5-sonnet-20241022",
+      model = "claude-sonnet-5-5",
       extra_request_body = {
-        temperature = 0.75,
         max_tokens = 4096,
       },
     },
@@ -549,6 +535,7 @@ _See [config.lua#L9](./lua/avante/config.lua) for the up to date full default co
     support_paste_from_clipboard = false,
     minimize_diff = true, -- Whether to remove unchanged lines when applying a code block
     enable_token_counting = true, -- Whether to enable token counting. Default to true.
+    show_token_usage = false, -- Whether to show per-turn token usage summaries. Default to false.
     auto_add_current_file = true, -- Whether to automatically add the current file when opening a new chat. Default to true.
     auto_approve_tool_permissions = true, -- Default: auto-approve all tools (no prompts)
     -- Examples:
@@ -891,24 +878,19 @@ Here's a complete blink.cmp configuration example with all Avante sources:
 
 ## Usage
 
-### Using Claude Pro/Max Subscription
-To login with your Claude subscription, set the **auth_type** of the Claude provider entry in your config to "max", re-open Neovim then the authentication process will start in your browser. Once logged in and authorized, a code will show that needs to be copied into the prompt in Neovim, which should then give access to use your subscription with Avante.
-
-You may need to run `AvanteSwitchProvider claude` to initiate the authentication if you previously had a different provider selected.
-
-```lua
--- Providers = { ...
-
-  claude = {
-    -- ...
-    auth_type = "max",
-  },
-
-```
-
 ### Basic Functionality
 
 Given its early stage, `avante.nvim` currently supports the following basic functionalities:
+
+With `behaviour.show_token_usage = true`, each completed conversation turn shows reported token usage, including tool-call continuations, separated from the reply by a blank line.
+The Usage heading is followed by Total, Input, Output, Cached, and Reasoning on separate lines.
+Total is uncached input + output, and Input excludes cached reads, matching Codex's counting convention.
+Cached includes the cache hit rate (cached / total input) to two decimal places when all requests report both counters and total input is greater than zero.
+Cache writes are not shown separately; reasoning is included in output tokens.
+Missing counters show `not reported`; counters available for only some requests show `(partial)`.
+Uncached input and Total require cache-read counts; partial totals include only requests with all required counters.
+The summary is saved in chat history and excluded from subsequent model input.
+Summaries are hidden by default, including those in saved history; token tracking continues.
 
 > [!IMPORTANT]
 >
@@ -968,13 +950,13 @@ Given its early stage, `avante.nvim` currently supports the following basic func
 >
 > ```lua
 > bedrock = {
->   model = "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+>   model = "us.anthropic.claude-sonnet-4-6",
 >   aws_profile = "bedrock",
 >   aws_region = "us-east-1",
 > },
 > ```
 >
-> Note: Bedrock requires the [AWS CLI](https://aws.amazon.com/cli/) to be installed on your system.
+> Bedrock authentication is handled by the AWS Rust SDK. Profiles, environment credentials, IAM roles, SSO, explicit `BEDROCK_KEYS`, and Bedrock bearer tokens are supported without invoking the AWS CLI.
 
 1. Open a code file in Neovim.
 2. Use the `:AvanteAsk` command to query the AI about the code.
@@ -1165,6 +1147,74 @@ This approach ensures that the apply model can quickly and accurately merge your
 
 </details>
 
+## Native LLM Transport
+
+In agentic mode, selected files are sent as paths when the `view` tool is available; the model reads their current contents as needed, including unsaved buffer edits. Selected code snippets are sent directly. Legacy mode and providers without the `view` tool continue to receive full file contents.
+
+All direct inference uses [Rig](https://github.com/0xPlaygrounds/rig) in Rust. Lua passes the Avante provider identity, internally derived protocol, credentials, semantic messages, tools, and generation options. Rust maps that protocol to the Rig provider, constructs `CompletionRequest` values, and owns endpoint selection, request serialization, and response decoding. Custom providers select a built-in provider implementation through `__inherited_from`; OpenAI-compatible providers may also set `dialect` to a Rig registry name such as `mistral`. Provider-specific generation fields are forwarded through Rig's `additional_params`. There is no curl or handwritten inference protocol fallback.
+
+The `crates/avante-llm/src/rig_compat.rs` module maps Avante provider configuration to Rig and contains protocol workarounds. Azure Responses routing, Gemini v1 endpoints and header authentication, Vertex streaming, and some generation options still need local workarounds; their comments state when upstream support can replace them. Sampling and typed generation options follow Rig's provider catalog through `ModelSpec::fit`; unlisted models follow the provider encoder's behavior. Building from source requires Rust 1.97.1 or newer. Claude and Bedrock defaults omit `temperature` so enabling thinking does not inherit an incompatible sampling value.
+
+The native path supports OpenAI-compatible Chat Completions and Responses providers, Azure OpenAI, Anthropic API keys, Gemini, Cohere, Ollama, Copilot, AWS Bedrock, and Gemini on Vertex AI. Bedrock proxies use the AWS SDK transport. Vertex AI rejects endpoint overrides, extra headers, proxies, and insecure-TLS settings because its SDK transport does not expose those controls. ACP remains a separate mode and continues to use the official ACP Rust SDK.
+
+API-key HTTP providers use a 30-second connection timeout and a 120-second read idle timeout. Each successful read resets the idle timeout, so an active stream has no total time limit. The native transport also has a five-minute idle timeout between decoded stream items; this applies to Claude subscriptions as well. Bedrock and Vertex AI use their SDK timeout policies. When `dual_boost.timeout` expires, both reference streams are cancelled and the request reports an error; late results are ignored.
+
+Upgrading from the Lua transport requires rebuilding the native libraries (`make`). Custom providers must use `__inherited_from`; Lua request builders, stream parsers, and ReAct tool emulation are no longer supported. The old `claude-pro-max`, `vertex_claude`, and `watsonx_code_assistant` providers have been removed. For Claude, use an Anthropic API key, the subscription configuration below, or the `claude-code` ACP provider. Azure requires a nonempty `deployment`, which selects the Azure endpoint independently of `model`.
+
+Streamed blocks keep separate history identities. Lua stores opaque native metadata alongside each block; Rust and Rig validate its origin and fingerprint before replaying signatures, encrypted reasoning, and response phases. Editing a block invalidates its original native payload.
+
+### Claude Pro/Max subscriptions
+
+On Linux and macOS, Avante supports Claude Pro/Max subscription authentication while continuing to execute its own tools:
+
+```lua
+require("avante").setup({
+  provider = "claude",
+  providers = {
+    claude = {
+      auth_type = "subscription", -- Claude Pro or Max; no API key required
+      model = "claude-sonnet-5-5",
+    },
+  },
+})
+```
+
+Rebuild the native libraries with `make`, then run `:Avante claude login`. Avante opens a browser and receives the OAuth callback on localhost; a browser with access to that machine is required. `:Avante claude logout` removes these credentials, and the normal Avante cancel action cancels a pending login. Credentials are stored under `stdpath("data")/avante/claude-cloak/anthropic-oauth/`; old Avante credentials are not imported.
+
+Subscription requests use a fixed Anthropic HTTPS endpoint. Custom endpoints, headers, API keys, provider-level proxies, and insecure TLS settings are rejected for this mode. Credentials refresh automatically. Omit `auth_type` (or set it to `"api_key"`) to use the existing Anthropic API-key path.
+
+### ChatGPT subscriptions
+
+Avante supports ChatGPT subscription OAuth while continuing to manage context and execute tools. It connects directly to the ChatGPT Codex backend; the Codex CLI is not required.
+
+```lua
+require("avante").setup({
+  provider = "openai",
+  providers = {
+    openai = {
+      auth_type = "subscription",
+      model = "gpt-6.1-sol",
+    },
+  },
+})
+```
+
+Rebuild the native libraries with `make`, then run `:Avante chatgpt login`. Avante opens a browser when a graphical session is available and otherwise shows a device-code URL and code, including over SSH. The normal Avante cancel action stops a pending login. `:Avante chatgpt logout` revokes the saved credentials and removes the local token file; any unconfirmed server revocation is reported.
+
+Avante stores credentials privately under `stdpath("data")/avante/chatgpt/` and refreshes them before inference as needed. Existing Codex or other clients' credentials are not imported. Missing credentials prompt you to run the login command; inference never starts an interactive sign-in. Authentication is not inherited from `openai` by other providers: set `auth_type` explicitly on each subscription provider.
+
+Subscription requests use a fixed HTTPS ChatGPT endpoint, stream Responses with `store = false`, and replay the full context instead of using `previous_response_id`. Custom endpoints, API keys, headers, provider-level proxies, and insecure TLS are rejected. The model picker uses a bundled ChatGPT catalog; listing a model does not establish that your plan can access it. Omit `auth_type` (or set it to `"api_key"`) to use OpenAI API-key authentication.
+
+### GitHub Copilot subscriptions
+
+Copilot authentication uses `auth_type = "subscription"` by default. Select `provider = "copilot"`, rebuild the native libraries with `make`, then run `:Avante copilot login`. Avante displays a GitHub device-code URL and code, stores credentials privately under `stdpath("data")/avante/copilot/`, and exchanges or refreshes the Copilot session token before inference and model listing. The normal Avante cancel action stops a pending login or request.
+
+Avante does not require copilot.lua or copilot.vim and does not import their credentials or the previous `avante/github-copilot.json` cache. Existing users must sign in once with the new command. Inference and model listing never start an interactive login; missing or invalid credentials report the login command. Model listing still uses your account's live catalog and preserves model policy and token limits.
+
+`:Avante copilot logout` removes Avante's local credentials. It does not revoke GitHub authorization; revoke the app separately in GitHub account settings when needed. Credentials owned by other plugins are untouched.
+
+The Copilot OAuth flow uses github.com and the HTTPS Copilot service endpoint returned by GitHub. Custom endpoints (including GHE authentication hosts), API keys, headers, provider-level proxies, and insecure TLS settings are rejected. Other Copilot client plugins may still be installed independently for completion features.
+
 ## ACP Support
 
 Avante.nvim now supports the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/overview/introduction), enabling seamless integration with AI agents that follow this standardized communication protocol. ACP provides a unified way for AI agents to interact with development environments, offering enhanced capabilities for code editing, file operations, and tool execution.
@@ -1298,11 +1348,9 @@ Avante enables tools by default, but some LLM models do not support tools. You c
 providers = {
   claude = {
     endpoint = "https://api.anthropic.com",
-    model = "claude-sonnet-4-20250514",
-    timeout = 30000, -- Timeout in milliseconds
+    model = "claude-sonnet-5-5",
     disable_tools = true, -- disable tools!
     extra_request_body = {
-      temperature = 0,
       max_tokens = 4096,
     }
   }
@@ -1566,7 +1614,6 @@ We would like to express our heartfelt gratitude to the contributors of the foll
 | [git-conflict.nvim](https://github.com/akinsho/git-conflict.nvim)     | No License         | Diff comparison functionality | [lua/avante/diff.lua](https://github.com/yetone/avante.nvim/blob/main/lua/avante/diff.lua)                                             |
 | [ChatGPT.nvim](https://github.com/jackMort/ChatGPT.nvim)              | Apache 2.0 License | Calculation of tokens count   | [lua/avante/utils/tokens.lua](https://github.com/yetone/avante.nvim/blob/main/lua/avante/utils/tokens.lua)                             |
 | [img-clip.nvim](https://github.com/HakonHarnes/img-clip.nvim)         | MIT License        | Clipboard image support       | [lua/avante/clipboard.lua](https://github.com/yetone/avante.nvim/blob/main/lua/avante/clipboard.lua)                                   |
-| [copilot.lua](https://github.com/zbirenbaum/copilot.lua)              | MIT License        | Copilot support               | [lua/avante/providers/copilot.lua](https://github.com/yetone/avante.nvim/blob/main/lua/avante/providers/copilot.lua)                   |
 | [codecompanion.nvim](https://github.com/olimorris/codecompanion.nvim) | MIT License        | Secrets logic support         | [lua/avante/providers/init.lua](https://github.com/yetone/avante.nvim/blob/main/lua/avante/providers/init.lua)                         |
 | [aider](https://github.com/paul-gauthier/aider)                       | Apache 2.0 License | Planning mode user prompt     | [lua/avante/templates/planning.avanterules](https://github.com/yetone/avante.nvim/blob/main/lua/avante/templates/planning.avanterules) |
 

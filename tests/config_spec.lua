@@ -28,6 +28,14 @@ describe("config", function()
     assert.is_true(Config.behaviour.auto_suggestions)
   end)
 
+  it("does not expose provider request timeouts", function()
+    Config.setup({})
+
+    for name, provider in pairs(Config.providers) do
+      assert.is_nil(provider.timeout, name .. " still defines a provider timeout")
+    end
+  end)
+
   it("lets explicit setup options override vim.g.avante", function()
     vim.g.avante = {
       provider = "openai",
