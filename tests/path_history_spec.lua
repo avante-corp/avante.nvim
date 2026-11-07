@@ -30,21 +30,27 @@ describe("History paths", function()
     vim.fn.delete(project_root, "rf")
   end)
 
-  it("preserves each turn's request settings after saving", function()
+  it("reuses prompt snapshots across turns and preserves changed rules after saving", function()
     local History = require("avante.history")
     local root = Config.history.storage_path .. "/project"
     local history = Path.history.new(0, root)
-    History.record_turn(history, {
-      turn_id = "turn-1",
-      model = "model-1",
-      reasoning_effort = "high",
-    })
-    History.record_turn(history, { turn_id = "turn-2", model = "model-2", reasoning_effort = "low" })
+    local snapshot = { system_prompt = "Final system instructions", instructions = "Project rules" }
+    local first = { turn_id = "turn-1", model = "model-1", reasoning_effort = "high", project_root = root }
+    local second = { turn_id = "turn-2", model = "model-2", reasoning_effort = "low", project_root = root }
+
+    History.record_turn(history, first, snapshot)
+    History.record_turn(history, second, vim.deepcopy(snapshot))
+    assert.equals(first.prompt_snapshot_id, second.prompt_snapshot_id)
+
+    local changed = { system_prompt = snapshot.system_prompt, instructions = "Changed project rules" }
+    History.record_turn(history, { turn_id = "turn-3" }, changed)
     Path.history.save(0, history, root)
     local loaded = Path.history.load(0, history.filename, root)
 
-    assert.equals(2, #loaded.turn_contexts)
     assert.same(history.turn_contexts, loaded.turn_contexts)
+    assert.equals(2, vim.tbl_count(loaded.prompt_snapshots))
+    assert.same(snapshot, loaded.prompt_snapshots[loaded.turn_contexts[1].prompt_snapshot_id])
+    assert.same(changed, loaded.prompt_snapshots[loaded.turn_contexts[3].prompt_snapshot_id])
     assert.is_string(loaded.turn_contexts[1].timestamp)
   end)
 

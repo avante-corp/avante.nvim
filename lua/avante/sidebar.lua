@@ -2389,6 +2389,7 @@ function Sidebar:clear_history(args, cb)
     local function clear_local_history()
       chat_history.messages = {}
       chat_history.entries = {}
+      chat_history.prompt_snapshots = nil
       chat_history.turn_contexts = nil
       chat_history.acp_session_id = nil
       Path.history.save(code_bufnr, chat_history)
@@ -3392,10 +3393,10 @@ function Sidebar:handle_submit(request)
       on_tool_log = on_tool_log,
       on_messages_add = on_messages_add,
       on_state_change = on_state_change,
-      on_request = function(context)
+      on_request = function(context, snapshot)
         if not is_current_request() or turn_context_saved then return end
         context.user_message_uuid = user_message and user_message.uuid
-        History.record_turn(chat_history, context)
+        History.record_turn(chat_history, context, snapshot)
         Path.history.write(code_bufnr, chat_history, history_project_root)
         turn_context_saved = true
       end,

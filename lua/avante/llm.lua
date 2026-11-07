@@ -508,6 +508,7 @@ function M.generate_prompts(opts)
   ---@type AvantePromptOptions
   return {
     system_prompt = system_prompt,
+    instructions = opts.instructions,
     messages = messages,
     image_paths = image_paths,
     tools = tools,

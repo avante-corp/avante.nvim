@@ -387,11 +387,7 @@ describe("Rig client adapter", function()
             first_poll = false
             return {
               { type = "content_start", kind = "tool_call", index = 0, name = "replace_in_file" },
-              {
-                type = "tool_call_delta",
-                index = 0,
-                arguments = { path = "README.md", the_diff = "partial" },
-              },
+              { type = "tool_call_delta", index = 0, arguments = { path = "README.md", the_diff = "partial" } },
               {
                 type = "content_end",
                 index = 0,
@@ -618,9 +614,7 @@ describe("Rig client adapter", function()
     RigClient.start(
       provider("openai", "openai", { use_response_api = true, support_previous_response_id = true }),
       { system_prompt = "system", messages = { { role = "user", content = "hello" } } },
-      {
-        on_stop = function(result) stopped = result end,
-      },
+      { on_stop = function(result) stopped = result end },
       nil,
       session_ctx
     )
@@ -636,9 +630,7 @@ describe("Rig client adapter", function()
     local cancelled = false
     package.loaded.avante_llm = {
       start = function()
-        return {
-          cancel = function() cancelled = true end,
-        }
+        return { cancel = function() cancelled = true end }
       end,
     }
     local timer_stub = stub(vim.uv or vim.loop, "new_timer").returns(nil)
@@ -647,9 +639,7 @@ describe("Rig client adapter", function()
     local request = RigClient.start(
       provider("openai", "openai"),
       { system_prompt = "system", messages = { { role = "user", content = "hello" } } },
-      {
-        on_stop = function(result) stopped = result end,
-      }
+      { on_stop = function(result) stopped = result end }
     )
     timer_stub:revert()
     package.loaded.avante_llm = loaded_native
@@ -833,7 +823,7 @@ describe("Rig client adapter", function()
     end)
 
     it("reports common request settings without credentials or protocol-specific parameters", function()
-      local sent, context
+      local sent, context, snapshot
       local collaboration = { mode = "agentic", dual_boost = false }
       package.loaded.avante_llm.start = function(input)
         sent = input
@@ -850,9 +840,11 @@ describe("Rig client adapter", function()
             api_key = "secret parameter",
           },
         }),
-        { system_prompt = "Final system", messages = {} },
+        { system_prompt = "Final system", instructions = "Project rules", messages = {} },
         {
-          on_request = function(settings) context = settings end,
+          on_request = function(settings, prompt)
+            context, snapshot = settings, prompt
+          end,
           on_stop = function() end,
         },
         nil,
@@ -865,6 +857,7 @@ describe("Rig client adapter", function()
         reasoning_effort = "high",
         project_root = "/project",
       }, context)
+      assert.same({ system_prompt = "Final system", instructions = "Project rules" }, snapshot)
     end)
 
     it("reports history write failures before starting the request", function()

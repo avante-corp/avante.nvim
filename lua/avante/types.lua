@@ -78,7 +78,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field on_messages_add? fun(messages: avante.HistoryMessage[]): nil
 ---@field on_state_change? fun(state: avante.GenerateState): nil
 ---@field update_tokens_usage? fun(usage: avante.LLMTokenUsage): nil
----@field on_request? fun(context: avante.TurnContext): nil
+---@field on_request? fun(context: avante.TurnContext, snapshot: avante.PromptSnapshot): nil
 ---
 ---@alias AvanteLLMMessageContentItem string | { type: "text", text: string, cache_control: { type: string } | nil } | { type: "image", source: { type: "base64", media_type: string, data: string } } | { type: "tool_use", name: string, id: string, input: any } | { type: "tool_result", tool_use_id: string, content: string, is_error?: boolean, is_user_declined?: boolean } | { type: "thinking", thinking: string, signature: string } | { type: "redacted_thinking", data: string } | { type: "reasoning", id?: string, encrypted_content?: string, summary?: table[] }
 
@@ -137,6 +137,7 @@ vim.g.avante_login = vim.g.avante_login
 
 ---@class AvantePromptOptions: table<[string], string>
 ---@field system_prompt string highest priority initial prompt (see config.system_prompt)
+---@field instructions? string Additional instructions appended to the request messages
 ---@field messages AvanteLLMMessage[]
 ---@field image_paths? string[]
 ---@field tools? AvanteLLMTool[] Available tools
@@ -345,7 +346,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field on_messages_add? fun(messages: avante.HistoryMessage[]): nil
 ---@field on_state_change? fun(state: avante.GenerateState): nil
 ---@field update_tokens_usage? fun(usage: avante.LLMTokenUsage): nil
----@field on_request? fun(context: avante.TurnContext): nil
+---@field on_request? fun(context: avante.TurnContext, snapshot: avante.PromptSnapshot): nil
 ---@field private _request_state? avante.LLMRequestState
 ---
 ---@class AvanteLLMToolFuncOpts
@@ -417,10 +418,15 @@ vim.g.avante_login = vim.g.avante_login
 ---@field selected_filepaths string[] | nil
 ---@field visible boolean?
 ---
+---@class avante.PromptSnapshot
+---@field system_prompt string Final system prompt, including applied rules
+---@field instructions? string Additional instructions appended to request messages
+---
 ---@class avante.TurnContext
 ---@field turn_id string First native request ID for this submission
 ---@field user_message_uuid? string User message that started this turn
 ---@field timestamp? string
+---@field prompt_snapshot_id? string Key in ChatHistory.prompt_snapshots
 ---@field provider? string
 ---@field model? string
 ---@field reasoning_effort? string
@@ -435,6 +441,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field memory avante.ChatMemory | nil
 ---@field filename string
 ---@field system_prompt string | nil
+---@field prompt_snapshots? table<string, avante.PromptSnapshot>
 ---@field turn_contexts? avante.TurnContext[]
 ---@field tokens_usage avante.LLMTokenUsage | nil
 ---@field acp_session_id string | nil

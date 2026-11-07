@@ -144,9 +144,7 @@ describe("Sidebar request history", function()
       code = { bufnr = bufnr },
       chat_history = history,
       containers = { result = { bufnr = bufnr } },
-      file_selector = {
-        get_selected_filepaths = function() return {} end,
-      },
+      file_selector = { get_selected_filepaths = function() return {} end },
       update_content = function() end,
       throttled_update_content = function() end,
       clear_state = function() end,
@@ -159,8 +157,9 @@ describe("Sidebar request history", function()
 
     sidebar:handle_submit("first task")
     local context = { turn_id = "request-1", model = "model-1" }
-    stream_opts.on_request(context)
-    stream_opts.on_request({ turn_id = "tool-continuation" })
+    local snapshot = { system_prompt = "system", instructions = "rules" }
+    stream_opts.on_request(context, snapshot)
+    stream_opts.on_request({ turn_id = "tool-continuation" }, { system_prompt = "continuation" })
     assert.equals(1, #history.turn_contexts)
     assert.equals(history.messages[1].uuid, history.turn_contexts[1].user_message_uuid)
     assert.equals("request-1", history.turn_contexts[1].turn_id)
@@ -196,7 +195,7 @@ describe("Sidebar request history", function()
     assert.same(2, #sidebar:get_history_messages_for_api({ all = true }))
 
     sidebar:handle_submit("second task")
-    stream_opts.on_request({ turn_id = "request-2", model = "model-2" })
+    stream_opts.on_request({ turn_id = "request-2", model = "model-2" }, snapshot)
     assert.equals(2, #history.turn_contexts)
     assert.equals(history.messages[#history.messages].uuid, history.turn_contexts[2].user_message_uuid)
     stream_opts.update_tokens_usage({
@@ -298,9 +297,7 @@ describe("Sidebar request history", function()
       code = { bufnr = bufnr },
       chat_history = original,
       containers = { result = { bufnr = bufnr } },
-      file_selector = {
-        get_selected_filepaths = function() return {} end,
-      },
+      file_selector = { get_selected_filepaths = function() return {} end },
       update_content = function() end,
       clear_state = function() cleared = cleared + 1 end,
       render_state = function() end,
@@ -313,7 +310,7 @@ describe("Sidebar request history", function()
 
     sidebar:handle_submit("hello")
     sidebar.chat_history = current
-    stream_opts.on_request({ turn_id = "original-request" })
+    stream_opts.on_request({ turn_id = "original-request" }, { system_prompt = "original instructions" })
     assert.equals(1, #original.turn_contexts)
     assert.is_nil(current.turn_contexts)
     assert.stub(Path.history.write).was_called()
@@ -337,9 +334,7 @@ describe("Sidebar request history", function()
       chat_history = original,
       chat_history_project_root = project_root,
       containers = { result = { bufnr = bufnr } },
-      file_selector = {
-        get_selected_filepaths = function() return {} end,
-      },
+      file_selector = { get_selected_filepaths = function() return {} end },
       update_content = function() end,
       clear_state = function() end,
       render_state = function() end,

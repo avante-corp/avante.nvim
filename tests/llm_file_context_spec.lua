@@ -50,6 +50,20 @@ describe("selected file context", function()
     return assert(vim.iter(prompt.messages):find(function(message) return message.is_context end)).content
   end
 
+  it("exposes the final system and project instructions for history snapshots", function()
+    local Prompts = require("avante.utils.prompts")
+    Config.system_prompt = "Custom system rules"
+    vim.fn.writefile({ "Project instructions" }, root .. "/" .. Config.instructions_file)
+    stubs[#stubs + 1] = stub(Prompts, "get_agents_rules_prompt").returns("Agent rules")
+    stubs[#stubs + 1] = stub(Prompts, "get_cursor_rules_prompt").returns("Cursor rules")
+
+    local prompt = generate()
+
+    assert.equals("Test instructions\n\nCustom system rules\n\nAgent rules\n\nCursor rules", prompt.system_prompt)
+    assert.equals("\nProject instructions\n", prompt.instructions)
+    assert.equals(prompt.instructions, prompt.messages[#prompt.messages].content)
+  end)
+
   it("sends paths without reading file contents in agentic mode", function()
     local read = stub(Utils, "read_file_from_buf_or_disk", function() error("unexpected file read") end)
     stubs[#stubs + 1] = read
