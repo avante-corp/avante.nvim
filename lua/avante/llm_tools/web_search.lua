@@ -461,9 +461,14 @@ local function web_search_specstream_func(input, opts)
     },
     opts,
     function(body)
-      if body.sources == nil then return "", body.message end
+      -- The API wraps every reply as { data, error }; a body without the wrapper is read as it is.
+      local data = type(body.data) == "table" and body.data or body
+      if type(data.sources) ~= "table" then
+        local err = type(body.error) == "table" and body.error.message or body.message
+        return "", type(err) == "string" and err or nil
+      end
       local results = vim
-        .iter(body.sources)
+        .iter(data.sources)
         :map(
           function(result)
             return {

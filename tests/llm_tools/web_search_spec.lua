@@ -74,3 +74,41 @@ describe("web_search_outcrawl", function()
     )
   end)
 end)
+
+describe("web_search_specstream", function()
+  it("reads the sources from the data envelope and maps them to title, url and snippet", function()
+    Config.setup()
+    local parse = stub(Utils.environment, "parse", function() return "test-key" end)
+    local request = stub(
+      vim.net,
+      "request",
+      function(_, _, _, on_response)
+        on_response(nil, {
+          body = vim.json.encode({
+            request_id = "r1",
+            status = 200,
+            data = {
+              kind = "list",
+              sources = { { url = "https://neovim.io/", title = "Neovim", snippet = "Vim-based editor" } },
+            },
+          }),
+        })
+      end
+    )
+
+    local result
+    WebSearch.web_search_specstream.func({ query = "neovim" }, { on_complete = function(r) result = r end })
+
+    local method, url, opts = unpack(request.calls[1].refs)
+    parse:revert()
+    request:revert()
+    assert.is_true(vim.wait(1000, function() return result ~= nil end), "web search did not complete")
+    assert.equals("GET", method)
+    assert.equals("https://api.specstream.ai/v1/web-search?q=neovim&", url)
+    assert.equals("Bearer test-key", opts.headers["Authorization"])
+    assert.are.same(
+      { { title = "Neovim", url = "https://neovim.io/", snippet = "Vim-based editor" } },
+      vim.json.decode(result)
+    )
+  end)
+end)
