@@ -1461,7 +1461,10 @@ Sidebar.render_history_content({history})
 
 
                                     *avante-sidebar:update_content_with_history*
-Sidebar:update_content_with_history()
+Sidebar:update_content_with_history({filename?})
+
+    Parameters: ~
+        {filename?}  (string)
 
 
 Sidebar:reset_chat_history()                 *avante-sidebar:reset_chat_history*
@@ -1504,8 +1507,11 @@ Sidebar:resume_pending_acp_import()   *avante-sidebar:resume_pending_acp_import*
 
 
                                 *avante-sidebar:switch_to_history_and_reconnect*
-Sidebar:switch_to_history_and_reconnect()
-    Show the latest chat history and reconnect the ACP agent for it
+Sidebar:switch_to_history_and_reconnect({filename?})
+    Show a chat history and reconnect the ACP agent for it
+
+    Parameters: ~
+        {filename?}  (string)  chat to show; defaults to the one already shown
 
 
                                               *avante-sidebar:finish_acp_import*
