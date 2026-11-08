@@ -20,6 +20,7 @@
 --- - Serply: `SERPLY_API_KEY`
 --- - Outcrawl: `OUTCRAWL_API_KEY`
 --- - Sofya: `SOFYA_API_KEY`
+--- - SpecStream: `SPECSTREAM_API_KEY`
 --- - SearXNG: `SEARXNG_API_URL`
 ---@brief ]]
 
@@ -37,6 +38,7 @@ local Utils = require("avante.utils")
 ---| '"serply"'
 ---| '"outcrawl"'
 ---| '"sofya"'
+---| '"specstream"'
 ---| '"searxng"'
 
 ---@alias WebSearchResponseFormatter fun(body: table): (string, string?)
@@ -443,6 +445,41 @@ local function web_search_outcrawl_func(input, opts)
 end
 
 ---@type AvanteLLMToolFunc<{ query: string }>
+---Expects SPECSTREAM_API_KEY in environment
+local function web_search_specstream_func(input, opts)
+  log_search("specstream", input, opts)
+  local api_key, api_key_err = get_api_key("SPECSTREAM_API_KEY")
+  if not api_key then return nil, api_key_err end
+  local query = encode_query({ q = input.query })
+  return request(
+    "GET",
+    "https://api.specstream.ai/v1/web-search?" .. query,
+    {
+      headers = {
+        ["Authorization"] = "Bearer " .. api_key,
+      },
+    },
+    opts,
+    function(body)
+      if body.sources == nil then return "", body.message end
+      local results = vim
+        .iter(body.sources)
+        :map(
+          function(result)
+            return {
+              title = result.title,
+              url = result.url,
+              snippet = result.snippet,
+            }
+          end
+        )
+        :totable()
+      return vim.json.encode(results), nil
+    end
+  )
+end
+
+---@type AvanteLLMToolFunc<{ query: string }>
 ---Expects SOFYA_API_KEY in environment
 local function web_search_sofya_func(input, opts)
   log_search("sofya", input, opts)
@@ -549,6 +586,7 @@ M.web_search_firecrawl = web_search_tool("firecrawl", web_search_firecrawl_func)
 M.web_search_serply = web_search_tool("serply", web_search_serply_func)
 M.web_search_outcrawl = web_search_tool("outcrawl", web_search_outcrawl_func)
 M.web_search_sofya = web_search_tool("sofya", web_search_sofya_func)
+M.web_search_specstream = web_search_tool("specstream", web_search_specstream_func)
 M.web_search_searxng = web_search_tool("searxng", web_search_searxng_func)
 
 return M

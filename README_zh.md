@@ -863,7 +863,7 @@ Avante 的工具包括一些 Web 搜索引擎，目前支持：
 
 每个搜索引擎都作为独立工具提供（`web_search_tavily`、`web_search_serpapi`、
 `web_search_searchapi`、`web_search_google`、`web_search_kagi`、`web_search_brave`、
-`web_search_firecrawl`、`web_search_serply`、`web_search_outcrawl`、`web_search_sofya` 和 `web_search_searxng`）。共享设置仍位于 `web_search_engine` 下：
+`web_search_firecrawl`、`web_search_serply`、`web_search_outcrawl`、`web_search_sofya`、`web_search_specstream` 和 `web_search_searxng`）。共享设置仍位于 `web_search_engine` 下：
 
 ```lua
 web_search_engine = {
@@ -918,7 +918,7 @@ Avante 默认启用工具，但某些 LLM 模型不支持工具。您可以通�
 > read_file, create_file, move_path, copy_path, delete_path, create_dir, bash,
 > web_search_tavily, web_search_serpapi, web_search_searchapi, web_search_google,
 > web_search_kagi, web_search_brave, web_search_firecrawl, web_search_serply,
-> web_search_outcrawl, web_search_sofya, web_search_searxng, fetch
+> web_search_outcrawl, web_search_sofya, web_search_specstream, web_search_searxng, fetch
 
 ## 自定义工具
 
