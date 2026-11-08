@@ -1,4 +1,31 @@
 ---@mod avante-providers-claude Anthropic provider
+---
+---@brief [[
+---Set `providers.claude.auth_type = "subscription"` to use a Claude Pro or Max
+---subscription on Linux or macOS. Rebuild the native libraries, then run
+---`:Avante claude login`; use `:Avante claude logout` to remove the saved
+---credentials. Omit `auth_type` or set it to `"api_key"` for API-key
+---authentication.
+---<
+---   require("avante").setup({
+---     provider = "claude",
+---     providers = {
+---       claude = {
+---         auth_type = "subscription",
+---         model = "claude-sonnet-5-5",
+---       },
+---     },
+---   })
+--->
+---Login opens a browser and receives the OAuth callback on localhost. The normal
+---cancel action stops a pending login. Credentials remain in
+---`stdpath("data")/avante/claude-cloak/anthropic-oauth/` and refresh
+---automatically; credentials from older Avante versions are not imported.
+---
+---Subscription requests use a fixed Anthropic HTTPS endpoint. Custom endpoints,
+---headers, API keys, provider-level proxies and insecure TLS are unsupported.
+---@brief ]]
+
 local Utils = require("avante.utils")
 
 local M = {}

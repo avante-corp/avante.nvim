@@ -6,6 +6,17 @@
 ---it to `"api_key"` for API-key authentication. Avante uses a browser in a graphical
 ---session or a device code over SSH. `:Avante chatgpt logout` revokes and removes
 ---saved credentials; the normal cancel action stops a pending login.
+---<
+---   require("avante").setup({
+---     provider = "openai",
+---     providers = {
+---       openai = {
+---         auth_type = "subscription",
+---         model = "gpt-6.1-sol",
+---       },
+---     },
+---   })
+--->
 ---
 ---Credentials remain in `stdpath("data")/avante/chatgpt/` and refresh automatically.
 ---Requests use the fixed ChatGPT Codex HTTPS endpoint and full conversation
