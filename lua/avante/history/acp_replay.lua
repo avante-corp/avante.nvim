@@ -156,7 +156,7 @@ function M.apply_update(state, update)
     message.state = "generated"
     if not state.resolved_tool_calls[id] then
       state.resolved_tool_calls[id] = true
-      local result = Message:new("assistant", {
+      local result = Message:new("user", {
         type = "tool_result",
         tool_use_id = id,
         content = nil,
