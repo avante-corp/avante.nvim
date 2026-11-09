@@ -31,7 +31,7 @@ local function filepath_to_filename(filepath) return tostring(filepath):sub(tost
 -- History path
 local History = {}
 
----@param metadata table
+---@param metadata {acp_provider?: string, acp_session_id?: string, acp_session_cwd?: string}
 ---@param filepath Path
 ---@return avante.ChatHistory|nil
 local function acp_history_from_metadata(metadata, filepath)
@@ -127,11 +127,11 @@ end
 ---@param bufnr integer
 ---@param new boolean
 ---@param project_root? string
----@return Path
+---@return Path?
 function History.get_latest_filepath(bufnr, new, project_root)
-  local history_dir = History.get_history_dir(bufnr, project_root)
   local filename = History.get_latest_filename(bufnr, new, project_root)
-  return history_dir:joinpath(filename)
+  if not filename then return nil end
+  return History.get_filepath(bufnr, filename, project_root)
 end
 
 function History.get_filepath(bufnr, filename, project_root)
@@ -145,27 +145,25 @@ function History.get_metadata_filepath(bufnr, project_root)
 end
 
 function History.get_latest_filename(bufnr, new, project_root)
-  local history_dir = History.get_history_dir(bufnr, project_root)
-  ---@type string?
-  local filename
-  local metadata_filepath = History.get_metadata_filepath(bufnr, project_root)
-  if metadata_filepath:exists() and not new then
+  if not new then
+    local metadata_filepath = History.get_metadata_filepath(bufnr, project_root)
+    if not metadata_filepath:exists() then return nil end
     local metadata_content = metadata_filepath:read()
     ---@type {latest_filename?: string}
     local metadata = vim.json.decode(metadata_content)
-    filename = metadata.latest_filename
+    return metadata.latest_filename ~= "" and metadata.latest_filename or nil
   end
-  if not filename or filename == "" then
-    local pattern = tostring(history_dir:joinpath("*.json"))
-    local files = vim.fn.glob(pattern, true, true)
-    local max_id = -1
-    for _, file in ipairs(files) do
-      local id = tonumber(vim.fs.basename(file):match("^(%d+)%.json$"))
-      if id and id > max_id then max_id = id end
-    end
-    filename = (new and max_id + 1 or math.max(max_id, 0)) .. ".json"
+
+  local history_dir = History.get_history_dir(bufnr, project_root)
+  local pattern = tostring(history_dir:joinpath("*.json"))
+  ---@type string[]
+  local files = vim.fn.glob(pattern, true, true)
+  local max_id = -1
+  for _, file in ipairs(files) do
+    local id = tonumber(vim.fs.basename(file):match("^(%d+)%.json$"))
+    if id and id > max_id then max_id = id end
   end
-  return filename
+  return (max_id + 1) .. ".json"
 end
 
 ---Update metadata with latest history
@@ -242,6 +240,8 @@ end
 function History.load(bufnr, filename, project_root)
   local history_filepath = filename and History.get_filepath(bufnr, filename, project_root)
     or History.get_latest_filepath(bufnr, false, project_root)
+  if not history_filepath then return History.new(bufnr, project_root) end
+
   local history, is_acp_metadata = History.from_file(history_filepath)
   if history and (not is_acp_metadata or (Config.acp_providers or {})[history.acp_provider]) then return history end
   return History.new(bufnr, project_root)
@@ -251,7 +251,9 @@ end
 ---@param bufnr integer
 ---@param history avante.ChatHistory
 ---@param project_root? string
+---@return boolean
 function History.write(bufnr, history, project_root)
+  if history._discarded then return false end
   local history_filepath = History.get_filepath(bufnr, history.filename, project_root)
   if history.acp_provider then
     if not history.acp_session_id or history.acp_session_id == "" then
@@ -287,6 +289,7 @@ end
 --- Deletes a specific chat history file.
 ---@param bufnr integer
 ---@param filename string
+---@param project_root? string
 function History.delete(bufnr, filename, project_root)
   local history_filepath = History.get_filepath(bufnr, filename, project_root)
   if history_filepath:exists() then

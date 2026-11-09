@@ -517,6 +517,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field acp_provider? string Provider that owns the persisted ACP session
 ---@field acp_session_cwd string | nil Directory of an imported ACP session, used to load it
 ---@field acp_session_import_pending boolean | nil Whether an imported session still needs its replay saved
+---@field _discarded? boolean Whether this deleted history must reject late writes
 ---
 ---@class avante.ChatMemory
 ---@field content string
