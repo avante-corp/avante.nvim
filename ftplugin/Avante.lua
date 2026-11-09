@@ -7,8 +7,8 @@ vim.opt_local.winfixwidth = true
 vim.opt_local.list = false
 vim.opt_local.linebreak = true
 vim.opt_local.breakindent = true
-vim.opt_local.wrap = false
 vim.opt_local.statusline = vim.o.laststatus == 0 and " " or ""
 
+vim.wo.wrap = true
 vim.wo.foldmethod = "expr"
 vim.wo.foldexpr = "v:lua.vim.treesitter.foldexpr()"
