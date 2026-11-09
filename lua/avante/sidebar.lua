@@ -2463,23 +2463,17 @@ function Sidebar:clear_history(args, cb)
   local chat_history = self.chat_history
   if chat_history and next(chat_history) ~= nil then
     local code_bufnr = self.code.bufnr
+    local history_project_root = self.chat_history_project_root
     local stream_cancelled = self.is_generating == true
     if stream_cancelled then Llm.cancel_inflight_request() end
     local function clear_local_history()
-      chat_history.messages = {}
-      chat_history.entries = {}
-      chat_history.prompt_snapshots = nil
-      chat_history.turn_contexts = nil
-      chat_history.acp_session_id = nil
-      Path.history.save(code_bufnr, chat_history)
+      chat_history._discarded = true
+      local history_filepath = Path.history.get_filepath(code_bufnr, chat_history.filename, history_project_root)
+      if history_filepath:exists() then
+        Path.history.delete(code_bufnr, chat_history.filename, history_project_root)
+      end
       if self.chat_history == chat_history then
-        self._history_cache_invalidated = true
-        if chat_history.acp_provider then
-          self:render_result_header()
-        else
-          self:reload_chat_history()
-          self:update_content_with_history()
-        end
+        self:reset_chat_history()
         self:update_content(
           "Chat history cleared",
           { focus = false, scroll = false, callback = function() self:focus_input() end }
@@ -3267,6 +3261,7 @@ function Sidebar:handle_submit(request)
       provider = vim.deepcopy(acp_provider),
     }
   local function is_current_request()
+    if chat_history._discarded then return false end
     return not acp_provider
       or (self.chat_history == chat_history and self.acp_client_generation == acp_client_generation)
   end

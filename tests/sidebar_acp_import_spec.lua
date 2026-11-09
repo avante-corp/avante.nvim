@@ -5,7 +5,8 @@ local Utils = require("avante.utils")
 local Sidebar = require("avante.sidebar")
 
 describe("Sidebar ACP import", function()
-  local stubs, saved, saved_bufnr, deleted, latest, stored, saved_provider, saved_acp_providers
+  local stubs, saved, deleted, deleted_bufnr, deleted_root, latest, stored
+  local saved_provider, saved_acp_providers
 
   ---@return table
   local function fake_sidebar(opts)
@@ -15,6 +16,7 @@ describe("Sidebar ACP import", function()
       acp_client = opts.client,
       acp_client_generation = 0,
       chat_history = opts.chat_history,
+      chat_history_project_root = opts.project_root,
       pending_acp_import = opts.import,
       rendered = 0,
       reloads = 0,
@@ -37,15 +39,20 @@ describe("Sidebar ACP import", function()
   end
 
   before_each(function()
-    saved, saved_bufnr, deleted, latest = nil, nil, {}, nil
+    saved, deleted, deleted_bufnr, deleted_root, latest = nil, {}, nil, nil, nil
     saved_provider, saved_acp_providers = Config.provider, Config.acp_providers
     -- Chats on disk, by filename, for discard_acp_import_chat to check
     stored = {}
     stubs = {
-      stub(Path.history, "save").invokes(function(bufnr, history)
-        saved_bufnr, saved = bufnr, history
+      stub(Path.history, "save").invokes(function(_, history) saved = history end),
+      stub(Path.history, "delete").invokes(function(bufnr, filename, project_root)
+        deleted_bufnr, deleted_root = bufnr, project_root
+        table.insert(deleted, filename)
       end),
-      stub(Path.history, "delete").invokes(function(_, filename) table.insert(deleted, filename) end),
+      stub(Path.history, "get_filepath").returns({ exists = function() return true end }),
+      stub(Path.history, "new").invokes(
+        function() return { filename = "new.json", messages = {}, entries = {}, todos = {} } end
+      ),
       stub(Path.history, "save_latest_filename").invokes(function(_, filename) latest = filename end),
       stub(Path.history, "load").invokes(function(_, filename) return stored[filename] end),
       stub(Utils, "error"),
@@ -137,6 +144,7 @@ describe("Sidebar ACP import", function()
       local chat = {
         acp_provider = "test-acp",
         acp_session_id = "s1",
+        filename = "old.json",
         messages = { "old" },
         entries = { "old" },
       }
@@ -144,10 +152,11 @@ describe("Sidebar ACP import", function()
 
       sidebar:clear_history({})
 
-      assert.is_nil(chat.acp_session_id)
-      assert.same({}, chat.messages)
-      assert.same({}, chat.entries)
-      assert.equals(chat, saved)
+      assert.equals("s1", chat.acp_session_id)
+      assert.same({ "old" }, chat.messages)
+      assert.same({ "old.json" }, deleted)
+      assert.equals("new.json", sidebar.chat_history.filename)
+      assert.is_nil(saved)
       assert.equals(0, sidebar.reloads)
       assert.stub(client.stop).was_called(1)
     end)
@@ -160,20 +169,23 @@ describe("Sidebar ACP import", function()
         stop = stub(),
         delete_session = function(_, _, callback) complete_delete = callback end,
       }
-      local original = { acp_session_id = "s1", messages = { "old" }, entries = { "old" } }
-      local current = { messages = { "current" }, entries = { "current" } }
-      local sidebar = fake_sidebar({ chat_history = original, client = client })
+      local original = { acp_session_id = "s1", filename = "old.json", messages = { "old" }, entries = { "old" } }
+      local current = { filename = "current.json", messages = { "current" }, entries = { "current" } }
+      local sidebar = fake_sidebar({ chat_history = original, client = client, project_root = "/original" })
 
       sidebar:clear_history({})
       sidebar.chat_history = current
       sidebar.code.bufnr = 2
+      sidebar.chat_history_project_root = "/current"
       complete_delete(nil)
 
-      assert.same({}, original.messages)
-      assert.is_nil(original.acp_session_id)
+      assert.same({ "old" }, original.messages)
+      assert.equals("s1", original.acp_session_id)
       assert.same({ "current" }, current.messages)
       assert.same({ "current" }, current.entries)
-      assert.equals(1, saved_bufnr)
+      assert.same({ "old.json" }, deleted)
+      assert.equals(1, deleted_bufnr)
+      assert.equals("/original", deleted_root)
     end)
   end)
 

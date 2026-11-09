@@ -93,6 +93,29 @@ describe("History paths", function()
     assert.is_true(ok, err)
   end)
 
+  it("does not restore an old history when metadata has no latest filename", function()
+    local project_root = Config.history.storage_path .. "/unselected-project"
+    Path.history.write(0, {
+      filename = "0.json",
+      title = "old history",
+      messages = { { message = { role = "user", content = "do not restore" } } },
+      entries = {},
+      todos = {},
+    }, project_root)
+    Path.history.write(0, {
+      filename = "1.json",
+      title = "newer old history",
+      messages = { { message = { role = "user", content = "do not restore either" } } },
+      entries = {},
+      todos = {},
+    }, project_root)
+
+    assert.is_nil(Path.history.get_latest_filename(0, false, project_root))
+    local restored = Path.history.load(0, nil, project_root)
+    assert.same({}, restored.messages)
+    assert.equals("2.json", restored.filename)
+  end)
+
   it("does not restore an ACP session through a different provider", function()
     local provider, acp_providers = Config.provider, Config.acp_providers
     local project_root = Config.history.storage_path .. "/removed-acp-project"

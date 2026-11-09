@@ -218,8 +218,9 @@ describe("Sidebar active request lifecycle", function()
     return History.Helpers.get_tool_use_message("pending-tool", sidebar.chat_history.messages)
   end
 
-  it("keeps cleared history empty after a cancelled asynchronous tool settles", function()
+  it("deletes cleared history after a cancelled asynchronous tool settles", function()
     start_async_tool()
+    local cleared_history = sidebar.chat_history
     local filename = sidebar.chat_history.filename
     local root = sidebar.chat_history_project_root
     History.record_turn(
@@ -227,15 +228,24 @@ describe("Sidebar active request lifecycle", function()
       { turn_id = "turn-to-clear" },
       { system_prompt = "instructions to clear" }
     )
+    cleared_history.memory = { content = "old memory" }
+    cleared_history.todos = { { id = "old todo" } }
+    cleared_history.tokens_usage = { prompt_tokens = 10, completion_tokens = 5 }
+    Path.history.save(code_buf, cleared_history, root)
+    local filepath = Path.history.get_filepath(code_buf, filename, root)
 
     sidebar:clear_history()
-    assert.equals(0, #sidebar.chat_history.messages)
-    vim.wait(1200)
 
-    local saved = Path.history.load(code_buf, filename, root)
-    assert.same({ 0, 0 }, { #sidebar.chat_history.messages, #saved.messages })
-    assert.is_nil(saved.prompt_snapshots)
-    assert.is_nil(saved.turn_contexts)
+    assert.not_equals(cleared_history, sidebar.chat_history)
+    assert.equals(0, #sidebar.chat_history.messages)
+    assert.same({}, sidebar.chat_history.todos)
+    assert.is_nil(sidebar.chat_history.memory)
+    assert.is_nil(sidebar.chat_history.tokens_usage)
+    assert.is_false(filepath:exists())
+    Path.history.save(code_buf, cleared_history, root)
+    assert.is_false(filepath:exists())
+    vim.wait(1200)
+    assert.is_false(filepath:exists())
   end)
 
   it("clears the calling flag when an asynchronous tool is cancelled", function()
