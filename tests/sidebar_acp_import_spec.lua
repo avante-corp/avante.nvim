@@ -17,13 +17,18 @@ describe("Sidebar ACP import", function()
       chat_history = opts.chat_history,
       pending_acp_import = opts.import,
       rendered = 0,
+      reloads = 0,
       reconnected = 0,
       content_updates = 0,
     }, { __index = Sidebar })
     function s:is_open() return self.open end
     function s:update_content_with_history() self.rendered = self.rendered + 1 end
-    function s:update_content() self.content_updates = self.content_updates + 1 end
-    function s:reload_chat_history() end
+    function s:update_content()
+      self.content_updates = self.content_updates + 1
+      self.invalidated_when_updated = self._history_cache_invalidated
+    end
+    function s:reload_chat_history() self.reloads = self.reloads + 1 end
+    function s:render_result_header() end
     function s:focus_input() end
     function s:create_todos_container() end
     function s:initialize_token_count() end
@@ -129,7 +134,12 @@ describe("Sidebar ACP import", function()
         stop = stub(),
         delete_session = function(_, _, callback) callback(nil) end,
       }
-      local chat = { acp_session_id = "s1", messages = { "old" }, entries = { "old" } }
+      local chat = {
+        acp_provider = "test-acp",
+        acp_session_id = "s1",
+        messages = { "old" },
+        entries = { "old" },
+      }
       local sidebar = fake_sidebar({ chat_history = chat, client = client })
 
       sidebar:clear_history({})
@@ -138,6 +148,7 @@ describe("Sidebar ACP import", function()
       assert.same({}, chat.messages)
       assert.same({}, chat.entries)
       assert.equals(chat, saved)
+      assert.equals(0, sidebar.reloads)
       assert.stub(client.stop).was_called(1)
     end)
 
@@ -182,10 +193,13 @@ describe("Sidebar ACP import", function()
 
       assert.stub(client.stop).was_called(1)
       assert.is_nil(sidebar.acp_client)
-      assert.same(
-        { session_id = "s1", filename = "3.json", created = false, timestamp = "2026-07-01 20:00:00" },
-        sidebar.pending_acp_import
-      )
+      assert.same({
+        session_id = "s1",
+        filename = "3.json",
+        created = false,
+        automatic = true,
+        timestamp = "2026-07-01 20:00:00",
+      }, sidebar.pending_acp_import)
     end)
 
     it("does not reload a normal empty session", function()
@@ -263,7 +277,8 @@ describe("Sidebar ACP import", function()
       assert.is_nil(chat.acp_session_import_pending)
       assert.equals(chat, saved)
       assert.is_nil(sidebar.pending_acp_import)
-      assert.equals(1, sidebar.rendered)
+      assert.equals(1, sidebar.content_updates)
+      assert.is_true(sidebar.invalidated_when_updated)
     end)
 
     it("attributes replayed requests to the loaded ACP session", function()
@@ -360,6 +375,25 @@ describe("Sidebar ACP import", function()
   end)
 
   describe("fail_acp_import", function()
+    it("starts fresh when an automatically restored session no longer exists", function()
+      local import = { session_id = "s1", filename = "3.json", created = false, automatic = true }
+      local chat = {
+        filename = "3.json",
+        acp_session_id = "s1",
+        acp_session_import_pending = true,
+      }
+      local submitted
+      local sidebar = fake_sidebar({ chat_history = chat, import = import })
+      sidebar.handle_submit = function(_, request) submitted = request end
+
+      sidebar:fail_acp_import(import, { kind = "session_not_found", message = "Session not found" })
+
+      assert.same({ filename = "3.json" }, chat)
+      assert.equals(chat, saved)
+      assert.equals("", submitted)
+      assert.stub(Utils.error).was_not_called()
+    end)
+
     it("removes a chat created for the import and goes back to the previous one", function()
       local import = { session_id = "s1", filename = "5.json", created = true, previous_filename = "2.json" }
       stored["5.json"] = { messages = {} }
@@ -392,8 +426,8 @@ describe("Sidebar ACP import", function()
       assert.stub(Utils.error).was_called(1)
       assert.same({}, deleted)
       assert.same({ "kept" }, chat.messages)
-      assert.is_nil(chat.acp_session_import_pending)
-      assert.equals(chat, saved)
+      assert.is_true(chat.acp_session_import_pending)
+      assert.is_nil(saved)
       assert.equals(0, sidebar.reconnected)
     end)
 

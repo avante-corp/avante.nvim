@@ -339,7 +339,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field acp_request? {finished: boolean, cancelled: boolean, cancel_autocmd?: integer, prompt_session_id?: string}
 ---@field acp_session_cwd? string Directory the ACP session belongs to; defaults to the project root
 ---@field on_save_acp_session_id? fun(session_id: string): nil
----@field on_acp_session_replay? fun(session_id: string, messages: avante.HistoryMessage[]): nil Set to receive the conversation an agent replays on session/load; a failed load then calls on_acp_session_load_error instead of starting a new session
+---@field on_acp_session_replay? fun(session_id: string, messages: avante.HistoryMessage[]): nil Receive the conversation replayed on session/load; load failures call on_acp_session_load_error instead of starting a new session
 ---@field on_acp_session_load_error? fun(session_id: string, err: avante.acp.ACPError): nil
 ---@field on_start AvanteLLMStartCallback
 ---@field on_chunk? AvanteLLMChunkCallback
@@ -514,6 +514,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field turn_contexts? avante.TurnContext[]
 ---@field tokens_usage avante.LLMTokenUsage | nil
 ---@field acp_session_id string | nil
+---@field acp_provider? string Provider that owns the persisted ACP session
 ---@field acp_session_cwd string | nil Directory of an imported ACP session, used to load it
 ---@field acp_session_import_pending boolean | nil Whether an imported session still needs its replay saved
 ---

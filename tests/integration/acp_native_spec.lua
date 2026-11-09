@@ -90,6 +90,54 @@ describe("ACP native integration", function()
     workspaces = {}
   end)
 
+  it("restores a saved session from metadata", function()
+    local Config = require("avante.config")
+    local Path = require("avante.path")
+    local Llm = require("avante.llm")
+    local client, ws = new_client()
+    local provider, providers, history_config, ask_opts =
+      Config.provider, Config.acp_providers, Config.history, Config.ask_opts
+    Config.provider = "test-native-acp"
+    Config.acp_providers = { ["test-native-acp"] = client.config }
+    Config.history = { storage_path = ws.directory .. "/editor-history" }
+    Config.ask_opts = { project_root = ws.root }
+    local restored
+    local ok, err = pcall(function()
+      local history = Path.history.load(0)
+      history.acp_session_id = "s1"
+      history.acp_session_cwd = ws.root
+      Path.history.save(0, history)
+
+      local files = vim.fn.glob(Config.history.storage_path .. "/projects/*/history/[0-9]*.json", false, true)
+      assert.equals(1, #files)
+      assert.same({
+        acp_provider = "test-native-acp",
+        acp_session_id = "s1",
+        acp_session_cwd = ws.root,
+      }, vim.json.decode(table.concat(vim.fn.readfile(files[1]), "\n")))
+
+      history = Path.history.load(0)
+      assert.equals("s1", history.acp_session_id)
+      assert.is_true(history.acp_session_import_pending)
+      operation("automatic history restoration", function(done)
+        Llm._stream_acp({
+          acp_client = client,
+          acp_session_id = history.acp_session_id,
+          just_connect_acp_client = true,
+          on_acp_session_replay = function(_, messages) restored = messages end,
+          on_state_change = function(state)
+            if state == "initialized" then done() end
+          end,
+          on_stop = function(result) done(result) end,
+        })
+      end)
+    end)
+    Config.provider, Config.acp_providers, Config.history = provider, providers, history_config
+    Config.ask_opts = ask_opts
+    assert.is_true(ok, err)
+    assert.equals("replayed", restored[1].message.content)
+  end)
+
   after_each(function()
     for _, client in ipairs(clients) do
       if client.connection_state ~= "disconnected" or client.native then

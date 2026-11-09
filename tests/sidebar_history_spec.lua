@@ -167,6 +167,23 @@ describe("Sidebar request history", function()
     assert.stub(sidebar.render_result_header).was_called(1)
   end)
 
+  it("restores the ACP provider that owns the latest session", function()
+    Config.provider = "test-acp"
+    Config.acp_providers = {
+      ["test-acp"] = { command = "test-agent" },
+      ["other-acp"] = { command = "other-agent" },
+    }
+    local history = { filename = "restored.json", acp_provider = "other-acp", messages = {} }
+    local restored
+    stubs[#stubs + 1] = stub(Config, "override").invokes(function(opts) restored = opts end)
+    stubs[#stubs + 1] = stub(Path.history, "load").returns(history)
+    local sidebar = setmetatable({ code = { bufnr = bufnr } }, { __index = Sidebar })
+
+    sidebar:reload_chat_history(history.filename, "/project")
+
+    assert.equals("other-acp", restored.provider)
+  end)
+
   it("reports Codex-style usage after each turn and preserves latest context usage", function()
     local history = { filename = "usage.json", messages = {} }
     local stream_opts

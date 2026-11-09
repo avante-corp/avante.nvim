@@ -306,11 +306,17 @@ function M.select_acp_mode() require("avante.acp_config_selector").open_mode() e
 
 ---List the current ACP agent's sessions for this project, including ones started outside avante
 ---(e.g. in the agent's CLI), and resume the selected one in the sidebar
-function M.select_acp_session() require("avante.acp_session_selector").open() end
+---@param session_id? string
+function M.select_acp_session(session_id) require("avante.acp_session_selector").open(session_id) end
 
 function M.select_history(session_id)
   local generating, sidebar = is_generating()
   if generating then return end
+  local is_acp = (Config.acp_providers or {})[Config.provider] ~= nil
+  if is_acp and (not session_id or session_id == "") then
+    M.select_acp_session(session_id)
+    return
+  end
   local buf = vim.api.nvim_get_current_buf()
   if Utils.is_sidebar_buffer(buf) and sidebar and sidebar.code.bufnr then buf = sidebar.code.bufnr end
   require("avante.history_selector").open(buf, function(filename)
@@ -331,7 +337,7 @@ function M.select_history(session_id)
       end
       vim.schedule(function() sidebar:focus_input() end)
     end)
-  end, session_id)
+  end, session_id, is_acp and function() M.select_acp_session(session_id) end or nil)
 end
 
 function M.add_buffer_files()

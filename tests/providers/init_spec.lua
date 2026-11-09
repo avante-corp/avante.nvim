@@ -41,13 +41,13 @@ describe("providers", function()
     package.loaded["avante.providers"] = nil
   end)
 
-  it("redraws the sidebar header after switching providers", function()
-    local rendered = 0
+  it("resets the sidebar chat after switching providers", function()
+    local reset = 0
     package.loaded["avante"] = {
       get = function()
         return {
           is_open = function() return true end,
-          render_result_header = function() rendered = rendered + 1 end,
+          reset_chat_history = function() reset = reset + 1 end,
         }
       end,
     }
@@ -55,7 +55,27 @@ describe("providers", function()
     require("avante.providers").refresh("test_claude")
 
     assert.are.same("test_claude", Config.provider)
-    assert.are.same(1, rendered)
+    assert.are.same(1, reset)
+  end)
+
+  it("does not create an ACP session when switching providers", function()
+    local reset, submitted = 0, 0
+    Config.override({ acp_providers = { test_acp = { command = "test-agent" } } })
+    package.loaded["avante"] = {
+      get = function()
+        return {
+          is_open = function() return true end,
+          reset_chat_history = function() reset = reset + 1 end,
+          handle_submit = function() submitted = submitted + 1 end,
+        }
+      end,
+    }
+
+    require("avante.providers").refresh("test_acp")
+
+    assert.are.same("test_acp", Config.provider)
+    assert.are.same(1, reset)
+    assert.are.same(0, submitted)
   end)
 
   it("keeps internal provider identity out of parsed user configuration", function()

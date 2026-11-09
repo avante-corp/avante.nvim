@@ -157,7 +157,8 @@ function M.resume(bufnr, session)
 end
 
 ---List the current ACP provider's sessions for this project and resume the selected one
-function M.open()
+---@param requested_session_id? string
+function M.open(requested_session_id)
   local provider = Config.provider
   ---@type AvanteACPProvider?
   local acp_provider = vim.deepcopy(Config.acp_providers[provider])
@@ -230,9 +231,15 @@ function M.open()
           })
         end
 
-        Selector:new({
+        if requested_session_id and by_id[requested_session_id] then
+          M.resume(bufnr, by_id[requested_session_id])
+          return
+        end
+
+        local selector = Selector:new({
           provider = Config.selector.provider,
           provider_opts = Config.selector.provider_opts,
+          default_query = requested_session_id,
           title = provider .. " sessions (* = already in avante history)",
           items = items,
           on_select = function(item_ids)
@@ -254,12 +261,11 @@ function M.open()
               table.insert(lines, "- **Updated:** " .. M.format_updated_at(session.updatedAt))
             end
             local history = linked[session.sessionId]
-            if history then
-              table.insert(lines, "- **Avante chat:** " .. history.title .. " (`" .. history.filename .. "`)")
-            end
+            if history then table.insert(lines, "- **Avante history:** " .. history.filename) end
             return table.concat(lines, "\n"), "markdown"
           end,
-        }):open()
+        })
+        selector:open()
       end)
     end)
   end)

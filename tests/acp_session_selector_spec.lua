@@ -308,11 +308,11 @@ describe("acp_session_selector", function()
     local LISTING = { loadSession = true, sessionCapabilities = { list = vim.empty_dict() } }
 
     ---@param opts table
-    local function open_with(opts, histories)
+    local function open_with(opts, histories, query)
       fake = fake_client(opts)
       stubs[#stubs + 1] = stub(ACPClient, "new").returns(fake)
       stubs[#stubs + 1] = stub(Path.history, "list").returns(histories or {})
-      AcpSessionSelector.open()
+      AcpSessionSelector.open(query)
     end
 
     before_each(function()
@@ -396,7 +396,30 @@ describe("acp_session_selector", function()
 
       local preview = selector_opts.get_preview_content("older-session")
       assert.truthy(preview:find("older-session", 1, true))
-      assert.truthy(preview:find("1.json", 1, true))
+      assert.truthy(preview:find("**Avante history:** 1.json", 1, true))
+      assert.falsy(preview:find("Avante chat:", 1, true))
+    end)
+
+    it("resumes an exact requested session without opening the selector", function()
+      local resumed
+      stubs[#stubs + 1] = stub(AcpSessionSelector, "resume").invokes(function(_, session) resumed = session end)
+
+      open_with({
+        capabilities = LISTING,
+        sessions = { { sessionId = "requested-session", cwd = "/p" } },
+      }, nil, "requested-session")
+
+      assert.equals("requested-session", resumed.sessionId)
+      assert.is_nil(selector_opts)
+    end)
+
+    it("uses a non-exact requested session as the selector query", function()
+      open_with({
+        capabilities = LISTING,
+        sessions = { { sessionId = "requested-session", cwd = "/p" } },
+      }, nil, "requested")
+
+      assert.equals("requested", selector_opts.default_query)
     end)
 
     it("reports a Rust pagination error without showing a partial list", function()
