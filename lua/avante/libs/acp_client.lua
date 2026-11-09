@@ -9,6 +9,19 @@
 ---
 ---The native Rust module handles protocol messages and agent process lifecycle;
 ---this Lua client handles UI, history, permission, and buffer integration.
+---
+---ACP history is persisted by the agent. Avante saves only acp_provider,
+---acp_session_id and acp_session_cwd in numbered history files. The shared metadata.json
+---points to the latest history file for both
+---LLM and ACP providers. Local ACP prompt logging is skipped. Opening the
+---sidebar restores that session with session/load.
+---If it no longer exists,
+---Avante clears the ID and starts fresh without a notification or picker.
+---Use :Avante resume or :Avante acp sessions to fetch the project's session/list
+---and choose a conversation, or :AvanteAsk new_chat=true to start a fresh one.
+---Without a saved ID, Avante starts fresh. Other loading errors preserve the ID.
+---Existing local history files are retained but are not used for ACP; other
+---providers still use them.
 ---@brief ]]
 ---@see avante-config
 

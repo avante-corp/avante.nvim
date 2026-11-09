@@ -157,6 +157,7 @@ Sidebar.__index = Sidebar
 ---@field session_id string
 ---@field filename string The chat the session is imported into
 ---@field created boolean Whether the chat was created for this import
+---@field automatic? boolean Whether the import was restored automatically from saved metadata
 ---@field previous_filename? string Chat to return to if a newly created chat's session can't be loaded
 ---@field timestamp? string Last activity time reported by session/list
 
@@ -2356,6 +2357,20 @@ function Sidebar:update_content_with_history()
   self:update_content("")
 end
 
+function Sidebar:reset_chat_history()
+  self:stop_acp_client()
+  self.chat_history = Path.history.new(self.code.bufnr, self.chat_history_project_root)
+  self.current_state = nil
+  self.token_count = nil
+  self.expanded_message_uuids = {}
+  self.tool_message_positions = {}
+  self.current_tool_use_extmark_id = nil
+  self._history_cache_invalidated = true
+  self:render_result_header()
+  self:update_content("")
+  self:create_todos_container()
+end
+
 ---@param position? integer
 ---@return string, integer
 function Sidebar:get_content_between_separators(position)
@@ -2459,8 +2474,12 @@ function Sidebar:clear_history(args, cb)
       Path.history.save(code_bufnr, chat_history)
       if self.chat_history == chat_history then
         self._history_cache_invalidated = true
-        self:reload_chat_history()
-        self:update_content_with_history()
+        if chat_history.acp_provider then
+          self:render_result_header()
+        else
+          self:reload_chat_history()
+          self:update_content_with_history()
+        end
         self:update_content(
           "Chat history cleared",
           { focus = false, scroll = false, callback = function() self:focus_input() end }
@@ -2652,6 +2671,7 @@ function Sidebar:resume_pending_acp_import()
     session_id = history.acp_session_id,
     filename = history.filename,
     created = false,
+    automatic = true,
     timestamp = history.timestamp,
   }
 end
@@ -2708,7 +2728,8 @@ function Sidebar:finish_acp_import(import, session_id, messages)
   Path.history.save(self.code.bufnr, chat_history)
 
   if not self:is_open() then return end
-  self:update_content_with_history()
+  self._history_cache_invalidated = true
+  self:update_content("")
   self:create_todos_container()
   self:initialize_token_count()
 end
@@ -2718,17 +2739,24 @@ end
 function Sidebar:fail_acp_import(import, err)
   if self.pending_acp_import ~= import then return end
   self.pending_acp_import = nil
-  Utils.error("Couldn't resume the ACP session: " .. ((err and err.message) or "unknown error"))
-  self:stop_acp_client()
   local chat_history = self.chat_history
+  local missing_session = type(err) == "table" and (err.kind == "not_found" or err.kind == "session_not_found")
   if
-    chat_history
+    import.automatic
+    and missing_session
+    and chat_history
     and chat_history.filename == import.filename
     and chat_history.acp_session_id == import.session_id
   then
+    chat_history.acp_session_id = nil
     chat_history.acp_session_import_pending = nil
     Path.history.save(self.code.bufnr, chat_history)
+    self:stop_acp_client()
+    if self:is_open() then self:handle_submit("") end
+    return
   end
+  Utils.error("Couldn't resume the ACP session: " .. ((err and err.message) or "unknown error"))
+  self:stop_acp_client()
   if not import.created then return end
 
   local showing_import = self.chat_history ~= nil and self.chat_history.filename == import.filename
@@ -3008,8 +3036,10 @@ function Sidebar:reload_chat_history(filename, project_root)
     local history = self.chat_history
     local contexts = history and history.turn_contexts or {}
     local context = contexts[#contexts]
-    -- New sessions keep the current defaults; saved sessions restore their latest turn settings.
-    if not self.is_generating and context then
+    -- New sessions keep the current defaults; saved sessions restore their provider and latest turn settings.
+    if not self.is_generating and history and Config.acp_providers[history.acp_provider] then
+      Config.override({ provider = history.acp_provider })
+    elseif not self.is_generating and context then
       local params = vim.deepcopy(Providers[context.provider].extra_request_body or {})
       params.reasoning_effort = context.reasoning_effort
       -- An existing nested effort takes precedence when building requests.

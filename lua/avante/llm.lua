@@ -1127,11 +1127,9 @@ function M._load_acp_session_and_continue(opts, acp_client, session_id)
     if err then
       if on_replay then
         close_acp_request(opts)
-        -- The caller asked for this exact session, so don't silently swap in a new one
         if opts.on_acp_session_load_error then opts.on_acp_session_load_error(session_id, err) end
-        return
-      end
-      if is_missing_acp_session(err) then
+      elseif is_missing_acp_session(err) then
+        opts.acp_session_id = nil
         M._create_acp_session_and_continue(opts, acp_client)
       else
         finish_acp_request(opts, acp_client, { reason = "error", error = err })
@@ -1139,10 +1137,8 @@ function M._load_acp_session_and_continue(opts, acp_client, session_id)
       return
     end
 
-    if on_replay then
-      local messages = AcpReplay.to_messages(replayed_updates)
-      vim.schedule(function() on_replay(session_id, messages) end)
-    end
+    -- Apply history before the client dispatches any live updates following session/load.
+    if on_replay then on_replay(session_id, AcpReplay.to_messages(replayed_updates)) end
     if opts.on_acp_config_change then opts.on_acp_config_change() end
 
     if opts.just_connect_acp_client then

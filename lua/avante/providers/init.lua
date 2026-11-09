@@ -295,6 +295,7 @@ function M.refresh(provider_name)
     return
   end
 
+  local provider_changed = Config.provider ~= provider_name
   require("avante.config").override({ provider = provider_name })
 
   if not Config.acp_providers[provider_name] then
@@ -303,9 +304,11 @@ function M.refresh(provider_name)
     E.setup({ provider = p, refresh = true })
   end
   if sidebar and sidebar:is_open() then
-    sidebar:render_result_header()
-    -- Initialize ACP config options for the model/mode header without sending a prompt.
-    if Config.acp_providers[provider_name] then sidebar:handle_submit("") end
+    if provider_changed then
+      sidebar:reset_chat_history()
+    else
+      sidebar:render_result_header()
+    end
   end
   Utils.info("Switch to provider: " .. provider_name, { once = true, title = "Avante" })
 end

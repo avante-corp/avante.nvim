@@ -31,6 +31,41 @@ local function filepath_to_filename(filepath) return tostring(filepath):sub(tost
 -- History path
 local History = {}
 
+---@param metadata table
+---@param filepath Path
+---@return avante.ChatHistory|nil
+local function acp_history_from_metadata(metadata, filepath)
+  if
+    type(metadata.acp_provider) ~= "string"
+    or metadata.acp_provider == ""
+    or type(metadata.acp_session_id) ~= "string"
+    or metadata.acp_session_id == ""
+  then
+    return
+  end
+  return {
+    title = "untitled",
+    timestamp = Utils.get_timestamp(),
+    entries = {},
+    messages = {},
+    todos = {},
+    filename = filepath_to_filename(filepath),
+    acp_provider = metadata.acp_provider,
+    acp_session_id = metadata.acp_session_id,
+    acp_session_cwd = metadata.acp_session_cwd,
+    acp_session_import_pending = true,
+  }
+end
+
+---@param history avante.ChatHistory
+---@param is_acp_metadata boolean
+---@return boolean
+local function history_matches_current_provider(history, is_acp_metadata)
+  local current_is_acp = (Config.acp_providers or {})[Config.provider] ~= nil
+  if current_is_acp then return is_acp_metadata and history.acp_provider == Config.provider end
+  return not is_acp_metadata
+end
+
 ---Returns the folder that contains past prompts
 ---@see avante.Config.History
 ---@param bufnr? integer
@@ -55,19 +90,22 @@ end
 
 ---Lists all conversations with the latest first, ordered by timestamp
 ---@param bufnr integer
+---@param project_root? string
 ---@return avante.ChatHistory[]
-function History.list(bufnr)
-  local history_dir = History.get_history_dir(bufnr)
+function History.list(bufnr, project_root)
+  local history_dir = History.get_history_dir(bufnr, project_root)
   ---@type string[]
   local files = vim.fn.glob(tostring(history_dir:joinpath("*.json")), true, true)
-  local latest_filename = History.get_latest_filename(bufnr, false)
+  local latest_filename = History.get_latest_filename(bufnr, false, project_root)
   ---@type avante.ChatHistory[]
   local res = {}
   for _, filename in ipairs(files) do
     if not filename:match("metadata.json") then
       local filepath = Path:new(filename)
-      local history = History.from_file(filepath)
-      if history then table.insert(res, history) end
+      local history, is_acp_metadata = History.from_file(filepath)
+      if history and history_matches_current_provider(history, is_acp_metadata == true) then
+        table.insert(res, history)
+      end
     end
   end
   --- sort by timestamp
@@ -120,8 +158,12 @@ function History.get_latest_filename(bufnr, new, project_root)
   if not filename or filename == "" then
     local pattern = tostring(history_dir:joinpath("*.json"))
     local files = vim.fn.glob(pattern, true, true)
-    filename = #files .. ".json"
-    if #files > 0 and not new then filename = (#files - 1) .. ".json" end
+    local max_id = -1
+    for _, file in ipairs(files) do
+      local id = tonumber(vim.fs.basename(file):match("^(%d+)%.json$"))
+      if id and id > max_id then max_id = id end
+    end
+    filename = (new and max_id + 1 or math.max(max_id, 0)) .. ".json"
   end
   return filename
 end
@@ -156,19 +198,28 @@ function History.new(bufnr, project_root)
     messages = {},
     todos = {},
     filename = filepath_to_filename(filepath),
+    acp_provider = Config.acp_providers[Config.provider] and Config.provider or nil,
+    acp_session_cwd = Config.acp_providers[Config.provider] and (project_root or Utils.root.get({ buf = bufnr }))
+      or nil,
   }
   return history
 end
 
 ---Attempts to load chat history from a given file
 ---@param filepath Path
----@return avante.ChatHistory|nil
+---@return avante.ChatHistory|nil history
+---@return boolean? is_acp_metadata
 function History.from_file(filepath)
   if filepath:exists() then
     local content = filepath:read()
     if content ~= nil then
       local decode_ok, history = pcall(vim.json.decode, content)
       if decode_ok and type(history) == "table" then
+        if history.acp_provider and history.acp_session_id then
+          local acp_history = acp_history_from_metadata(history, filepath)
+          if acp_history then return acp_history, true end
+          return
+        end
         if not history.title or type(history.title) ~= "string" then history.title = "untitled" end
         if type(history.timestamp) ~= "string" then history.timestamp = Utils.get_timestamp() end
         -- TODO: sanitize individual entries of the lists below as well.
@@ -177,7 +228,7 @@ function History.from_file(filepath)
         if not vim.islist(history.todos) then history.todos = {} end
         ---@cast history avante.ChatHistory
         history.filename = filepath_to_filename(filepath)
-        return history
+        return history, false
       end
     end
   end
@@ -191,7 +242,9 @@ end
 function History.load(bufnr, filename, project_root)
   local history_filepath = filename and History.get_filepath(bufnr, filename, project_root)
     or History.get_latest_filepath(bufnr, false, project_root)
-  return History.from_file(history_filepath) or History.new(bufnr, project_root)
+  local history, is_acp_metadata = History.from_file(history_filepath)
+  if history and (not is_acp_metadata or (Config.acp_providers or {})[history.acp_provider]) then return history end
+  return History.new(bufnr, project_root)
 end
 
 -- Writes chat contents without selecting the chat.
@@ -200,7 +253,25 @@ end
 ---@param project_root? string
 function History.write(bufnr, history, project_root)
   local history_filepath = History.get_filepath(bufnr, history.filename, project_root)
+  if history.acp_provider then
+    if not history.acp_session_id or history.acp_session_id == "" then
+      local was_latest = history.filename == History.get_latest_filename(bufnr, false, project_root)
+      if history_filepath:exists() then History.delete(bufnr, history.filename, project_root) end
+      if was_latest then History.save_latest_filename(bufnr, nil, project_root) end
+      return false
+    end
+    history_filepath:write(
+      vim.json.encode({
+        acp_provider = history.acp_provider,
+        acp_session_id = history.acp_session_id,
+        acp_session_cwd = history.acp_session_cwd,
+      }),
+      "w"
+    )
+    return true
+  end
   history_filepath:write(vim.json.encode(history), "w")
+  return true
 end
 
 -- Saves and selects the chat history for the given buffer.
@@ -208,26 +279,27 @@ end
 ---@param history avante.ChatHistory
 ---@param project_root? string
 function History.save(bufnr, history, project_root)
-  History.write(bufnr, history, project_root)
-  History.save_latest_filename(bufnr, history.filename, project_root)
+  if History.write(bufnr, history, project_root) then
+    History.save_latest_filename(bufnr, history.filename, project_root)
+  end
 end
 
 --- Deletes a specific chat history file.
 ---@param bufnr integer
 ---@param filename string
-function History.delete(bufnr, filename)
-  local history_filepath = History.get_filepath(bufnr, filename)
+function History.delete(bufnr, filename, project_root)
+  local history_filepath = History.get_filepath(bufnr, filename, project_root)
   if history_filepath:exists() then
-    local was_latest = (filename == History.get_latest_filename(bufnr, false))
+    local was_latest = (filename == History.get_latest_filename(bufnr, false, project_root))
     vim.fs.rm(tostring(history_filepath))
 
     if was_latest then
-      local remaining_histories = History.list(bufnr) -- This list is sorted by recency
+      local remaining_histories = History.list(bufnr, project_root) -- This list is sorted by recency
       if #remaining_histories > 0 then
-        History.save_latest_filename(bufnr, remaining_histories[1].filename)
+        History.save_latest_filename(bufnr, remaining_histories[1].filename, project_root)
       else
         -- No histories left, clear the latest_filename from metadata
-        local metadata_filepath = History.get_metadata_filepath(bufnr)
+        local metadata_filepath = History.get_metadata_filepath(bufnr, project_root)
         if metadata_filepath:exists() then
           local metadata_content = metadata_filepath:read()
           ---@type {latest_filename?: string, project_root?: string}

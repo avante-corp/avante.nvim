@@ -15,12 +15,15 @@ describe("api history", function()
   local opened_buf
   local on_history_select
   local saved_ask_opts
+  local saved_provider
+  local saved_acp_providers
   local sidebar
   local stubs
 
   before_each(function()
     if not Config.windows then Config.setup({}) end
     saved_ask_opts = Config.ask_opts
+    saved_provider, saved_acp_providers = Config.provider, Config.acp_providers
     sidebar_buf = vim.api.nvim_create_buf(false, true)
     code_buf = vim.api.nvim_create_buf(false, true)
     Utils.mark_as_sidebar_buffer(sidebar_buf)
@@ -40,6 +43,8 @@ describe("api history", function()
       create_todos_container = function() end,
       initialize_token_count = function() end,
       focus_input = function() end,
+      stop_acp_client = function() end,
+      switch_to_history_and_reconnect = function() end,
     }
 
     stubs = {
@@ -57,12 +62,23 @@ describe("api history", function()
 
   after_each(function()
     Config.ask_opts = saved_ask_opts
+    Config.provider, Config.acp_providers = saved_provider, saved_acp_providers
     for _, value in ipairs(stubs) do
       value:revert()
     end
     if vim.api.nvim_buf_is_valid(sidebar_buf) then vim.api.nvim_buf_delete(sidebar_buf, { force = true }) end
     if vim.api.nvim_buf_is_valid(code_buf) then vim.api.nvim_buf_delete(code_buf, { force = true }) end
   end)
+
+  local function use_acp(histories)
+    Config.provider = "test-acp"
+    Config.acp_providers = { ["test-acp"] = { command = "agent" } }
+    HistorySelector.open:revert()
+    stubs[#stubs + 1] = stub(Path.history, "list").returns(histories)
+    local select_session = stub(Api, "select_acp_session")
+    stubs[#stubs + 1] = select_session
+    return select_session
+  end
 
   it("lists the code buffer history when invoked from the sidebar", function()
     Api.select_history()
@@ -81,7 +97,24 @@ describe("api history", function()
   it("forwards the session ID when invoked from the sidebar", function()
     Api.select_history("selected-session")
 
-    assert.stub(HistorySelector.open).was_called_with(code_buf, on_history_select, "selected-session")
+    assert.stub(HistorySelector.open).was_called_with(code_buf, on_history_select, "selected-session", nil)
+  end)
+
+  it("forwards an unmatched session ID to the ACP selector", function()
+    local select_session = use_acp({})
+
+    Api.select_history("requested-session")
+
+    assert.stub(select_session).was_called_with("requested-session")
+  end)
+
+  it("resumes a local history filename before looking up an ACP session", function()
+    local select_session = use_acp({ { filename = "archive/selected.json" } })
+
+    Api.select_history("selected")
+
+    assert.stub(Path.history.save_latest_filename).was_called_with(code_buf, "archive/selected.json")
+    assert.stub(select_session).was_not_called()
   end)
 
   it("does not open history selection while a request is generating", function()

@@ -246,7 +246,7 @@ end
 ---@class avante.Config.History
 ---@field max_tokens integer History token limit. Defaults to 4096. Currently unused.
 ---@field carried_entry_count? integer Number of history entries to carry over. Defaults to nil. Currently unused.
----@field storage_path string Directory for chat history and pasted images. Defaults to vim.fs.joinpath(vim.fn.stdpath("state"), "avante").
+---@field storage_path string Directory for chat history, pasted images and ACP session metadata. ACP chat content stays in memory. Defaults to vim.fs.joinpath(vim.fn.stdpath("state"), "avante").
 ---@field paste avante.Config.HistoryPaste Pasted image filename options. Currently unused.
 
 ---@class avante.Config.RagServiceModel

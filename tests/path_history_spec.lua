@@ -30,6 +30,92 @@ describe("History paths", function()
     vim.fn.delete(project_root, "rf")
   end)
 
+  it("saves and clears ACP session metadata with a captured project root", function()
+    local provider, acp_providers = Config.provider, Config.acp_providers
+    local project_root = Config.history.storage_path .. "/acp-project"
+    Config.provider = "test-acp"
+    Config.acp_providers = { ["test-acp"] = {} }
+
+    local ok, err = pcall(function()
+      local history = Path.history.new(0, project_root)
+      history.acp_session_id = "session-1"
+      Path.history.save(0, history, project_root)
+
+      assert.same({
+        acp_provider = "test-acp",
+        acp_session_id = "session-1",
+        acp_session_cwd = project_root,
+      }, vim.json.decode(Path.history.get_filepath(0, history.filename, project_root):read()))
+      assert.equals("session-1", Path.history.load(0, history.filename, project_root).acp_session_id)
+
+      local histories = Path.history.list(0, project_root)
+      assert.equals(1, #histories)
+      assert.equals(history.filename, histories[1].filename)
+      assert.equals("session-1", histories[1].acp_session_id)
+
+      local current = Path.history.new(0, project_root)
+      current.acp_session_id = "current-session"
+      Path.history.save(0, current, project_root)
+
+      current.acp_session_id = nil
+      Path.history.save(0, current, project_root)
+
+      local metadata = vim.json.decode(Path.history.get_metadata_filepath(0, project_root):read())
+      assert.is_nil(metadata.latest_filename)
+    end)
+
+    Config.provider, Config.acp_providers = provider, acp_providers
+    assert.is_true(ok, err)
+  end)
+
+  it("restores the metadata target without mixing it into the ACP history list", function()
+    local provider, acp_providers = Config.provider, Config.acp_providers
+    local project_root = Config.history.storage_path .. "/regular-project"
+    Config.provider = "test-acp"
+    Config.acp_providers = { ["test-acp"] = {} }
+
+    local ok, err = pcall(function()
+      local history = {
+        filename = "0.json",
+        title = "regular history",
+        timestamp = "2026-11-09 00:00:00",
+        messages = { { message = { role = "user", content = "restore me" } } },
+        entries = {},
+        todos = {},
+      }
+      Path.history.save(0, history, project_root)
+
+      assert.same({}, Path.history.list(0, project_root))
+      assert.same(history.messages, Path.history.load(0, nil, project_root).messages)
+    end)
+
+    Config.provider, Config.acp_providers = provider, acp_providers
+    assert.is_true(ok, err)
+  end)
+
+  it("does not restore an ACP session through a different provider", function()
+    local provider, acp_providers = Config.provider, Config.acp_providers
+    local project_root = Config.history.storage_path .. "/removed-acp-project"
+    Config.provider = "test-acp"
+    Config.acp_providers = { ["test-acp"] = {} }
+
+    local ok, err = pcall(function()
+      Path.history.save(0, {
+        filename = "0.json",
+        acp_provider = "removed-acp",
+        acp_session_id = "foreign-session",
+        messages = {},
+      }, project_root)
+
+      local restored = Path.history.load(0, nil, project_root)
+      assert.equals("test-acp", restored.acp_provider)
+      assert.is_nil(restored.acp_session_id)
+    end)
+
+    Config.provider, Config.acp_providers = provider, acp_providers
+    assert.is_true(ok, err)
+  end)
+
   it("reuses prompt snapshots across turns and preserves changed rules after saving", function()
     local History = require("avante.history")
     local root = Config.history.storage_path .. "/project"

@@ -438,7 +438,7 @@ avante.Config.History                                    *avante.Config.History*
     Fields: ~
         {max_tokens}            (integer)                     History token limit. Defaults to 4096. Currently unused.
         {carried_entry_count?}  (integer)                     Number of history entries to carry over. Defaults to nil. Currently unused.
-        {storage_path}          (string)                      Directory for chat history and pasted images. Defaults to vim.fs.joinpath(vim.fn.stdpath("state"), "avante").
+        {storage_path}          (string)                      Directory for chat history, pasted images and ACP session metadata. ACP chat content stays in memory. Defaults to vim.fs.joinpath(vim.fn.stdpath("state"), "avante").
         {paste}                 (avante.Config.HistoryPaste)  Pasted image filename options. Currently unused.
 
 
@@ -762,9 +762,12 @@ M.select_acp_model()                               *avante-api.select_acp_model*
 M.select_acp_mode()                                 *avante-api.select_acp_mode*
 
 
-M.select_acp_session()                           *avante-api.select_acp_session*
+M.select_acp_session({session_id?})              *avante-api.select_acp_session*
     List the current ACP agent's sessions for this project, including ones started outside avante
     (e.g. in the agent's CLI), and resume the selected one in the sidebar
+
+    Parameters: ~
+        {session_id?}  (string)
 
 
 M.select_history()                                   *avante-api.select_history*
@@ -1077,6 +1080,7 @@ avante.PendingAcpImport                                *avante.PendingAcpImport*
         {session_id}          (string)
         {filename}            (string)   The chat the session is imported into
         {created}             (boolean)  Whether the chat was created for this import
+        {automatic?}          (boolean)  Whether the import was restored automatically from saved metadata
         {previous_filename?}  (string)   Chat to return to if a newly created chat's session can't be loaded
         {timestamp?}          (string)   Last activity time reported by session/list
 
@@ -1451,6 +1455,9 @@ Sidebar.render_history_content({history})
 
                                     *avante-sidebar:update_content_with_history*
 Sidebar:update_content_with_history()
+
+
+Sidebar:reset_chat_history()                 *avante-sidebar:reset_chat_history*
 
 
                                  *avante-sidebar:get_content_between_separators*
@@ -3308,6 +3315,19 @@ https://agentclientprotocol.com/overview/introduction.
 
 The native Rust module handles protocol messages and agent process lifecycle;
 this Lua client handles UI, history, permission, and buffer integration.
+
+ACP history is persisted by the agent. Avante saves only acp_provider,
+acp_session_id and acp_session_cwd in numbered history files. The shared metadata.json
+points to the latest history file for both
+LLM and ACP providers. Local ACP prompt logging is skipped. Opening the
+sidebar restores that session with session/load.
+If it no longer exists,
+Avante clears the ID and starts fresh without a notification or picker.
+Use :Avante resume or :Avante acp sessions to fetch the project's session/list
+and choose a conversation, or :AvanteAsk new_chat=true to start a fresh one.
+Without a saved ID, Avante starts fresh. Other loading errors preserve the ID.
+Existing local history files are retained but are not used for ACP; other
+providers still use them.
 
 avante.acp.EnvVariable                                  *avante.acp.EnvVariable*
 

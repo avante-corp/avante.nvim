@@ -23,7 +23,8 @@ end
 ---@param bufnr integer
 ---@param cb fun(filename: string)
 ---@param session_id? string can be an acp_session_id, the filename, basename
-function M.open(bufnr, cb, session_id)
+---@param on_no_match? fun()
+function M.open(bufnr, cb, session_id, on_no_match)
   local selector_items = {}
 
   local histories = Path.history.list(bufnr)
@@ -42,6 +43,10 @@ function M.open(bufnr, cb, session_id)
         cb(filename)
         return
       end
+    end
+    if on_no_match then
+      on_no_match()
+      return
     end
   end
 
