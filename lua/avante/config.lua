@@ -792,7 +792,7 @@ M._defaults = {
     ---@type AvantePosition
     position = "right",
     fillchars = "eob: ",
-    wrap = true, -- similar to vim.o.wrap
+    wrap = true, -- deprecated; similar to vim.o.wrap
     width = 30, -- default % based on available width in vertical layout
     height = 30, -- default % based on available height in horizontal layout
     sidebar_header = {
@@ -1059,6 +1059,16 @@ local function warn_deprecated_rag_options(opts)
   end
 end
 
+---@param opts table
+local function warn_deprecated_windows_wrap(opts)
+  if type(opts.windows) == "table" and opts.windows.wrap ~= nil then
+    Utils.warn(
+      "[DEPRECATED] `windows.wrap` is deprecated. Please remove it from your config. Avante sets wrap by default for the 'Avante' filetype. To disable it, add 'vim.wo.wrap=false' in after/ftplugin/Avante.lua",
+      { title = "Avante" }
+    )
+  end
+end
+
 ---@param opts table<string, any>|nil -- Optional table parameter for configuration settings
 function M.setup(opts)
   opts = opts or {} -- Ensure `opts` is defined with a default table
@@ -1072,6 +1082,7 @@ function M.setup(opts)
 
   opts = vim.tbl_deep_extend("force", global_opts, opts or {})
   warn_deprecated_rag_options(opts)
+  warn_deprecated_windows_wrap(opts)
   local provider_configured = opts.provider ~= nil
 
   local migration_url = "https://github.com/yetone/avante.nvim/wiki/Provider-configuration-migration-guide"
@@ -1185,6 +1196,7 @@ end
 function M.override(opts)
   vim.validate("opts", opts, "table", true)
   warn_deprecated_rag_options(opts or {})
+  warn_deprecated_windows_wrap(opts or {})
   M._options = vim.tbl_deep_extend("force", M._options, opts or {})
 
   for k, v in pairs(M._options.providers) do
