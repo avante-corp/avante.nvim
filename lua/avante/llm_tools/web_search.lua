@@ -588,8 +588,8 @@ local function web_search_keenable_func(input, opts)
           local snippet = result.description
           if snippet == nil or snippet == "" then
             snippet = result.snippet or ""
-            if #snippet > KEENABLE_SNIPPET_MAX_CHARS then
-              snippet = snippet:sub(1, KEENABLE_SNIPPET_MAX_CHARS) .. "…"
+            if vim.fn.strchars(snippet) > KEENABLE_SNIPPET_MAX_CHARS then
+              snippet = vim.fn.strcharpart(snippet, 0, KEENABLE_SNIPPET_MAX_CHARS) .. "…"
             end
           end
           return { title = result.title, url = result.url, snippet = snippet }
