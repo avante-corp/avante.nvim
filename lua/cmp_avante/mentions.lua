@@ -72,10 +72,12 @@ function MentionsSource:complete(params, callback)
 
   local items = {}
 
+  ---@type AvanteMention[]
   local mentions = self.get_mentions()
 
   for _, mention in ipairs(mentions) do
     table.insert(items, {
+      ---@type string
       label = "@" .. mention.command .. " ",
       kind = kind,
       detail = mention.details,
@@ -88,7 +90,7 @@ function MentionsSource:complete(params, callback)
   })
 end
 
----@param completion_item table
+---@param completion_item lsp.CompletionItem
 ---@param callback fun(response: {behavior: number})
 function MentionsSource:execute(completion_item, callback)
   local current_line = api.nvim_get_current_line()
@@ -97,6 +99,7 @@ function MentionsSource:execute(completion_item, callback)
   local mentions = self.get_mentions()
 
   -- Find the corresponding mention
+  ---@type AvanteMention?
   local selected_mention
   for _, mention in ipairs(mentions) do
     if mention.command == label then

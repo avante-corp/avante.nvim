@@ -53,6 +53,66 @@ describe("llm_tools", function()
     LlmToolHelpers.already_in_context:revert()
   end)
 
+  describe("copy_path", function()
+    it("reports a failed nested copy", function()
+      local Path = require("plenary.path")
+      local copy_stub = stub(
+        Path,
+        "copy",
+        function() return { [Path:new("nested")] = { [Path:new("nested/file")] = false } } end
+      )
+      local completed
+      LlmTools.copy_path({ source_path = "test_dir1", destination_path = "failed" }, {
+        session_ctx = {},
+        on_complete = function(ok, err) completed = { ok, err } end,
+      })
+      copy_stub:revert()
+      assert.is_false(completed[1])
+      assert.matches("Failed to copy all files", completed[2])
+    end)
+
+    it("copies directory contents recursively and skips hidden entries", function()
+      vim.fn.mkdir(test_dir .. "/test_dir1/nested", "p")
+      vim.fn.writefile({ "nested content" }, test_dir .. "/test_dir1/nested/file.txt")
+      vim.fn.writefile({ "hidden" }, test_dir .. "/test_dir1/.hidden")
+      local completed
+      LlmTools.copy_path({ source_path = "test_dir1", destination_path = "copied" }, {
+        session_ctx = {},
+        on_complete = function(ok, err) completed = { ok, err } end,
+      })
+      assert.same({ true }, completed)
+      assert.same({ "test1 content" }, vim.fn.readfile(test_dir .. "/copied/test1.txt"))
+      assert.same({ "nested content" }, vim.fn.readfile(test_dir .. "/copied/nested/file.txt"))
+      assert.equals(0, vim.fn.filereadable(test_dir .. "/copied/.hidden"))
+    end)
+
+    it("leaves the destination absent when copying is declined", function()
+      LlmToolHelpers.confirm:revert()
+      stub(LlmToolHelpers, "confirm", function(_, callback) callback(false, "declined") end)
+      local completed
+      LlmTools.copy_path({ source_path = "test_dir1", destination_path = "declined" }, {
+        session_ctx = {},
+        on_complete = function(ok, err) completed = { ok, err } end,
+      })
+      assert.is_false(completed[1])
+      assert.matches("declined", completed[2])
+      assert.equals(0, vim.fn.isdirectory(test_dir .. "/declined"))
+    end)
+  end)
+
+  it("rejects replacement without a tool use ID before changing session state", function()
+    local session_ctx = {}
+    local completed = false
+    local result, err = require("avante.llm_tools.replace_in_file").func({ path = "test.txt", the_diff = "" }, {
+      session_ctx = session_ctx,
+      on_complete = function() completed = true end,
+    })
+    assert.is_false(result)
+    assert.equals("tool_use_id not provided", err)
+    assert.same({}, session_ctx)
+    assert.is_false(completed)
+  end)
+
   describe("web search tools", function()
     it("exposes one tool per search engine", function()
       local names = LlmTools.get_tool_names()

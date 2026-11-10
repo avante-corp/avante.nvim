@@ -179,6 +179,8 @@
 
 local Utils = require("avante.utils")
 
+---@param opts? AvanteProvider
+---@return boolean
 local function copilot_use_response_api(opts)
   local model = opts and opts.model
   return type(model) == "string"
@@ -297,7 +299,7 @@ M.instructions_file = "avante.md"
 ---@field provider? avante.ProviderName
 ---
 ---System prompt
----@field system_prompt? string | nil | fun(): string
+---@field system_prompt? string | (fun(): string)
 --- override_prompt_dir allows you to specify a directory containing your own custom prompt templates, which will override the built-in templates. This is useful if you want to maintain a set of custom prompts outside of your Neovim configuration.
 ---<lua
 --- -- Example: Override with prompts from a specific directory
@@ -313,7 +315,7 @@ M.instructions_file = "avante.md"
 ---   end,
 --- })
 ---<
----@field override_prompt_dir string | nil | fun(): string
+---@field override_prompt_dir string | nil | (fun(): string)
 ---@field rules table
 ---
 ---@field rag_service avante.Config.RagService RAG service configuration.
@@ -321,9 +323,9 @@ M.instructions_file = "avante.md"
 ---@field behaviour avante.Config.Behaviour Behaviour and automation options.
 ---@field prompt_logger avante.Config.PromptLogger Prompt logging options.
 ---@field history avante.Config.History Chat history storage options.
----@field windows table
+---@field windows avante.Config.Windows
 ---@field disabled_tools string[] You can choose to disable tools by their names in case you want to avoid its usage (like Claude 3.7 overusing the python tool). For example: `{ "python" }`
----@field custom_tools AvanteSlashCommand[] see |avante-custom-tools|
+---@field custom_tools AvanteLLMTool[] | (fun(): AvanteLLMTool[]) see |avante-custom-tools|
 ---@field slash_commands AvanteSlashCommand[] see |avante-slashcommands|
 ---@field shortcuts AvanteShortcut[]  see |avante-shortcuts|
 ---@field ask_opts AskOptions
@@ -787,6 +789,7 @@ M._defaults = {
       input = "i",
     },
   },
+  ---@class avante.Config.Windows
   windows = {
     ---@alias AvantePosition "right" | "left" | "top" | "bottom" | "smart"
     ---@type AvantePosition
@@ -850,6 +853,9 @@ M._defaults = {
     selected_files = {
       height = 6, -- Maximum height of the selected files window
     },
+    ---@class avante.Config.EditWindow
+    ---@field height? number
+    ---@field width? number
     edit = {
       border = { " ", " ", " ", " ", " ", " ", " ", " " },
       start_insert = true, -- Start insert mode when opening the edit window
@@ -863,7 +869,7 @@ M._defaults = {
       focus_on_apply = "ours", -- which diff to focus after applying
     },
   },
-  --- @class AvanteConflictConfig
+  ---@class AvanteConflictConfig
   diff = {
     autojump = true,
     --- Override the 'timeoutlen' setting while hovering over a diff (see :help timeoutlen).
@@ -873,19 +879,19 @@ M._defaults = {
   },
   --- Allows selecting code or other data in a buffer and ask LLM questions about it or
   --- to perform edits/transformations.
-  --- @class AvanteSelectionConfig
-  --- @field enabled boolean
-  --- @field hint_display "delayed" | "immediate" | "none" When to show key map hints.
+  ---@class AvanteSelectionConfig
+  ---@field enabled boolean
+  ---@field hint_display "delayed" | "immediate" | "none" When to show key map hints.
   selection = {
     enabled = true,
     hint_display = "delayed",
   },
-  --- @class AvanteRepoMapConfig
+  ---@class AvanteRepoMapConfig
   repo_map = {
     ignore_patterns = { "%.git", "%.worktree", "__pycache__", "node_modules" }, -- ignore files matching these
     negate_patterns = {}, -- negate ignore files matching these.
   },
-  --- @class AvanteFileSelectorConfig
+  ---@class AvanteFileSelectorConfig
   file_selector = {
     provider = nil,
     -- Options override for custom providers
@@ -1015,6 +1021,7 @@ end
 ---@param model_name string|nil
 ---@param provider_name? string
 local function apply_model_selection(config, model_name, provider_name)
+  ---@type table<string, AvanteProvider>
   local provider_list = config.providers or {}
   local current_provider_name = config.provider
   local target_provider_name = provider_name or current_provider_name
@@ -1022,11 +1029,13 @@ local function apply_model_selection(config, model_name, provider_name)
     config.provider = target_provider_name
     return
   end
+  ---@type AvanteProvider?
   local target_provider = provider_list[target_provider_name]
 
   if not target_provider then return end
   model_name = model_name or target_provider.model
 
+  ---@type AvanteProvider?
   local current_provider_data = provider_list[current_provider_name]
   local current_model_name = current_provider_data and current_provider_data.model
 
@@ -1034,7 +1043,9 @@ local function apply_model_selection(config, model_name, provider_name)
     config.provider = target_provider_name
     target_provider.model = model_name
     if not target_provider.model_names then target_provider.model_names = {} end
-    for _, model_name_ in ipairs({ model_name, current_model_name }) do
+    ---@type string[]
+    local model_names = { model_name, current_model_name }
+    for _, model_name_ in ipairs(model_names) do
       if not vim.tbl_contains(target_provider.model_names, model_name_) then
         table.insert(target_provider.model_names, model_name_)
       end
@@ -1109,7 +1120,9 @@ function M.setup(opts)
   for k, v in pairs(opts) do
     if M._defaults.providers[k] ~= nil then
       opts.providers = opts.providers or {}
-      opts.providers[k] = v
+      ---@type table<string, AvanteProvider>
+      local providers = opts.providers
+      providers[k] = v
       Utils.warn(
         string.format(
           "[DEPRECATED] The configuration of `%s` should be placed in `providers.%s`. For detailed migration instructions, please visit: %s",
@@ -1123,8 +1136,8 @@ function M.setup(opts)
       if type(v) == "table" and extra_request_body ~= nil then
         for k_, v_ in pairs(v) do
           if extra_request_body[k_] ~= nil then
-            opts.providers[k].extra_request_body = opts.providers[k].extra_request_body or {}
-            opts.providers[k].extra_request_body[k_] = v_
+            providers[k].extra_request_body = providers[k].extra_request_body or {}
+            providers[k].extra_request_body[k_] = v_
             Utils.warn(
               string.format(
                 "[DEPRECATED] The configuration of `%s.%s` should be placed in `providers.%s.extra_request_body.%s`; for detailed migration instructions, please visit: %s",

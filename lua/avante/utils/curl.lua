@@ -9,6 +9,40 @@
 ---@brief ]]
 local curl = require("plenary.curl")
 
+---@class avante.utils.curl.Response
+---@field status integer
+---@field headers string[]
+---@field body string
+---@field exit integer
+
+---@class avante.utils.curl.Error
+---@field message string
+---@field stderr string
+---@field exit integer
+
+---@class avante.utils.curl.Options
+---@field headers? table<string, string>
+---@field query? table<string, string|number>
+---@field body? string|table<string, string|number>
+---@field data? table<string, string|number>
+---@field raw_body? string|table<string, string|number>
+---@field in_file? string
+---@field accept? string
+---@field auth? string|string[]
+---@field form? table<string, string>
+---@field raw? string[]
+---@field output? string
+---@field timeout? number
+---@field http_version? string
+---@field proxy? string
+---@field insecure? boolean
+---@field compressed? boolean
+---@field callback? fun(response: avante.utils.curl.Response)
+---@field stream? fun(err: string|nil, data: string|nil, job: Job)
+---@field on_error? fun(err: avante.utils.curl.Error)
+---@field dry_run? boolean
+---@field dump? string[]
+
 ---@class avante.utils.curl
 local M = {}
 
@@ -41,10 +75,11 @@ end
 ---callers that stop waiting for the request. Otherwise they are removed once curl exits.
 ---@param method "get" | "post"
 ---@param url string
----@param opts? table plenary.curl options
----@return any result
+---@param opts? avante.utils.curl.Options
+---@return avante.utils.curl.Response|Job|string[] result
 ---@return fun() cleanup
 local function request(method, url, opts)
+  ---@type avante.utils.curl.Options
   opts = vim.tbl_extend("force", {}, opts or {})
   local raw = {} ---@type string[]
   local files = {} ---@type string[]
@@ -56,6 +91,7 @@ local function request(method, url, opts)
 
   if opts.headers and next(opts.headers) then
     -- Send the same header names as plenary.curl would, e.g. content_type -> Content-Type
+    ---@type table<string, string>
     local headers = {}
     for name, value in pairs(opts.headers) do
       headers[(" " .. name:gsub("_", "-")):gsub("%W%l", string.upper):sub(2)] = value
@@ -66,16 +102,18 @@ local function request(method, url, opts)
   end
 
   -- plenary.curl passes a string body with --data-raw, unless it is the path of a file
-  local body_stat = type(opts.body) == "string" and vim.uv.fs_stat(opts.body)
-  if type(opts.body) == "string" and not (body_stat and body_stat.type == "file") then
-    table.insert(files, write_private_file(opts.body, "-request-body.txt"))
+  local body = opts.body
+  local body_stat = type(body) == "string" and vim.uv.fs_stat(body)
+  if type(body) == "string" and not (body_stat and body_stat.type == "file") then
+    table.insert(files, write_private_file(body, "-request-body.txt"))
     vim.list_extend(raw, { "--data-binary", "@" .. files[#files] })
     opts.body = nil
   end
 
-  if type(opts.auth) == "string" then
+  local auth = opts.auth
+  if type(auth) == "string" then
     -- --user has no @file form, but curl reads it from a config file the same way
-    local config = string.format('user = "%s"\n', (opts.auth:gsub('[\\"]', "\\%0")))
+    local config = string.format('user = "%s"\n', (auth:gsub('[\\"]', "\\%0")))
     table.insert(files, write_private_file(config, "-curl-config.txt"))
     vim.list_extend(raw, { "--config", files[#files] })
     opts.auth = nil
@@ -107,14 +145,14 @@ local function request(method, url, opts)
 end
 
 ---@param url string
----@param opts? table plenary.curl options
----@return any result
+---@param opts? avante.utils.curl.Options
+---@return avante.utils.curl.Response|Job|string[] result Response for sync requests, Job for callback/stream, arguments for dry_run
 ---@return fun() cleanup
 function M.get(url, opts) return request("get", url, opts) end
 
 ---@param url string
----@param opts? table plenary.curl options
----@return any result
+---@param opts? avante.utils.curl.Options
+---@return avante.utils.curl.Response|Job|string[] result Response for sync requests, Job for callback/stream, arguments for dry_run
 ---@return fun() cleanup
 function M.post(url, opts) return request("post", url, opts) end
 

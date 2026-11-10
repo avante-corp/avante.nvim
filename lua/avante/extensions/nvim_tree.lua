@@ -17,11 +17,15 @@ function M.add_file()
     return
   end
 
-  local success, node = pcall(function() return nvim_tree_api.tree.get_node_under_cursor() end)
+  local success, node = pcall(
+    ---@return {absolute_path: string}?
+    function() return nvim_tree_api.tree.get_node_under_cursor() end
+  )
   if not success then
     vim.notify("Error getting node: " .. tostring(node), vim.log.levels.ERROR)
     return
   end
+  if not node then return end
 
   local filepath = node.absolute_path
   Api.add_selected_file(filepath)
@@ -41,11 +45,15 @@ function M.remove_file()
     return
   end
 
-  local success, node = pcall(function() return nvim_tree_api.tree.get_node_under_cursor() end)
+  local success, node = pcall(
+    ---@return {absolute_path: string}?
+    function() return nvim_tree_api.tree.get_node_under_cursor() end
+  )
   if not success then
     vim.notify("Error getting node: " .. tostring(node), vim.log.levels.ERROR)
     return
   end
+  if not node then return end
 
   local filepath = node.absolute_path
   Api.remove_selected_file(filepath)

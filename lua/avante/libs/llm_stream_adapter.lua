@@ -2,6 +2,17 @@ local HistoryMessage = require("avante.history.message")
 
 local M = {}
 
+---@class avante.llm.StreamPart
+---@field content AvanteLLMMessageContentItem
+---@field uuid? string
+---@field turn_id? string
+---@field order? integer
+---@field native? string
+---@field origin? table
+
+---@param part avante.llm.StreamPart
+---@param state avante.HistoryMessageState
+---@param opts AvanteHandlerOptions
 function M.add_message(part, state, opts)
   local content = part.content
   local msg = HistoryMessage:new("assistant", content, {
@@ -17,6 +28,10 @@ function M.add_message(part, state, opts)
   if opts.on_messages_add then opts.on_messages_add({ msg }) end
 end
 
+---@param parts avante.llm.StreamPart[]
+---@param opts AvanteHandlerOptions
+---@param finish_tools boolean
+---@param origin? table
 function M.finish_pending_messages(parts, opts, finish_tools, origin)
   for _, part in ipairs(parts) do
     local is_tool = type(part.content) == "table" and part.content.type == "tool_use"

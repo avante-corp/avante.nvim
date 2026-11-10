@@ -1,6 +1,6 @@
 local Base = require("avante.llm_tools.base")
 
----@class AvanteLLMTool
+---@class avante.tools.str_replace: AvanteLLMTool
 local M = setmetatable({}, Base)
 
 M.name = "str_replace"
@@ -54,7 +54,7 @@ M.returns = {
   },
 }
 
----@type AvanteLLMToolFunc<{ path: string, old_str: string, new_str: string }>
+---@type AvanteLLMToolFunc<{ path: string, old_str?: string, new_str?: string }>
 function M.func(input, opts)
   local replace_in_file = require("avante.llm_tools.replace_in_file")
   local Utils = require("avante.utils")

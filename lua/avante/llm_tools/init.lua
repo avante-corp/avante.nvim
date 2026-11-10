@@ -107,14 +107,13 @@ function M.read_file_toplevel_symbols(input, opts)
   return definitions, nil
 end
 
----@type AvanteLLMToolFunc<{ command: "view" | "str_replace" | "create" | "insert" | "undo_edit", path: string, old_str?: string, new_str?: string, file_text?: string, insert_line?: integer, new_str?: string, view_range?: integer[] }>
+---@type AvanteLLMToolFunc<avante.tools.EditorInput>
 function M.str_replace_editor(input, opts)
   if input.command == "undo_edit" then return require("avante.llm_tools.undo_edit").func(input, opts) end
-  ---@cast input any
   return M.str_replace_based_edit_tool(input, opts)
 end
 
----@type AvanteLLMToolFunc<{ command: "view" | "str_replace" | "create" | "insert", path: string, old_str?: string, new_str?: string, file_text?: string, insert_line?: integer, new_str?: string, view_range?: integer[] }>
+---@type AvanteLLMToolFunc<avante.tools.EditorInput>
 function M.str_replace_based_edit_tool(input, opts)
   local on_log = opts.on_log
   local on_complete = opts.on_complete
@@ -236,20 +235,19 @@ function M.copy_path(input, opts)
       end
       if on_log then on_log("Copying path: " .. abs_path .. " to " .. new_abs_path) end
       if vim.fn.isdirectory(abs_path) == 1 then
-        Path:new(new_abs_path):mkdir({ parents = true })
-        for _, entry in ipairs(Path:new(abs_path):list()) do
-          local new_entry_path = Path:new(new_abs_path):joinpath(entry)
-          if entry:match("^%.") then goto continue end
-          if Path:new(new_entry_path):exists() then
-            if vim.fn.isdirectory(tostring(new_entry_path)) == 1 then
-              vim.fs.rm(tostring(new_entry_path), { recursive = true })
-            else
-              Path:new(new_entry_path):unlink()
-            end
+        ---@param results avante.PathCopyResults
+        ---@return boolean
+        local function copied_all(results)
+          for _, result in pairs(results) do
+            if result == false or (type(result) == "table" and not copied_all(result)) then return false end
           end
-          vim.fn.mkdir(new_entry_path, "p")
-          Path:new(new_entry_path):write(Path:new(abs_path):joinpath(entry):read(), "w")
-          ::continue::
+          return true
+        end
+        local results = Path:new(abs_path)
+          :copy({ destination = new_abs_path, recursive = true, parents = true, hidden = false })
+        if not copied_all(results) then
+          on_complete(false, "Failed to copy all files from: " .. abs_path)
+          return
         end
       else
         Path:new(new_abs_path):write(Path:new(abs_path):read(), "w")
@@ -379,6 +377,7 @@ function M.git_commit(input, opts)
 
   if signing_key ~= "" then
     -- Try to find gpg executable based on OS
+    ---@type string
     local gpg_cmd
     if vim.fn.has("win32") == 1 then
       -- Check common Windows GPG paths
@@ -397,6 +396,7 @@ function M.git_commit(input, opts)
   if on_log then on_log(string.format("GPG signing %s", has_gpg and "enabled" or "disabled")) end
 
   -- Prepare commit message
+  ---@type string[]
   local commit_msg_lines = {}
   for line in input.message:gmatch("[^\r\n]+") do
     commit_msg_lines[#commit_msg_lines + 1] = line:gsub('"', '\\"')
@@ -557,8 +557,11 @@ end
 ---@param history_messages AvanteLLMMessage[]
 ---@return AvanteLLMTool[]
 function M.get_tools(user_input, history_messages)
+  ---@type AvanteLLMTool[]|(fun(): AvanteLLMTool[])
   local custom_tools = Config.custom_tools
-  if type(custom_tools) == "function" then custom_tools = custom_tools() end
+  if type(custom_tools) == "function" then
+    custom_tools = custom_tools() --[=[@as AvanteLLMTool[]]=]
+  end
   ---@type AvanteLLMTool[]
   local unfiltered_tools = vim.list_extend(vim.list_extend({}, M._tools), custom_tools)
   return vim
@@ -582,8 +585,11 @@ end
 ---@brief Get all active tools' names
 ---@return string[]
 function M.get_tool_names()
+  ---@type AvanteLLMTool[]|(fun(): AvanteLLMTool[])
   local custom_tools = Config.custom_tools
-  if type(custom_tools) == "function" then custom_tools = custom_tools() end
+  if type(custom_tools) == "function" then
+    custom_tools = custom_tools() --[=[@as AvanteLLMTool[]]=]
+  end
   ---@type AvanteLLMTool[]
   local unfiltered_tools = vim.list_extend(vim.list_extend({}, M._tools), custom_tools)
   local tool_names = {}
@@ -1147,6 +1153,9 @@ You can delete the first file by providing a path of "directory1/a/something.txt
         optional = true,
       },
     },
+    ---@param input {symbol_name: string, show_line_numbers?: boolean}
+    ---@param opts AvanteLLMToolFuncOpts
+    ---@return string?, string?
     func = function(input, opts)
       local on_log = opts.on_log
       local on_complete = opts.on_complete
@@ -1161,9 +1170,9 @@ You can delete the first file by providing a path of "directory1/a/something.txt
       if not bufnr then return nil, "No bufnr" end
       if not vim.api.nvim_buf_is_valid(bufnr) then return nil, "Invalid bufnr" end
       if on_log then on_log("bufnr: " .. vim.inspect(bufnr)) end
-      Utils.lsp.read_definitions(bufnr, symbol_name, show_line_numbers, function(definitions, error)
+      Utils.lsp.read_definitions(bufnr, symbol_name, show_line_numbers or false, function(definitions, error)
         local encoded_defs = vim.json.encode(definitions)
-        on_complete(encoded_defs, error)
+        if on_complete then on_complete(encoded_defs, error) end
       end)
       return nil, nil
     end,
@@ -1174,7 +1183,7 @@ You can delete the first file by providing a path of "directory1/a/something.txt
 M.run_python = M.python
 
 ---@class avante.ProcessToolUseOpts
----@field session_ctx table
+---@field session_ctx avante.SessionContext
 ---@field on_log? fun(tool_id: string, tool_name: string, log: string, state: AvanteLLMToolUseState): nil
 ---@field set_tool_use_store? fun(tool_id: string, key: string, value: any): nil
 ---@field on_complete? fun(result: string | nil, error: string | nil): nil
@@ -1209,6 +1218,7 @@ function M.process_tool_use(tools, tool_use, opts)
     return nil, Helpers.CANCEL_TOKEN
   end
 
+  ---@type AvanteLLMToolFunc?
   local func
   if tool_use.name == "str_replace_editor" then
     func = M.str_replace_editor
@@ -1229,6 +1239,7 @@ function M.process_tool_use(tools, tool_use, opts)
   if on_log then on_log(tool_use.id, tool_use.name, "running tool", "running") end
 
   -- Set up a timer to periodically check for cancellation
+  ---@type uv.uv_timer_t?
   local cancel_timer
   if on_complete and not opts.streaming then
     cancel_timer = vim.uv.new_timer()
@@ -1250,7 +1261,7 @@ function M.process_tool_use(tools, tool_use, opts)
     end
   end
 
-  ---@param result string | nil | boolean
+  ---@param result string | nil | boolean | table
   ---@param err string | nil
   ---@return string? result
   ---@return string? error
@@ -1272,7 +1283,8 @@ function M.process_tool_use(tools, tool_use, opts)
     else
       if on_log then on_log(tool_use.id, tool_use.name, "tool finished", "succeeded") end
     end
-    local result_str ---@type string?
+    ---@type string?
+    local result_str
     if type(result) == "string" then
       result_str = result
     elseif result ~= nil then

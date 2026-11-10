@@ -177,12 +177,14 @@ function M.ask(opts)
 
   opts = vim.tbl_extend("force", { selection = Utils.get_visual_selection_and_range() }, opts)
 
-  ---@param input string | nil
+  ---@param input? string
   ---@return boolean
   local function ask(input)
     if chat_switch_is_blocked() then return false end
     Config.ask_opts = opts
-    if input == nil or input == "" then input = opts.question end
+    if input == nil or input == "" then
+      input = opts.question --[[@as string?]]
+    end
     local sidebar = require("avante").get()
     if sidebar and sidebar:is_open() and sidebar.code.bufnr ~= vim.api.nvim_get_current_buf() then
       sidebar:close({ goto_code_win = false })
@@ -357,6 +359,7 @@ end
 function M.remove_selected_file(filepath)
   ---@diagnostic disable-next-line: undefined-field
   local stat = vim.uv.fs_stat(filepath)
+  ---@type string[]
   local files
   if stat and stat.type == "directory" then
     files = Utils.scan_directory({ directory = filepath, add_dirs = true })
@@ -381,6 +384,9 @@ function M.stop() require("avante.llm").cancel_inflight_request() end
 
 ---@export M
 return setmetatable(M, {
+  ---@param t table<string, ApiCaller>
+  ---@param k string
+  ---@return ApiCaller?
   __index = function(t, k)
     local module = require("avante")
     ---@class AvailableApi: ApiCaller

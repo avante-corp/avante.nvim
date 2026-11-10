@@ -3,7 +3,7 @@ local Helpers = require("avante.llm_tools.helpers")
 local Providers = require("avante.providers")
 local Utils = require("avante.utils")
 
----@class AvanteLLMTool
+---@class avante.tools.edit_file: AvanteLLMTool
 local M = setmetatable({}, Base)
 
 M.name = "edit_file"
@@ -73,6 +73,7 @@ function M.func(input, opts)
   end
   if lines and lines[#lines] == "" then lines = vim.list_slice(lines, 1, #lines - 1) end
   local original_code = table.concat(lines or {}, "\n")
+  ---@type string[]
   local chunks = {}
 
   require("avante.llm").request({

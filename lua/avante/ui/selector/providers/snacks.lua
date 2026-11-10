@@ -1,6 +1,11 @@
 local Utils = require("avante.utils")
 local M = {}
 
+---@class avante.SnacksSelectorPicker
+---@field close fun(self: avante.SnacksSelectorPicker)
+---@field refresh fun(self: avante.SnacksSelectorPicker)
+---@field selected fun(self: avante.SnacksSelectorPicker, opts: {fallback: boolean}): {item: avante.ui.SelectorItem}[]
+
 ---@param selector avante.ui.Selector
 function M.show(selector)
   ---@diagnostic disable-next-line: undefined-field
@@ -8,7 +13,7 @@ function M.show(selector)
     Utils.error("Snacks is not set up. Please install and set up Snacks to use it as a file selector.")
     return
   end
-  local function snacks_finder(opts, ctx)
+  local function snacks_finder(_opts, ctx)
     local query = ctx.filter.search or ""
     local items = {}
     for i, item in ipairs(selector.items) do
@@ -48,12 +53,18 @@ function M.show(selector)
     layout = {
       preset = "default",
     },
+    ---@param picker avante.SnacksSelectorPicker
     confirm = function(picker)
       if completed then return end
       completed = true
       picker:close()
       local items = picker:selected({ fallback = true })
-      local selected_item_ids = vim.tbl_map(function(item) return item.item.id end, items)
+      local selected_item_ids = vim.tbl_map(
+        ---@param item {item: avante.ui.SelectorItem}
+        ---@return string
+        function(item) return item.item.id end,
+        items
+      )
       selector.on_select(selected_item_ids)
     end,
     on_close = function()
@@ -62,6 +73,7 @@ function M.show(selector)
       vim.schedule(function() selector.on_select(nil) end)
     end,
     actions = {
+      ---@param picker avante.SnacksSelectorPicker
       delete_selection = function(picker)
         local selections = picker:selected({ fallback = true })
         if #selections == 0 then return end

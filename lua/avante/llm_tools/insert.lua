@@ -3,7 +3,7 @@ local Base = require("avante.llm_tools.base")
 local Helpers = require("avante.llm_tools.helpers")
 local Highlights = require("avante.highlights")
 
----@class AvanteLLMTool
+---@class avante.tools.insert: AvanteLLMTool
 local M = setmetatable({}, Base)
 
 M.name = "insert"
@@ -56,7 +56,7 @@ M.returns = {
   },
 }
 
----@type AvanteLLMToolFunc<{ path: string, insert_line: integer, new_str: string }>
+---@type AvanteLLMToolFunc<avante.tools.InsertInput>
 function M.func(input, opts)
   local on_log = opts.on_log
   local on_complete = opts.on_complete
@@ -78,11 +78,15 @@ function M.func(input, opts)
   local max_col = vim.o.columns
   local virt_lines = vim
     .iter(new_lines)
-    :map(function(line)
-      --- append spaces to the end of the line
-      local line_ = line .. string.rep(" ", max_col - #line)
-      return { { line_, Highlights.INCOMING } }
-    end)
+    :map(
+      ---@param line string
+      ---@return [string, string][]
+      function(line)
+        --- append spaces to the end of the line
+        local line_ = line .. string.rep(" ", max_col - #line)
+        return { { line_, Highlights.INCOMING } }
+      end
+    )
     :totable()
   local line_count = vim.api.nvim_buf_line_count(bufnr)
   if input.insert_line > line_count - 1 then input.insert_line = line_count - 1 end

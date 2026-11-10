@@ -58,8 +58,10 @@ end
 ---@return avante.ChatHistory[]
 function History.list(bufnr)
   local history_dir = History.get_history_dir(bufnr)
+  ---@type string[]
   local files = vim.fn.glob(tostring(history_dir:joinpath("*.json")), true, true)
   local latest_filename = History.get_latest_filename(bufnr, false)
+  ---@type avante.ChatHistory[]
   local res = {}
   for _, filename in ipairs(files) do
     if not filename:match("metadata.json") then
@@ -106,10 +108,12 @@ end
 
 function History.get_latest_filename(bufnr, new, project_root)
   local history_dir = History.get_history_dir(bufnr, project_root)
+  ---@type string?
   local filename
   local metadata_filepath = History.get_metadata_filepath(bufnr, project_root)
   if metadata_filepath:exists() and not new then
     local metadata_content = metadata_filepath:read()
+    ---@type {latest_filename?: string}
     local metadata = vim.json.decode(metadata_content)
     filename = metadata.latest_filename
   end
@@ -226,6 +230,7 @@ function History.delete(bufnr, filename)
         local metadata_filepath = History.get_metadata_filepath(bufnr)
         if metadata_filepath:exists() then
           local metadata_content = metadata_filepath:read()
+          ---@type {latest_filename?: string, project_root?: string}
           local metadata = vim.json.decode(metadata_content)
           metadata.latest_filename = nil -- Or "", depending on desired behavior for an empty latest
           metadata_filepath:write(vim.json.encode(metadata), "w")
@@ -244,7 +249,9 @@ function P.list_projects()
   local projects_dir = Path:new(Config.history.storage_path):joinpath("projects")
   if not projects_dir:exists() then return {} end
 
+  ---@type {name: string, root: string, history_count: integer, directory: string}[]
   local projects = {}
+  ---@type string[]
   local dirs = Scan.scan_dir(tostring(projects_dir), { depth = 1, add_dirs = true, only_dirs = true })
 
   for _, dir_path in ipairs(dirs) do
@@ -252,10 +259,12 @@ function P.list_projects()
     local history_dir = project_dir:joinpath("history")
 
     local metadata_file = history_dir:joinpath("metadata.json")
+    ---@type string
     local project_root = ""
     if metadata_file:exists() then
       local content = metadata_file:read()
       if content then
+        ---@type {project_root?: string}
         local metadata = vim.json.decode(content)
         if metadata and metadata.project_root then project_root = metadata.project_root end
       end
@@ -267,6 +276,7 @@ function P.list_projects()
     -- Count history files
     local history_count = 0
     if history_dir:exists() then
+      ---@type string[]
       local history_files = vim.fn.glob(tostring(history_dir:joinpath("*.json")), true, true)
       for _, file in ipairs(history_files) do
         if not file:match("metadata.json") then history_count = history_count + 1 end
@@ -345,6 +355,7 @@ function Prompt.get_templates_dir(project_root)
     if not dir then return end
     if vim.fn.isdirectory(dir) ~= 1 then return end
 
+    ---@type string[]
     local scanner = Scan.scan_dir(dir, { depth = 1, add_dirs = true })
     for _, entry in ipairs(scanner) do
       local file = Path:new(entry)
@@ -387,12 +398,15 @@ function Prompt.get_templates_dir(project_root)
     -- Handle the case where override_prompt_dir is a function
     if type(override_prompt_dir) == "function" then
       local ok, result = pcall(override_prompt_dir)
-      if ok and result then override_prompt_dir = result end
+      if ok and result then
+        override_prompt_dir = result --[[@as string]]
+      end
     end
 
-    if override_prompt_dir then
+    if type(override_prompt_dir) == "string" then
       local user_template_path = Path:new(override_prompt_dir)
       if user_template_path:exists() then
+        ---@type string[]
         local user_scanner =
           Scan.scan_dir(vim.fs.abspath(tostring(user_template_path)), { depth = 1, add_dirs = false })
         for _, entry in ipairs(user_scanner) do

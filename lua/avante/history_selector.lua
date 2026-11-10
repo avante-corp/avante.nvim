@@ -64,6 +64,8 @@ function M.open(bufnr, cb, session_id)
     items = vim
       .iter(selector_items)
       :map(
+        ---@param item {filename: string, name: string}
+        ---@return avante.ui.SelectorItem
         function(item)
           return {
             id = item.filename,

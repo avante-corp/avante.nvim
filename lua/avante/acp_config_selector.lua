@@ -24,6 +24,7 @@ function M.open(category, prompt_label)
   end
 
   local provider = Config.provider
+  ---@type AvanteACPProvider?
   local provider_config = vim.deepcopy(Config.acp_providers[provider])
   local tab = vim.api.nvim_get_current_tabpage()
   local history = sidebar.chat_history
@@ -57,6 +58,7 @@ function M.open(category, prompt_label)
       return is_current() and has_options() and sidebar.acp_client == client and history.acp_session_id == session_id
     end
 
+    ---@type {config_id: string, value: string}[]
     local items = {}
     local display = {}
     for _, opt in ipairs(client.config_options) do

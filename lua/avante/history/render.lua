@@ -135,21 +135,28 @@ local STATE_TO_HL = {
   succeeded = "AvanteStateSpinnerSucceeded",
 }
 
+---@param old_str string
+---@param new_str string
+---@param decoration? string
+---@param truncate? boolean
+---@return avante.ui.Line[]
 function M.get_diff_lines(old_str, new_str, decoration, truncate)
+  ---@type avante.ui.Line[]
   local lines = {}
+  ---@type integer
   local line_count = 0
   local old_lines = vim.split(old_str, "\n")
   local new_lines = vim.split(new_str, "\n")
-  ---@diagnostic disable-next-line: assign-type-mismatch, missing-fields
-  local patch = vim.text.diff(old_str, new_str, { ---@type integer[][]
+  ---@diagnostic disable-next-line: missing-fields
+  local patch = vim.text.diff(old_str, new_str, {
     algorithm = "histogram",
     result_type = "indices",
     ctxlen = vim.o.scrolloff,
-  })
+  }) --[=[@as integer[][]]=]
   local prev_start_a = 0
   local truncated_lines = 0
   for _, hunk in ipairs(patch) do
-    local start_a, count_a, start_b, count_b = unpack(hunk)
+    local start_a, count_a, start_b, count_b = hunk[1], hunk[2], hunk[3], hunk[4]
     local no_change_lines = vim.list_slice(old_lines, prev_start_a, start_a - 1)
     if truncate then
       local last_three_no_change_lines = vim.list_slice(no_change_lines, #no_change_lines - 3)
@@ -157,6 +164,7 @@ function M.get_diff_lines(old_str, new_str, decoration, truncate)
       if #no_change_lines > 4 then
         table.insert(lines, Line:new({ { decoration }, { "...", Highlights.AVANTE_COMMENT_FG } }))
       end
+      ---@type string[]
       no_change_lines = last_three_no_change_lines
     end
     for idx, line in ipairs(no_change_lines) do
@@ -164,6 +172,7 @@ function M.get_diff_lines(old_str, new_str, decoration, truncate)
         truncated_lines = truncated_lines + #no_change_lines - idx
         break
       end
+      ---@type integer
       line_count = line_count + 1
       table.insert(lines, Line:new({ { decoration }, { line } }))
     end
@@ -175,6 +184,7 @@ function M.get_diff_lines(old_str, new_str, decoration, truncate)
           truncated_lines = truncated_lines + #delete_lines - idx
           break
         end
+        ---@type integer
         line_count = line_count + 1
         table.insert(lines, Line:new({ { decoration }, { line, Highlights.TO_BE_DELETED_WITHOUT_STRIKETHROUGH } }))
       end
@@ -186,6 +196,7 @@ function M.get_diff_lines(old_str, new_str, decoration, truncate)
           truncated_lines = truncated_lines + #create_lines - idx
           break
         end
+        ---@type integer
         line_count = line_count + 1
         table.insert(lines, Line:new({ { decoration }, { line, Highlights.INCOMING } }))
       end
@@ -200,6 +211,7 @@ function M.get_diff_lines(old_str, new_str, decoration, truncate)
         truncated_lines = truncated_lines + #first_three_no_change_lines - idx
         break
       end
+      ---@type integer
       line_count = line_count + 1
       table.insert(lines, Line:new({ { decoration }, { line } }))
     end
@@ -233,7 +245,9 @@ function M.get_content_lines(content, decoration, truncate)
   if type(content_obj) == "table" then
     if islist(content_obj) then
       local all_lines = {}
-      for _, content_item in ipairs(content_obj) do
+      for _, content_item in
+        ipairs(content_obj --[=[@as (string|number|boolean|table|userdata)[]]=])
+      do
         if type(content_item) == "string" then
           local lines_ = text_to_lines(content_item, decoration)
           all_lines = vim.list_extend(all_lines, lines_)
@@ -248,7 +262,9 @@ function M.get_content_lines(content, decoration, truncate)
     end
     if islist(content_obj.content) then
       local all_lines = {}
-      for _, content_item in ipairs(content_obj.content) do
+      for _, content_item in
+        ipairs(content_obj.content --[=[@as (string|number|boolean|table|userdata)[]]=])
+      do
         if type(content_item) == "string" then
           local lines_ = text_to_lines(content_item, decoration)
           all_lines = vim.list_extend(all_lines, lines_)
@@ -259,7 +275,9 @@ function M.get_content_lines(content, decoration, truncate)
     end
     if islist(content_obj.matches) then
       local all_lines = {}
-      for _, content_item in ipairs(content_obj.matches) do
+      for _, content_item in
+        ipairs(content_obj.matches --[=[@as (string|number|boolean|table|userdata)[]]=])
+      do
         if type(content_item) == "string" then
           local lines_ = text_to_lines(content_item, decoration)
           all_lines = vim.list_extend(all_lines, lines_)
@@ -294,7 +312,9 @@ function M.get_content_lines(content, decoration, truncate)
     table.insert(lines, Line:new({ { decoration }, { tostring(content_obj) } }))
   end
   if islist(content) then
-    for _, content_item in ipairs(content) do
+    for _, content_item in
+      ipairs(content --[=[@as table[]]=])
+    do
       local line_count = 0
       if content_item.type == "content" then
         if content_item.content.type == "text" then
@@ -361,17 +381,31 @@ function M.get_tool_display_name(message)
     local title = message.acp_tool_call.title
     tool_name = type(title) == "string" and title or ""
   else
+    ---@type string?
     local param
     if item.input and type(item.input) == "table" then
+      ---@type string?
       local path
-      if type(item.input.path) == "string" then path = item.input.path end
-      if type(item.input.rel_path) == "string" then path = item.input.rel_path end
-      if type(item.input.filepath) == "string" then path = item.input.filepath end
-      if type(item.input.file_path) == "string" then path = item.input.file_path end
-      if type(item.input.query) == "string" then param = item.input.query end
-      if type(item.input.pattern) == "string" then param = item.input.pattern end
+      if type(item.input.path) == "string" then
+        path = item.input.path --[[@as string]]
+      end
+      if type(item.input.rel_path) == "string" then
+        path = item.input.rel_path --[[@as string]]
+      end
+      if type(item.input.filepath) == "string" then
+        path = item.input.filepath --[[@as string]]
+      end
+      if type(item.input.file_path) == "string" then
+        path = item.input.file_path --[[@as string]]
+      end
+      if type(item.input.query) == "string" then
+        param = item.input.query --[[@as string]]
+      end
+      if type(item.input.pattern) == "string" then
+        param = item.input.pattern --[[@as string]]
+      end
       if type(item.input.command) == "string" then
-        param = item.input.command
+        param = item.input.command --[[@as string]]
         local pieces = vim.split(param, "\n")
         if #pieces > 1 then param = pieces[1] .. "..." end
       end
@@ -410,6 +444,7 @@ local function tool_to_lines(item, message, messages, expanded)
   local rest_input_text_lines = {}
 
   local result = Helpers.get_tool_result(item.id, messages)
+  ---@type AvanteLLMToolUseState
   local state
   if not result then
     state = "generating"
@@ -477,6 +512,7 @@ local function tool_to_lines(item, message, messages, expanded)
   while #lines > 0 and lines[#lines].sections[2] and lines[#lines].sections[2][1] == "" do
     table.remove(lines, #lines)
   end
+  ---@type avante.ui.Line
   local last_line = lines[#lines]
   last_line.sections[1][1] = "╰─  "
   return lines

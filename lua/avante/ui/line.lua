@@ -1,7 +1,8 @@
----@alias avante.ui.LineSection table
+---@alias avante.ui.LineSection {[1]: string, [2]?: string|(fun(): string?)}
 ---
 ---@class avante.ui.Line
 ---@field sections avante.ui.LineSection[]
+---@field new fun(self: avante.ui.Line, sections: avante.ui.LineSection[]): avante.ui.Line
 local M = {}
 M.__index = M
 
@@ -23,7 +24,9 @@ function M:set_highlights(ns_id, bufnr, line, offset)
   for _, section in ipairs(self.sections) do
     local text = section[1]
     local highlight = section[2]
-    if type(highlight) == "function" then highlight = highlight() end
+    if type(highlight) == "function" then
+      highlight = highlight() --[[@as string?]]
+    end
     if highlight then
       vim.highlight.range(bufnr, ns_id, highlight, { line, col_start }, { line, col_start + #text })
     end
@@ -50,6 +53,7 @@ function M:get_section_pos(section_index, offset)
 end
 
 function M:__tostring()
+  ---@type string[]
   local content = {}
   for _, section in ipairs(self.sections) do
     local text = section[1]
@@ -63,8 +67,8 @@ function M:__eq(other)
   return vim.deep_equal(self.sections, other.sections)
 end
 
-function M:bind_events(ns_id, bufnr, line) end
+function M:bind_events(_ns_id, _bufnr, _line) end
 
-function M:unbind_events(bufnr, line) end
+function M:unbind_events(_bufnr, _line) end
 
 return M

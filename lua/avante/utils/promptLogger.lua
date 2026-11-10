@@ -4,7 +4,9 @@ local Utils = require("avante.utils")
 local AVANTE_PROMPT_INPUT_HL = "AvantePromptInputHL"
 
 -- last one in entries is always to hold current input
+---@type {input: string}[], integer
 local entries, idx = {}, 0
+---@type {input: string}[]
 local filtered_entries = {}
 
 ---@class avante.utils.promptLogger
@@ -24,6 +26,7 @@ function M.init()
   local log_file = vim.fs.joinpath(dir, "avante_prompts.log")
   local file = io.open(log_file, "r")
   if file then
+    ---@type string
     local content = file:read("*a"):gsub("\n$", "")
     file:close()
 
@@ -89,6 +92,8 @@ function M.log_prompt(request)
   end
 end
 
+---@param delta integer
+---@return {input: string}?
 local function _read_log(delta)
   -- index of array starts from 1 in lua, while this idx starts from 0
   idx = ((idx - delta) % #filtered_entries + #filtered_entries) % #filtered_entries
@@ -121,6 +126,8 @@ local function update_current_input()
   end
 end
 
+---@param delta integer
+---@return fun()
 function M.on_log_retrieve(delta)
   return function()
     update_current_input()

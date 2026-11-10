@@ -17,7 +17,8 @@ local ButtonGroupLine = {}
 ButtonGroupLine.__index = ButtonGroupLine
 
 -- per-buffer registry for dispatching shared keymaps/autocmds
-local registry ---@type table<integer, { lines: table<integer, avante.ui.ButtonGroupLine>, mapped: boolean, autocmd: integer|nil }>
+---@type table<integer, { lines: table<integer, avante.ui.ButtonGroupLine>, mapped: boolean, autocmd: integer|nil }>
+local registry
 registry = {}
 
 local function ensure_dispatch(bufnr)
@@ -139,6 +140,7 @@ function ButtonGroupLine:new(button_options, opts)
   if o._group_label and #o._group_label > 0 then table.insert(sections, { o._group_label .. " " }) end
   local btn_sep = "   "
   for i, opt in ipairs(o._button_options) do
+    ---@type string
     local label
     if opt.icon and #opt.icon > 0 then
       label = string.format(" %s %s ", opt.icon, opt.name)

@@ -3,7 +3,7 @@ local Utils = require("avante.utils")
 local Helpers = require("avante.llm_tools.helpers")
 local Base = require("avante.llm_tools.base")
 
----@class AvanteLLMTool
+---@class avante.tools.grep: AvanteLLMTool
 local M = setmetatable({}, Base)
 
 M.name = "grep"

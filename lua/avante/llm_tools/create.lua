@@ -3,7 +3,7 @@ local Utils = require("avante.utils")
 local Base = require("avante.llm_tools.base")
 local Helpers = require("avante.llm_tools.helpers")
 
----@class AvanteLLMTool
+---@class avante.tools.create: AvanteLLMTool
 local M = setmetatable({}, Base)
 
 M.name = "create"
@@ -46,7 +46,7 @@ M.returns = {
   },
 }
 
----@type AvanteLLMToolFunc<{ path: string, file_text: string }>
+---@type AvanteLLMToolFunc<{ path: string, file_text?: string }>
 function M.func(input, opts)
   local on_log = opts.on_log
   local on_complete = opts.on_complete
@@ -59,11 +59,12 @@ function M.func(input, opts)
   end
   local abs_path = Helpers.get_abs_path(input.path)
   if not Helpers.has_permission_to_access(abs_path) then return false, "No permission to access path: " .. abs_path end
-  if input.file_text == nil then return false, "file_text not provided" end
+  local file_text = input.file_text
+  if file_text == nil then return false, "file_text not provided" end
   if Path:new(abs_path):exists() then return false, "File already exists: " .. abs_path end
-  local lines = vim.split(input.file_text, "\n")
-  if #lines == 1 and input.file_text:match("\\n") then
-    local text = Utils.trim_escapes(input.file_text)
+  local lines = vim.split(file_text, "\n")
+  if #lines == 1 and file_text:match("\\n") then
+    local text = Utils.trim_escapes(file_text)
     lines = vim.split(text, "\n")
   end
   local bufnr, err = Helpers.get_bufnr(abs_path)

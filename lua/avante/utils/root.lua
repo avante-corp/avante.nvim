@@ -84,7 +84,8 @@ function M.detectors.cwd() return { vim.uv.cwd() } end
 function M.detectors.lsp(buf)
   local bufpath = M.bufpath(buf)
   if not bufpath then return {} end
-  local roots = {} ---@type string[]
+  ---@type string[]
+  local roots = {}
   local lsp_clients = Utils.lsp.get_clients({ bufnr = buf })
   for _, client in ipairs(lsp_clients) do
     local workspace = client.config.workspace_folders
@@ -166,12 +167,14 @@ function M.detect(opts)
   opts.spec = opts.spec or type(vim.g.root_spec) == "table" and vim.g.root_spec or M.spec
   opts.buf = (opts.buf == nil or opts.buf == 0) and vim.api.nvim_get_current_buf() or opts.buf
 
-  local ret = {} ---@type AvanteRoot[]
+  ---@type AvanteRoot[]
+  local ret = {}
   for _, spec in ipairs(opts.spec) do
     local paths = M.resolve(spec)(opts.buf)
     paths = paths or {}
     paths = type(paths) == "table" and paths or { paths }
-    local roots = {} ---@type string[]
+    ---@type string[]
+    local roots = {}
     for _, p in ipairs(paths) do
       local pp = M.realpath(p)
       if pp and not vim.tbl_contains(roots, pp) then roots[#roots + 1] = pp end
@@ -187,6 +190,7 @@ end
 
 ---@type table<number, string>
 M.cache = {}
+---@type table<integer, string>
 local buf_names = {}
 
 -- returns the root directory based on:

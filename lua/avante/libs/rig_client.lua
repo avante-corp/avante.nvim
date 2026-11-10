@@ -25,7 +25,54 @@ local Utils = require("avante.utils")
 local Providers = require("avante.providers")
 local StreamAdapter = require("avante.libs.llm_stream_adapter")
 
+---@class avante.RigClient
+---@field _claude_auth? {cancel: fun()}
+---@field _chatgpt_auth? {cancel: fun()}
+---@field _copilot_auth? {cancel: fun()}
 local M = {}
+
+---@class avante.llm.NativeContentStart
+---@field type "content_start"
+---@field index integer
+---@field kind "text"|"reasoning"|"tool_call"
+---@field name? string
+
+---@class avante.llm.NativeContentEnd
+---@field type "content_end"
+---@field index integer
+---@field order integer
+---@field content AvanteLLMMessageContentItem
+---@field native? string
+
+---@class avante.llm.NativeError
+---@field type "error"
+---@field message string
+---@field status? integer
+---@field retryAfter? integer
+
+---@class avante.llm.NativeContentDelta
+---@field type "content_delta"
+---@field index integer
+---@field kind "text"|"reasoning"
+---@field text string
+
+---@alias avante.llm.NativeEvent avante.llm.NativeContentStart|avante.llm.NativeContentEnd|avante.llm.NativeError|{type: "auth_status", message: string, complete: boolean}|avante.llm.NativeContentDelta|{type: "tool_call_delta", index: integer, arguments: table}|{type: "done", reason: "complete"|"length"|"tool_use", usage: avante.LLMTokenUsage, responseId?: string, origin: table}|{type: "response_headers", headers: table<string, string>}|{type: "aborted", message: string}|{type: "cancelled"}
+---@class avante.llm.NativeRequest
+---@field poll fun(self: avante.llm.NativeRequest): avante.llm.NativeEvent[]
+---@field cancel fun(self: avante.llm.NativeRequest)
+
+---@class avante.llm.NativeBedrockInput
+---@field region? string
+---@field profile? string
+---@field endpoint? string
+---@field accessKeyId? string
+---@field secretAccessKey? string
+---@field sessionToken? string
+---@field bearerToken? string
+
+---@class avante.llm.NativeVertexInput
+---@field projectId? string
+---@field location? string
 
 ---@class avante.llm.NativeProviderInput
 ---@field name string Avante provider identity
@@ -44,16 +91,21 @@ local M = {}
 ---@field replaceHeaders? boolean
 ---@field proxy? string
 ---@field allowInsecure boolean
----@field bedrock? table
----@field vertex? table
+---@field bedrock? avante.llm.NativeBedrockInput
+---@field vertex? avante.llm.NativeVertexInput
+
+---@class avante.llm.NativeToolInput
+---@field name string
+---@field description string
+---@field parameters { type: "object", properties: table, required: string[], additionalProperties: boolean }
 
 ---@class avante.llm.NativePromptInput
 ---@field turnId string
 ---@field systemPrompt string
----@field messages table[]
+---@field messages AvanteLLMMessage[]
 ---@field imagePaths? string[]
----@field tools table[]
----@field additionalParams table
+---@field tools avante.llm.NativeToolInput[]
+---@field additionalParams table<string, any> Provider-specific JSON parameters
 
 ---@class avante.llm.NativeRequestInput
 ---@field provider avante.llm.NativeProviderInput
@@ -65,7 +117,10 @@ local function load_native()
   return native
 end
 
+---@param tools? AvanteLLMTool[]
+---@return avante.llm.NativeToolInput[]
 local function tool_definitions(tools)
+  ---@type avante.llm.NativeToolInput[]
   local definitions = {}
   for _, tool in ipairs(tools or {}) do
     local properties, required = Utils.llm_tool_param_fields_to_json_schema(tool.param.fields)
@@ -83,12 +138,16 @@ local function tool_definitions(tools)
   return definitions
 end
 
+---@param provider AvanteProviderFunctor
+---@param provider_conf AvanteDefaultBaseProvider
+---@return avante.llm.NativeBedrockInput
 local function bedrock_config(provider, provider_conf)
   local region = provider_conf.aws_region
   if not region or region == "" then
     region = Utils.environment.parse("AWS_REGION") or Utils.environment.parse("AWS_DEFAULT_REGION")
   end
 
+  ---@type string?, string?, string?, string?
   local access_key_id, secret_access_key, session_token, bearer_token
   local credential = provider.parse_api_key() or Utils.environment.parse("AWS_BEARER_TOKEN_BEDROCK")
   if credential and credential:find(",", 1, true) then
@@ -108,6 +167,9 @@ local function bedrock_config(provider, provider_conf)
   }
 end
 
+---@param provider AvanteProviderFunctor
+---@param protocol string
+---@return string|nil
 local function provider_credential(provider, protocol)
   if protocol == "bedrock" or protocol == "vertex" then return nil end
   if protocol == "copilot" then return nil end
@@ -117,6 +179,8 @@ local function provider_credential(provider, protocol)
   return credential
 end
 
+---@param messages AvanteLLMMessage[]
+---@return boolean
 local function has_pending_tool_result(messages)
   for index = #(messages or {}), 1, -1 do
     local message = messages[index]
@@ -134,7 +198,7 @@ end
 
 ---@param provider AvanteProviderFunctor
 ---@param prompt_opts AvantePromptOptions
----@param session_ctx? table
+---@param session_ctx? avante.SessionContext
 ---@return avante.llm.NativeRequestInput
 function M._build_request(provider, prompt_opts, session_ctx)
   local protocol = assert(provider._protocol or provider._name, "Provider protocol is not set")
@@ -172,7 +236,9 @@ function M._build_request(provider, prompt_opts, session_ctx)
     if keep_alive ~= nil then
       additional_params = vim.deepcopy(additional_params)
       if type(additional_params.options) == "table" then
-        additional_params.options.keep_alive = nil
+        ---@type table<string, any>
+        local request_options = additional_params.options
+        request_options.keep_alive = nil
         if vim.tbl_isempty(additional_params.options) then additional_params.options = nil end
       end
       additional_params.keep_alive = keep_alive
@@ -182,6 +248,7 @@ function M._build_request(provider, prompt_opts, session_ctx)
   ---@type table<string, string>
   local headers = type(provider.extra_headers) == "function" and {} or Utils.tbl_override({}, provider.extra_headers)
   if vim.tbl_isempty(headers) then headers = vim.empty_dict() end
+  ---@type string?, string?
   local auth, auth_home
   if protocol == "azure" and provider_conf.entra then auth = "bearer" end
   if protocol == "claude" and provider_conf.auth_type == "subscription" then
@@ -249,12 +316,18 @@ end
 
 function M.claude_home() return vim.fn.stdpath("data") .. "/avante/claude-cloak" end
 
+---@param name "claude"|"chatgpt"|"copilot"
+---@param action string
+---@param home? string
+---@return nil
 local function authenticate(name, action, home)
   local label = ({ claude = "Claude", chatgpt = "ChatGPT", copilot = "Copilot" })[name]
+  ---@type "_claude_auth"|"_chatgpt_auth"|"_copilot_auth"
   local state = "_" .. name .. "_auth"
   if M[state] then return Utils.warn(label .. " authentication is already running") end
   local native, err = load_native()
   if not native then return Utils.error(tostring(err)) end
+  ---@type boolean, avante.llm.NativeRequest
   local ok, request = pcall(native[name .. "_auth"], action, home)
   if not ok then return Utils.error(tostring(request)) end
   local timer = uv.new_timer()
@@ -267,12 +340,14 @@ local function authenticate(name, action, home)
   local function cleanup()
     if terminal then return end
     terminal = true
+    ---@type {cancel: fun()}?
     M[state] = nil
     timer:stop()
     if not timer:is_closing() then timer:close() end
     if autocmd then pcall(api.nvim_del_autocmd, autocmd) end
     pcall(request.cancel, request)
   end
+  ---@type {cancel: fun()}
   M[state] = { cancel = cleanup }
   autocmd = api.nvim_create_autocmd("User", { pattern = "AvanteLLMEscape", once = true, callback = cleanup })
   timer:start(
@@ -333,7 +408,7 @@ function M.chatgpt_models() return list_models("chatgpt") end
 ---@param prompt_opts AvantePromptOptions
 ---@param handler_opts AvanteHandlerOptions
 ---@param on_response_headers? fun(headers: table)
----@param session_ctx? table
+---@param session_ctx? avante.SessionContext
 ---@return table|nil
 function M.start(provider, prompt_opts, handler_opts, on_response_headers, session_ctx)
   local request_ok, request_config = pcall(M._build_request, provider, prompt_opts, session_ctx)
@@ -361,12 +436,14 @@ function M.start(provider, prompt_opts, handler_opts, on_response_headers, sessi
     handler_opts.on_stop({ reason = "error", error = native_error })
     return
   end
+  ---@type boolean, avante.llm.NativeRequest
   local ok, request = pcall(native.start, request_config)
   if not ok then
     handler_opts.on_stop({ reason = "error", error = tostring(request) })
     return
   end
 
+  ---@type {turn_id: string, parts: avante.llm.StreamPart[], part_map: table<string, avante.llm.StreamPart>, thinking?: boolean, last_think_content?: string}
   local ctx = { turn_id = request_config.prompt.turnId, parts = {}, part_map = {} }
   local provider_conf = Providers.parse_config(provider)
   local supports_previous_response_id = request_config.provider.auth ~= "chatgpt"
@@ -435,6 +512,7 @@ function M.start(provider, prompt_opts, handler_opts, on_response_headers, sessi
     notify_stop({ reason = "error", error = message })
   end
 
+  ---@param event {reason: "complete"|"length"|"tool_use", usage: avante.LLMTokenUsage, responseId?: string, origin: table}
   local function finish(event)
     local reason = event.reason == "length" and "max_tokens" or event.reason
     cleanup()
@@ -449,17 +527,21 @@ function M.start(provider, prompt_opts, handler_opts, on_response_headers, sessi
     })
   end
 
+  ---@param event avante.llm.NativeEvent
+  ---@return nil
   local function handle(event)
     if terminal then return end
     if event.type == "content_start" then
+      ---@cast event avante.llm.NativeContentStart
       close_reasoning()
+      ---@type AvanteLLMMessageContentItem
       local content
       if event.kind == "text" then
         content = ""
       elseif event.kind == "reasoning" then
         content = { type = "thinking", thinking = "", signature = "" }
       else
-        content = { type = "tool_use", name = event.name, id = "", input = vim.empty_dict() }
+        content = { type = "tool_use", name = event.name or "", id = "", input = vim.empty_dict() }
       end
       local key = tostring(event.index)
       if ctx.part_map[key] then return fail_contract("Duplicate content start from avante_llm native module") end
@@ -468,6 +550,7 @@ function M.start(provider, prompt_opts, handler_opts, on_response_headers, sessi
       ctx.parts[#ctx.parts + 1] = part
       StreamAdapter.add_message(part, "generating", handler_opts)
     elseif event.type == "content_delta" then
+      ---@cast event avante.llm.NativeContentDelta
       local part = ctx.part_map[tostring(event.index)]
       if not part then return fail_contract("Content delta without a start from avante_llm native module") end
       if event.kind == "reasoning" then
@@ -476,20 +559,28 @@ function M.start(provider, prompt_opts, handler_opts, on_response_headers, sessi
           if handler_opts.on_chunk then handler_opts.on_chunk("<think>\n") end
         end
         ctx.last_think_content = event.text
-        part.content = vim.tbl_extend("force", part.content, { thinking = part.content.thinking .. event.text })
+        ---@type {type: "thinking", thinking: string, signature: string}
+        local thinking = part.content --[[@as {type: "thinking", thinking: string, signature: string}]]
+        part.content = vim.tbl_extend("force", thinking, { thinking = thinking.thinking .. event.text })
       else
         close_reasoning()
-        part.content = part.content .. event.text
+        ---@type string
+        local text = part.content --[[@as string]]
+        part.content = text .. event.text
       end
       StreamAdapter.add_message(part, "generating", handler_opts)
       if handler_opts.on_chunk then handler_opts.on_chunk(event.text) end
     elseif event.type == "tool_call_delta" then
+      ---@cast event {type: "tool_call_delta", index: integer, arguments: table}
       local part = ctx.part_map[tostring(event.index)]
       if not part then return fail_contract("Tool call delta without a start from avante_llm native module") end
-      part.content = vim.tbl_extend("force", part.content, { input = event.arguments })
+      ---@type {type: "tool_use", name: string, id: string, input: table}
+      local tool_use = part.content --[[@as {type: "tool_use", name: string, id: string, input: table}]]
+      part.content = vim.tbl_extend("force", tool_use, { input = event.arguments })
       StreamAdapter.add_message(part, "generating", handler_opts)
       handler_opts.on_stop({ reason = "tool_use", streaming_tool_use = true })
     elseif event.type == "content_end" then
+      ---@cast event avante.llm.NativeContentEnd
       local part = ctx.part_map[tostring(event.index)]
       if not part then return fail_contract("Content end without a start from avante_llm native module") end
       close_reasoning()
@@ -498,16 +589,20 @@ function M.start(provider, prompt_opts, handler_opts, on_response_headers, sessi
       part.order = event.order
       StreamAdapter.add_message(part, "generating", handler_opts)
     elseif event.type == "response_headers" then
+      ---@cast event {type: "response_headers", headers: table<string, string>}
       if on_response_headers then on_response_headers(event.headers) end
     elseif event.type == "done" then
+      ---@cast event {type: "done", reason: "complete"|"length"|"tool_use", usage: avante.LLMTokenUsage, responseId?: string, origin: table}
       finish(event)
     elseif event.type == "cancelled" then
       cleanup()
       notify_stop({ reason = "cancelled" })
     elseif event.type == "aborted" then
+      ---@cast event {type: "aborted", message: string}
       cleanup()
       notify_stop({ reason = "aborted", error = event.message })
     elseif event.type == "error" then
+      ---@cast event avante.llm.NativeError
       cleanup()
       if event.status == 429 then
         notify_stop({ reason = "rate_limit", retry_after = event.retryAfter or 10 })

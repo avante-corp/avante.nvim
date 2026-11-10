@@ -30,7 +30,9 @@ if Config.support_paste_image() then
       -- NOTE: require("img-clip.util").verbose = false does NOT silence warnings
       -- because img-clip's warn() reads config.get_opt("verbose"), not util.verbose.
       -- Suppress via api_opts which has highest priority in img-clip's config lookup.
-      require("img-clip.config").api_opts = { default = { verbose = false } }
+      ---@type { api_opts: { default?: { verbose?: boolean } } }
+      local img_clip_config = require("img-clip.config")
+      img_clip_config.api_opts = { default = { verbose = false } }
 
       local bufnr = vim.api.nvim_get_current_buf()
       local filetype = vim.api.nvim_get_option_value("filetype", { buf = bufnr })
@@ -43,7 +45,9 @@ if Config.support_paste_image() then
       -- or if the clipboard actually contains an image. This avoids the
       -- "Content is not an image" warning when Chinese IME commits text via
       -- vim.paste (which is not a real paste from clipboard).
+      ---@type { is_image_url: (fun(str: string): boolean), is_image_path: (fun(str: string): boolean) }
       local img_clip_util = require("img-clip.util")
+      ---@type { content_is_image: fun(): boolean }
       local img_clip_clipboard = require("img-clip.clipboard")
       local is_image_candidate = (line and (img_clip_util.is_image_url(line) or img_clip_util.is_image_path(line)))
         or img_clip_clipboard.content_is_image()
@@ -60,6 +64,8 @@ if Config.support_paste_image() then
   end)(vim.paste)
 end
 
+---@param prefix string
+---@return string[]
 local function ask_complete(prefix, _, _)
   local candidates = {} ---@type string[]
   vim.list_extend(
@@ -74,7 +80,12 @@ local function ask_complete(prefix, _, _)
     ---@return string
     vim.tbl_map(function(x) return "project_root=" .. x.root end, P.list_projects())
   )
-  return vim.tbl_filter(function(candidate) return vim.startswith(candidate, prefix) end, candidates)
+  return vim.tbl_filter(
+    ---@param candidate string
+    ---@return boolean
+    function(candidate) return vim.startswith(candidate, prefix) end,
+    candidates
+  )
 end
 
 api.nvim_create_user_command("AvanteAsk", function(opts)
@@ -88,11 +99,10 @@ api.nvim_create_user_command("AvanteAsk", function(opts)
 
   if parsed_args.position then args.win.position = parsed_args.position end
 
-  require("avante.api").ask(vim.tbl_deep_extend("force", args, {
-    ask = parsed_args.ask,
-    project_root = parsed_args.project_root,
-    question = question or nil,
-  }))
+  args.ask = parsed_args.ask
+  args.project_root = parsed_args.project_root
+  args.question = question or nil
+  require("avante.api").ask(args)
 end, {
   desc = "avante: ask AI for code suggestions",
   nargs = "*",
@@ -148,8 +158,11 @@ switch_provider:set_execute(function(data)
   local providers = vim.tbl_keys(Config.providers)
   if data.namespace.acp == "true" then vim.list_extend(providers, vim.tbl_keys(Config.acp_providers)) end
   table.sort(providers)
+  ---@type string
   local filter = data.namespace.filter or ""
   local items = vim.tbl_map(
+    ---@param provider_name string
+    ---@return avante.ui.SelectorItem
     function(provider_name)
       return {
         id = provider_name,
@@ -197,10 +210,17 @@ api.nvim_create_user_command(
   {
     nargs = 1,
     desc = "avante: switch input provider",
+    ---@param line string
+    ---@return string[]
     complete = function(_, line, _)
       local prefix = line:match("AvanteSwitchInputProvider%s*(.*)$") or ""
       local providers = { "native", "dressing", "snacks" }
-      return vim.tbl_filter(function(key) return key:find(prefix, 1, true) == 1 end, providers)
+      return vim.tbl_filter(
+        ---@param key string
+        ---@return boolean
+        function(key) return key:find(prefix, 1, true) == 1 end,
+        providers
+      )
     end,
   }
 )
@@ -234,6 +254,7 @@ api.nvim_create_user_command("AvanteShowRepoMap", function() require("avante.rep
 })
 api.nvim_create_user_command("AvanteModels", function(opts)
   local all = false
+  ---@type number?
   local timeout
   for _, arg in ipairs(opts.fargs) do
     if arg == "--all" and not all then

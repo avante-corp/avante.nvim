@@ -19,9 +19,10 @@ local SUGGESTION_NS = api.nvim_create_namespace("avante_suggestion")
 ---@alias avante.SuggestionSet avante.SuggestionItem[]
 
 ---@class avante.SuggestionContext
----@field suggestions_list avante.SuggestionSet[]
----@field current_suggestion_idx number
----@field prev_doc? table
+---@field suggestions_list? avante.SuggestionSet[]
+---@field current_suggestions_idx integer
+---@field prev_doc? string[]
+---@field internal_move? boolean
 
 ---@class avante.Suggestion
 ---@field id number
@@ -29,7 +30,7 @@ local SUGGESTION_NS = api.nvim_create_namespace("avante_suggestion")
 ---@field ignore_patterns table
 ---@field negate_patterns table
 ---@field _timer? uv.uv_timer_t
----@field _contexts table
+---@field _contexts table<integer, avante.SuggestionContext>
 ---@field is_on_throttle boolean
 local Suggestion = {}
 Suggestion.__index = Suggestion
@@ -93,6 +94,7 @@ local function build_suggestion_set(raw_suggestions, current_content)
         Utils.error("Provider returned malformed or invalid suggestion data", { once = true })
         return
       end
+      ---@cast s {content: string, start_row: integer, end_row: integer}
 
       local lines = vim.split(s.content, "\n")
       local new_start_row = s.start_row
@@ -380,6 +382,7 @@ end
 
 function Suggestion:hide() api.nvim_buf_clear_namespace(0, SUGGESTION_NS, 0, -1) end
 
+---@return avante.SuggestionContext
 function Suggestion:ctx()
   local bufnr = api.nvim_get_current_buf()
   local ctx = self._contexts[bufnr]
@@ -431,6 +434,7 @@ function Suggestion:dismiss()
   self:reset()
 end
 
+---@return avante.SuggestionItem?
 function Suggestion:get_current_suggestion()
   local ctx = self:ctx()
   local suggestions = ctx.suggestions_list and ctx.suggestions_list[ctx.current_suggestions_idx] or nil
@@ -442,11 +446,13 @@ function Suggestion:get_current_suggestion()
   end
 end
 
+---@return avante.SuggestionItem?
 function Suggestion:get_next_suggestion()
   local ctx = self:ctx()
   local suggestions = ctx.suggestions_list and ctx.suggestions_list[ctx.current_suggestions_idx] or nil
   if not suggestions then return nil end
   local cursor_row, _ = Utils.get_cursor_pos()
+  ---@type avante.SuggestionSet
   local new_suggestions = {}
   for _, suggestion in ipairs(suggestions) do
     table.insert(new_suggestions, suggestion)
@@ -518,14 +524,18 @@ function Suggestion:accept()
   ctx.suggestions_list[ctx.current_suggestions_idx] = vim
     .iter(suggestions)
     :filter(function(s) return s.start_row ~= suggestion.start_row end)
-    :map(function(s)
-      if s.start_row > suggestion.start_row then
-        s.original_start_row = s.original_start_row + row_diff
-        s.start_row = s.start_row + row_diff
-        s.end_row = s.end_row + row_diff
+    :map(
+      ---@param s avante.SuggestionItem
+      ---@return avante.SuggestionItem
+      function(s)
+        if s.start_row > suggestion.start_row then
+          s.original_start_row = s.original_start_row + row_diff
+          s.start_row = s.start_row + row_diff
+          s.end_row = s.end_row + row_diff
+        end
+        return s
       end
-      return s
-    end)
+    )
     :totable()
 
   local line_count = #lines

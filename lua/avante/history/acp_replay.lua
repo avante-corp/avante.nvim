@@ -23,6 +23,7 @@ local function content_text(content)
   if type(content) ~= "table" then return nil end
   if content.type == "text" and type(content.text) == "string" then return content.text end
   if content.type == "resource_link" then
+    ---@type string?
     local name = content.name or content.uri
     if type(name) == "string" then return "@" .. name end
   end
@@ -30,11 +31,14 @@ local function content_text(content)
 end
 
 ---@param message avante.HistoryMessage|nil
----@return table|nil
+---@return {type: "thinking", thinking: string, signature?: string}|nil
 local function thinking_item(message)
   if not message or message.message.role ~= "assistant" or type(message.message.content) ~= "table" then return nil end
   local item = message.message.content[1]
-  if type(item) == "table" and item.type == "thinking" then return item end
+  if type(item) == "table" and item.type == "thinking" then
+    ---@cast item {type: "thinking", thinking: string, signature?: string}
+    return item
+  end
   return nil
 end
 
@@ -45,6 +49,11 @@ end
 ---@field include_user? boolean
 ---@field text_chunks? table<avante.HistoryMessage, string[]>
 
+---@param state avante.acp.UpdateState
+---@param message avante.HistoryMessage
+---@param content string
+---@param text string
+---@return string
 local function append_chunk(state, message, content, text)
   if not state.text_chunks then return content .. text end
   -- Replay has no intermediate renders; concatenate each message only after all updates.
@@ -92,6 +101,7 @@ end
 ---@return avante.HistoryMessage[] changed
 ---@return avante.HistoryMessage|nil tool_call
 function M.apply_update(state, update)
+  ---@type string
   local kind = update.sessionUpdate
   if kind == "user_message_chunk" or kind == "agent_message_chunk" then
     if kind == "user_message_chunk" and not state.include_user then return {}, nil end
@@ -120,6 +130,7 @@ function M.apply_update(state, update)
     return {}, nil
   end
 
+  ---@type string
   local id = update.toolCallId
   local patch = vim.tbl_extend("force", {}, update)
   ---@cast patch avante.acp.ToolCallUpdate
@@ -184,6 +195,7 @@ function M.to_messages(updates)
   ---@type table<string, boolean>
   local resolved_tool_calls = {}
 
+  ---@type avante.acp.UpdateState
   local state = {
     messages = messages,
     tool_calls = tool_calls,

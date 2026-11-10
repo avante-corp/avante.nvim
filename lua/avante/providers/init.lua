@@ -24,6 +24,7 @@ local Config = require("avante.config")
 local Utils = require("avante.utils")
 
 ---@class avante.Providers
+---@field [string] AvanteProviderFunctor
 ---@field azure AvanteProviderFunctor
 ---@field bedrock AvanteBedrockProviderFunctor
 ---@field claude AvanteClaudeProviderFunctor
@@ -180,7 +181,7 @@ end
 M.env = E
 
 M = setmetatable(M, {
-  ---@param t avante.Providers
+  ---@param t table<string, AvanteProviderFunctor>
   ---@param k avante.ProviderName
   ---@return AvanteProviderFunctor | AvanteBedrockProviderFunctor
   __index = function(t, k)
@@ -227,6 +228,7 @@ M = setmetatable(M, {
     provider_config.auth_type = auth_type
     provider_config._name = k
     provider_config._protocol = protocol
+    ---@cast provider_config AvanteProviderFunctor
     t[k] = provider_config
 
     if rawget(t[k], "parse_api_key") == nil then t[k].parse_api_key = function() return E.parse_envvar(t[k]) end end
@@ -312,16 +314,20 @@ end
 ---@return AvanteDefaultBaseProvider provider_opts
 ---@return table<string, any> request_body
 function M.parse_config(opts)
+  ---@type table<string, any>
   local provider_opts = {}
 
-  for key, value in pairs(opts) do
+  ---@type table<string, any>
+  local config = opts
+  for key, value in pairs(config) do
     if key ~= "extra_request_body" and key ~= "_name" and key ~= "_protocol" then provider_opts[key] = value end
   end
 
   ---@type table<string, any>
   local request_body = opts.extra_request_body or {}
 
-  return provider_opts, request_body
+  return provider_opts, --[[@as AvanteDefaultBaseProvider]]
+    request_body
 end
 
 ---@param provider_conf AvanteDefaultBaseProvider | nil

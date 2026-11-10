@@ -1,5 +1,9 @@
-local function trim(s) return s:gsub("^%s+", ""):gsub("%s+$", "") end
+---@param s string
+---@return string
+local function trim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 
+---@param text string
+---@return string[]
 local function split_lines(text)
   local lines = {}
   for line in text:gmatch("[^\r\n]+") do
@@ -8,6 +12,8 @@ local function split_lines(text)
   return lines
 end
 
+---@param diff_text string
+---@return string
 local function diff2search_replace(diff_text)
   if not diff_text:match("@@%s*%-%d+,%d+%s%+") then return diff_text end
 

@@ -35,7 +35,9 @@ function M.confirm_inline(callback, cancel_callback, confirm_opts)
 
   if sidebar.permission_cancel_handler then sidebar.permission_cancel_handler() end
   local settled = false
+  ---@type fun(id: string)
   local handler
+  ---@param action fun()
   local function settle(action)
     if settled then return end
     settled = true
@@ -58,7 +60,7 @@ end
 ---@param message string
 ---@param callback fun(response: boolean, reason?: string, option_id?: string)
 ---@param confirm_opts? avante.ui.ConfirmOptions
----@param session_ctx? table
+---@param session_ctx? avante.SessionContext
 ---@param tool_name? string -- Optional tool name to check against tool_permissions config
 ---@return avante.ui.Confirm | nil
 function M.confirm(message, callback, confirm_opts, session_ctx, tool_name)
@@ -111,6 +113,7 @@ function M.confirm(message, callback, confirm_opts, session_ctx, tool_name)
   confirm_opts = vim.tbl_extend("force", { container_winid = sidebar.containers.input.winid }, confirm_opts)
   local option_ids = ACPConfirmAdapter.map_acp_options(confirm_opts.permission_options or {})
   if M.confirm_popups[sidebar] then M.confirm_popups[sidebar]:cancel() end
+  ---@type avante.ui.Confirm
   local popup
   popup = Confirm:new(message, function(type, reason)
     if M.confirm_popups[sidebar] == popup then M.confirm_popups[sidebar] = nil end
@@ -186,11 +189,14 @@ function M.has_permission_to_access(abs_path)
   if not Path:new(abs_path):is_absolute() then return false end
   local real_path = resolve_path(abs_path)
   if not real_path then return false end
+  ---@param root string
+  ---@return boolean
   local function inside(root)
     local real_root = resolve_path(root)
     if not real_root then return false end
     local path = real_path
     if Utils.path.is_win() then
+      ---@type string, string
       path, real_root = path:lower(), real_root:lower()
     end
     local prefix = real_root:sub(-1) == "/" and real_root or real_root .. "/"
@@ -213,7 +219,7 @@ function M.already_in_context(path)
 end
 
 ---@param path string
----@param session_ctx table
+---@param session_ctx avante.SessionContext
 ---@return boolean
 function M.already_viewed(path, session_ctx)
   local view_history = session_ctx.view_history or {}
@@ -223,7 +229,7 @@ function M.already_viewed(path, session_ctx)
 end
 
 ---@param path string
----@param session_ctx table
+---@param session_ctx avante.SessionContext
 function M.mark_as_viewed(path, session_ctx)
   local view_history = session_ctx.view_history or {}
   local uniform_path = Utils.uniform_path(path)
@@ -231,6 +237,8 @@ function M.mark_as_viewed(path, session_ctx)
   session_ctx.view_history = view_history
 end
 
+---@param path string
+---@param session_ctx avante.SessionContext
 function M.mark_as_not_viewed(path, session_ctx)
   local view_history = session_ctx.view_history or {}
   local uniform_path = Utils.uniform_path(path)
@@ -244,7 +252,8 @@ end
 function M.get_bufnr(abs_path)
   local sidebar = require("avante").get()
   if not sidebar then return 0, "Avante sidebar not found" end
-  local bufnr ---@type integer
+  ---@type integer
+  local bufnr
   vim.api.nvim_win_call(sidebar.code.winid, function()
     ---@diagnostic disable-next-line: param-type-mismatch
     pcall(vim.cmd, "edit " .. abs_path)

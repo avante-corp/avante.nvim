@@ -3,7 +3,7 @@ local Utils = require("avante.utils")
 local Base = require("avante.llm_tools.base")
 local Helpers = require("avante.llm_tools.helpers")
 
----@class AvanteLLMTool
+---@class avante.tools.view: AvanteLLMTool
 local M = setmetatable({}, Base)
 
 M.name = "view"

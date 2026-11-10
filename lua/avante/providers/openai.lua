@@ -87,6 +87,8 @@ function M:list_models(timeout)
     .iter(body.data)
     :filter(function(model) return type(model) == "table" and type(model.id) == "string" end)
     :map(
+      ---@param model {id: string, created?: integer, owned_by?: string}
+      ---@return AvanteProviderModel
       function(model)
         return {
           id = model.id,
