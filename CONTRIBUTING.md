@@ -87,6 +87,9 @@ make rusttest
 ```
 
 Set `AVANTE_RUNTIME_TEST_DIR` or `DEPS_PATH` when invoking `make` to override the default directories under `target/tests`.
+Lua typechecking reads the checked-in `.luarc.json` directly and reports
+diagnostics at `Information` severity and above. `no-unknown` defaults to
+`Warning!`, so unknown types fail the check.
 Rust tests use the release profile; set `CARGO_TARGET` to test a specific target.
 The CI workflow runs Lua and Rust tests together on Linux and macOS.
 

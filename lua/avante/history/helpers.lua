@@ -1,5 +1,3 @@
-local Utils = require("avante.utils")
-
 local M = {}
 
 ---If message is a text message return the text.

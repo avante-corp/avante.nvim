@@ -9,6 +9,7 @@ function M.show(selector)
     return
   end
 
+  ---@type table<string, string>
   local title_to_id = {}
   for _, item in ipairs(selector.items) do
     title_to_id[item.title] = item.id
@@ -19,7 +20,9 @@ function M.show(selector)
     function(args)
       local query = args[1] or ""
       local items = {}
-      for _, item in ipairs(vim.iter(selector.items):map(function(item) return item.title end):totable()) do
+      ---@type string[]
+      local titles = vim.iter(selector.items):map(function(item) return item.title end):totable()
+      for _, item in ipairs(titles) do
         if query == "" or item:match(query:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%1")) then
           table.insert(items, item)
         end
@@ -39,6 +42,8 @@ function M.show(selector)
       fzf_opts = { ["--multi"] = true },
       git_icons = false,
       actions = {
+        ---@param selected string[]
+        ---@return nil
         ["default"] = function(selected)
           if not selected or #selected == 0 then return close_action() end
           ---@type string[]
@@ -53,6 +58,8 @@ function M.show(selector)
         ["esc"] = close_action,
         ["ctrl-c"] = close_action,
         ["ctrl-delete"] = {
+          ---@param selected string[]
+          ---@return nil
           fn = function(selected)
             if not selected or #selected == 0 then return close_action() end
             local selections = selected

@@ -1,7 +1,7 @@
 local Base = require("avante.llm_tools.base")
 local History = require("avante.history")
 
----@class AvanteLLMTool
+---@class avante.tools.delete_tool_use_messages: AvanteLLMTool
 local M = setmetatable({}, Base)
 
 M.name = "delete_tool_use_messages"
@@ -40,7 +40,7 @@ M.returns = {
 }
 
 ---@type AvanteLLMToolFunc<{ tool_use_id: string }>
-function M.func(input, opts)
+function M.func(input, _opts)
   local sidebar = require("avante").get()
   if not sidebar then return false, "Avante sidebar not found" end
   local history_messages = History.get_history_messages(sidebar.chat_history)

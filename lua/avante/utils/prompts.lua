@@ -55,7 +55,6 @@
 ---
 ---@brief ]]
 
-local Config = require("avante.config")
 local M = {}
 
 --- Returns the content of the first file found in the list:

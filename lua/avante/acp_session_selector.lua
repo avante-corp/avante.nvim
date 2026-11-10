@@ -33,6 +33,7 @@ function M.parse_timestamp(iso)
   utc_fields.isdst = nil
   local epoch = as_local + os.difftime(as_local, os.time(utc_fields))
   if zone ~= "Z" then
+    ---@type string, string, string
     local sign, zone_hours, zone_minutes = zone:match("([+-])(%d%d):?(%d%d)")
     local zone_offset = (tonumber(zone_hours) * 3600 + tonumber(zone_minutes) * 60) * (sign == "+" and 1 or -1)
     epoch = epoch - zone_offset
@@ -92,9 +93,11 @@ end
 ---@param bufnr integer
 ---@return table<string, avante.ChatHistory>
 local function histories_by_session_id(bufnr)
+  ---@type table<string, avante.ChatHistory>
   local histories = {}
   for _, history in ipairs(Path.history.list(bufnr)) do
-    if history.acp_session_id and history.acp_session_id ~= "" then histories[history.acp_session_id] = history end
+    local session_id = history.acp_session_id
+    if session_id and session_id ~= "" then histories[session_id] = history end
   end
   return histories
 end
@@ -156,6 +159,7 @@ end
 ---List the current ACP provider's sessions for this project and resume the selected one
 function M.open()
   local provider = Config.provider
+  ---@type AvanteACPProvider?
   local acp_provider = vim.deepcopy(Config.acp_providers[provider])
   if not acp_provider then
     Utils.warn("The current provider is not an ACP provider")
@@ -204,6 +208,7 @@ function M.open()
           return
         end
 
+        ---@type table<avante.acp.SessionInfo, number>
         local times = {}
         for _, session in ipairs(sessions) do
           times[session] = M.parse_timestamp(session.updatedAt) or -math.huge

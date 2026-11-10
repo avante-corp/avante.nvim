@@ -93,7 +93,12 @@ function M:open()
   local content = vim
     .iter({
       "",
-      vim.tbl_map(function(line) return "  " .. line end, vim.split(message, "\n")),
+      vim.tbl_map(
+        ---@param line string
+        ---@return string
+        function(line) return "  " .. line end,
+        vim.split(message, "\n")
+      ),
       "",
       buttons_line_content,
       "",

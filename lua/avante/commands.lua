@@ -147,28 +147,32 @@ local function query_rag(text)
   require("avante.rag_service").retrieve(
     uri,
     text,
-    vim.schedule_wrap(function(response, err)
-      if err or not response then
-        Utils.error("RAG query failed: " .. (err or "No response"))
-        return
-      end
-
-      local lines = vim.split(response.response or "", "\n", { plain = true })
-      if response.sources and #response.sources > 0 then
-        vim.list_extend(lines, { "", "## Sources", "" })
-        for _, source in ipairs(response.sources) do
-          table.insert(lines, "- " .. source.uri)
+    vim.schedule_wrap(
+      ---@param response AvanteRagServiceRetrieveResponse?
+      ---@param err string?
+      function(response, err)
+        if err or not response then
+          Utils.error("RAG query failed: " .. (err or "No response"))
+          return
         end
+
+        local lines = vim.split(response.response or "", "\n", { plain = true })
+        if response.sources and #response.sources > 0 then
+          vim.list_extend(lines, { "", "## Sources", "" })
+          for _, source in ipairs(response.sources) do
+            table.insert(lines, "- " .. source.uri)
+          end
+        end
+        local buffer = vim.api.nvim_create_buf(false, true)
+        vim.bo[buffer].bufhidden = "wipe"
+        vim.bo[buffer].swapfile = false
+        vim.bo[buffer].filetype = "markdown"
+        vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
+        vim.bo[buffer].modifiable = false
+        vim.cmd("botright split")
+        vim.api.nvim_win_set_buf(0, buffer)
       end
-      local buffer = vim.api.nvim_create_buf(false, true)
-      vim.bo[buffer].bufhidden = "wipe"
-      vim.bo[buffer].swapfile = false
-      vim.bo[buffer].filetype = "markdown"
-      vim.api.nvim_buf_set_lines(buffer, 0, -1, false, lines)
-      vim.bo[buffer].modifiable = false
-      vim.cmd("botright split")
-      vim.api.nvim_win_set_buf(0, buffer)
-    end)
+    )
   )
 end
 

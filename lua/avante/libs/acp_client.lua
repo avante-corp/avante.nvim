@@ -135,6 +135,8 @@ local NATIVE_API_VERSION = 3
 
 local function create_error(kind, message, data) return { kind = kind, message = message, data = data } end
 
+---@param self avante.acp.ACPClient
+---@param err any Error values may be arbitrary Lua values raised by a handler.
 local function report_handler_error(self, err)
   local handler = self.config.handlers and self.config.handlers.on_error
   if handler then pcall(handler, create_error("internal", tostring(err))) end
@@ -146,6 +148,8 @@ local function load_native()
   error("Failed to load avante_acp native module: " .. tostring(native))
 end
 
+---@param self avante.acp.ACPClient
+---@param state "disconnected"|"connecting"|"ready"|"error"
 local function set_connection_state(self, state)
   if self.connection_state == state then return end
   self.connection_state = state
@@ -156,6 +160,8 @@ local function set_connection_state(self, state)
   end
 end
 
+---@param self avante.acp.ACPClient
+---@return {command: string, args: string[], env: table<string, string>, authMethod?: string, readTextFile: boolean?, writeTextFile: boolean?, sessionCloseTimeoutMs?: integer}
 local function native_config(self)
   return {
     command = self.config.command,
@@ -275,6 +281,8 @@ function ACPClient:_stop_polling()
   if not timer:is_closing() then pcall(timer.close, timer) end
 end
 
+---@param self avante.acp.ACPClient
+---@param err? avante.acp.ACPError
 local function finish_connect(self, err)
   local callbacks = self.connect_callbacks
   self.connect_callbacks = {}
@@ -283,12 +291,15 @@ local function finish_connect(self, err)
   end
 end
 
+---@param self avante.acp.ACPClient
 local function dispose(self)
   local callback = self.on_dispose
   self.on_dispose = nil
   if callback then pcall(callback) end
 end
 
+---@param self avante.acp.ACPClient
+---@param err? avante.acp.ACPError
 local function finish_stop(self, err)
   local connecting, operations, callbacks = self.connect_callbacks, self.callbacks, self.stop_callbacks
   local on_dispose = self.on_dispose
@@ -324,6 +335,11 @@ end
 
 local function operation_error(err) return create_error("internal", (tostring(err):gsub("^.-:%d+: ", ""))) end
 
+---@generic T
+---@param self avante.acp.ACPClient
+---@param method string
+---@param callback? avante.acp.OperationCallback
+---@param ... T
 local function start_operation(self, method, callback, ...)
   callback = callback or function() end
   if self.connection_state ~= "ready" or self.is_stopping or not self.native then
@@ -332,6 +348,7 @@ local function start_operation(self, method, callback, ...)
     callback(nil, create_error("invalid_request", message))
     return
   end
+  ---@type (fun(self: table|userdata, ...): {operationId?: integer, error?: avante.acp.ACPError})?
   local native_method = self.native[method]
   if type(native_method) ~= "function" then
     callback(nil, create_error("internal", "ACP client implementation is missing method: " .. method))
@@ -350,15 +367,21 @@ local function start_operation(self, method, callback, ...)
     callback(nil, start.error)
     return
   end
-  if type(start.operationId) ~= "number" then
+  local operation_id = start.operationId
+  if type(operation_id) ~= "number" then
     callback(nil, create_error("internal", "ACP client implementation did not return an operation ID: " .. method))
     return
   end
-  self.callbacks[start.operationId] = callback
+  self.callbacks[operation_id] = callback
 end
 
+---@generic T
+---@param self avante.acp.ACPClient
+---@param method string
+---@param ... T
 local function send_native(self, method, ...)
   if not self.native then return end
+  ---@type integer, table|userdata
   local generation, native = self.native_generation, self.native
   if type(native[method]) ~= "function" then return end
   local ok, err = pcall(native[method], native, ...)
@@ -367,6 +390,9 @@ local function send_native(self, method, ...)
   end
 end
 
+---@param self avante.acp.ACPClient
+---@param event {requestId: integer}
+---@return fun(method: string, ...)
 local function responder(self, event)
   local generation = self.native_generation
   local completed = false
@@ -381,6 +407,8 @@ local function replace_config_options(self, options)
   self.config_options = type(options) == "table" and #options > 0 and options or nil
 end
 
+---@param self avante.acp.ACPClient
+---@param change? {id: string, currentValue: string|boolean}
 local function apply_config_value(self, change)
   if type(change) ~= "table" or not self.config_options then return end
   for _, option in ipairs(self.config_options) do
@@ -403,6 +431,7 @@ local function should_reconnect(self)
     and self.reconnect_count < (self.config.max_reconnect_attempts or 3)
 end
 
+---@param self avante.acp.ACPClient
 local function finish_ready(self)
   local session_id = self.reconnect_pending and self.active_session_id or nil
   local setup = session_id and self.active_session_setup or nil
@@ -415,6 +444,7 @@ local function finish_ready(self)
     return
   end
 
+  ---@cast session_id string
   self:load_session(session_id, setup.cwd, setup.mcpServers, function(_, err)
     self.restoring_session = false
     self.reconnect_pending = false
@@ -430,6 +460,8 @@ local function finish_ready(self)
   end, { additional_directories = setup.additionalDirectories })
 end
 
+---@param self avante.acp.ACPClient
+---@param event {notification: {sessionId: string, update: table}, replayed?: boolean, configOptions?: avante.acp.ConfigOption[], configValue?: {id: string, currentValue: string|boolean}}
 local function handle_session_update(self, event)
   local notification = event.notification
   if type(notification) ~= "table" or type(notification.update) ~= "table" then return end
@@ -460,6 +492,8 @@ local function handle_session_update(self, event)
   if handler then handler(update) end
 end
 
+---@param self avante.acp.ACPClient
+---@param event {requestId: integer, request: {sessionId: string, toolCall: avante.acp.ToolCall, options: avante.acp.PermissionOption[]}}
 local function handle_permission(self, event)
   local session_id = event.request.sessionId
   if self.active_session_id and session_id ~= self.active_session_id and not self.loading_sessions[session_id] then
@@ -481,6 +515,8 @@ local function handle_permission(self, event)
   if not ok then respond("respond_error", "internal", operation_error(err).message) end
 end
 
+---@param self avante.acp.ACPClient
+---@param event {requestId: integer, request: {path: string, line?: integer, limit?: integer}}
 local function handle_read(self, event)
   local handler = self.config.handlers and self.config.handlers.on_read_file
   if not handler then
@@ -498,6 +534,8 @@ local function handle_read(self, event)
   if not ok then respond("respond_error", "internal", operation_error(err).message) end
 end
 
+---@param self avante.acp.ACPClient
+---@param event {requestId: integer, request: {path: string, content: string}}
 local function handle_write(self, event)
   local handler = self.config.handlers and self.config.handlers.on_write_file
   if not handler then
@@ -692,6 +730,7 @@ function ACPClient:create_session(cwd, mcp_servers, callback, additional_directo
   self.pending_session_operations = self.pending_session_operations + 1
   start_operation(self, "new_session", function(result, err)
     self.pending_session_operations = self.pending_session_operations - 1
+    ---@type string?
     local session_id = result and result.sessionId
     if err or type(session_id) ~= "string" or session_id == "" then
       callback(nil, err or create_error("internal", "session/new returned an invalid sessionId"))

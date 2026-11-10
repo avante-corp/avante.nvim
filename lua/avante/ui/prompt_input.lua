@@ -13,7 +13,7 @@ local Utils = require("avante.utils")
 ---@field submit_callback function | nil
 ---@field cancel_callback function | nil
 ---@field close_on_submit boolean
----@field spinner_chars table
+---@field spinner_chars string[]
 ---@field spinner_index integer
 ---@field spinner_timer uv.uv_timer_t | nil
 ---@field spinner_active boolean
@@ -128,8 +128,8 @@ function PromptInput:show_shortcuts_hints()
 
   local win_width = api.nvim_win_get_width(self.winid)
   local win_height = api.nvim_win_get_height(self.winid)
-  local buf_height = api.nvim_buf_line_count(self.bufnr)
 
+  ---@type string
   local hint_text = (vim.fn.mode() ~= "i" and Config.mappings.submit.normal or Config.mappings.submit.insert)
     .. ": submit"
 
@@ -235,10 +235,14 @@ function PromptInput:setup_keymaps()
     { buffer = bufnr, noremap = true, silent = true }
   )
 
-  for _, key in ipairs(Config.mappings.cancel.normal) do
+  ---@type string[]
+  local normal_cancel = Config.mappings.cancel.normal
+  for _, key in ipairs(normal_cancel) do
     vim.keymap.set("n", key, function() self:cancel() end, { buffer = bufnr })
   end
-  for _, key in ipairs(Config.mappings.cancel.insert) do
+  ---@type string[]
+  local insert_cancel = Config.mappings.cancel.insert
+  for _, key in ipairs(insert_cancel) do
     vim.keymap.set("i", key, function() self:cancel() end, { buffer = bufnr })
   end
 end

@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/sumneko/vscode-lua/master/setting/schema.json",
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
   "runtime": {
     "version": "LuaJIT",
     "path": [
@@ -24,11 +24,42 @@
   },
   "diagnostics": {
     "neededFileStatus": {
+      "codestyle-check": "None",
+      "duplicate-index": "Any!",
+      "duplicate-set-field": "Any!",
       "incomplete-signature-doc": "Any!",
-      "missing-local-export-doc": "Any!"
-    }
+      "missing-local-export-doc": "Any!",
+      "no-unknown": "Any!",
+      "redefined-local": "Any!",
+      "trailing-space": "None"
+    },
+    "severity": {
+      "undefined-global": "Error",
+      "unused-local": "Warning",
+      "unused-function": "Warning",
+      "unused-label": "Warning",
+      "deprecated": "Warning!",
+      "duplicate-index": "Error",
+      "duplicate-set-field": "Error",
+      "redefined-local": "Hint",
+      "redundant-parameter": "Warning",
+      "redundant-value": "Warning",
+      "need-check-nil": "Error",
+      "undefined-field": "Error",
+      "missing-parameter": "Error",
+      "param-type-mismatch": "Error",
+      "assign-type-mismatch": "Error",
+      "no-unknown": "Warning!"
+    },
+    "unusedLocalExclude": ["_*"]
   },
   "type": {
-    "checkTableShape": true
+    "checkTableShape": true,
+    "castNumberToInteger": true,
+    "weakUnionCheck": false,
+    "weakNilCheck": false
+  },
+  "format": {
+    "enable": false
   }
 }

@@ -3,6 +3,15 @@ local api = vim.api
 local Config = require("avante.config")
 local Utils = require("avante.utils")
 
+---@class avante.HighlightDefinition: vim.api.keyset.highlight
+---@field name string
+---@field bg_link? string
+---@field fg_link? string
+---@field bg_link_fg? string
+---@field fg_link_bg? string
+---@field shade_link? string
+---@field shade? number
+
 local Highlights = {
   TITLE = { name = "AvanteTitle", fg = "#1e222a", bg = "#98c379" },
   REVERSED_TITLE = { name = "AvanteReversedTitle", fg = "#98c379", bg_link = "NormalFloat" },
@@ -76,11 +85,16 @@ Highlights.conflict = {
 --- helper
 local H = {}
 
+---@class avante.Highlights
+---@field [string] string
 local M = {}
 
+---@param hl_group string
+---@return boolean
 local function has_set_colors(hl_group) return next(Utils.get_hl(hl_group)) ~= nil end
 
 local first_setup = true
+---@type table<string, boolean>
 local already_set_highlights = {}
 
 function M.setup()
@@ -91,28 +105,34 @@ function M.setup()
         -- return all uppercase key with underscore or fully uppercase key
         return k:match("^%u+_") or k:match("^%u+$")
       end)
-      :each(function(_, hl)
-        if first_setup and has_set_colors(hl.name) then already_set_highlights[hl.name] = true end
-        if not already_set_highlights[hl.name] then
-          local bg = hl.bg
-          local fg = hl.fg
-          if hl.bg_link ~= nil then bg = Utils.get_hl(hl.bg_link).bg end
-          if hl.fg_link ~= nil then fg = Utils.get_hl(hl.fg_link).fg end
-          if hl.bg_link_fg ~= nil then bg = Utils.get_hl(hl.bg_link_fg).fg end
-          if hl.fg_link_bg ~= nil then fg = Utils.get_hl(hl.fg_link_bg).bg end
-          api.nvim_set_hl(
-            0,
-            hl.name,
-            { fg = fg or nil, bg = bg or nil, link = hl.link or nil, strikethrough = hl.strikethrough }
-          )
+      :each(
+        ---@param hl avante.HighlightDefinition
+        function(_, hl)
+          if first_setup and has_set_colors(hl.name) then already_set_highlights[hl.name] = true end
+          if not already_set_highlights[hl.name] then
+            local bg = hl.bg
+            local fg = hl.fg
+            if hl.bg_link ~= nil then bg = Utils.get_hl(hl.bg_link).bg end
+            if hl.fg_link ~= nil then fg = Utils.get_hl(hl.fg_link).fg end
+            if hl.bg_link_fg ~= nil then bg = Utils.get_hl(hl.bg_link_fg).fg end
+            if hl.fg_link_bg ~= nil then fg = Utils.get_hl(hl.fg_link_bg).bg end
+            api.nvim_set_hl(
+              0,
+              hl.name,
+              { fg = fg or nil, bg = bg or nil, link = hl.link or nil, strikethrough = hl.strikethrough }
+            )
+          end
         end
-      end)
+      )
   end
 
   if first_setup then
-    vim.iter(Highlights.conflict):each(function(_, hl)
-      if hl.name and has_set_colors(hl.name) then already_set_highlights[hl.name] = true end
-    end)
+    vim.iter(Highlights.conflict):each(
+      ---@param hl avante.HighlightDefinition
+      function(_, hl)
+        if hl.name and has_set_colors(hl.name) then already_set_highlights[hl.name] = true end
+      end
+    )
   end
   first_setup = false
 
@@ -120,6 +140,7 @@ function M.setup()
 end
 
 function M.setup_conflict_highlights()
+  ---@type table<string, string>
   local custom_hls = Config.highlights.diff
 
   ---@return number | nil
@@ -127,49 +148,56 @@ function M.setup_conflict_highlights()
   local function get_bg(hl_name) return Utils.get_hl(hl_name).bg end
 
   local function get_bold(hl_name) return Utils.get_hl(hl_name).bold end
+  vim.iter(Highlights.conflict):each(
+    ---@param key string
+    ---@param hl avante.HighlightDefinition
+    function(key, hl)
+      --- set none shade linked highlights first
+      if hl.shade_link ~= nil and hl.shade ~= nil then return end
 
-  vim.iter(Highlights.conflict):each(function(key, hl)
-    --- set none shade linked highlights first
-    if hl.shade_link ~= nil and hl.shade ~= nil then return end
+      if already_set_highlights[hl.name] then return end
 
-    if already_set_highlights[hl.name] then return end
+      local bg = hl.bg
+      local bold = hl.bold
 
-    local bg = hl.bg
-    local bold = hl.bold
-
-    local custom_hl_name = custom_hls[key:lower()]
-    if custom_hl_name ~= nil then
-      bg = get_bg(custom_hl_name) or hl.bg
-      bold = get_bold(custom_hl_name) or hl.bold
-    end
-
-    api.nvim_set_hl(0, hl.name, { bg = bg, default = true, bold = bold })
-  end)
-
-  vim.iter(Highlights.conflict):each(function(key, hl)
-    --- only set shade linked highlights
-    if hl.shade_link == nil or hl.shade == nil then return end
-
-    if already_set_highlights[hl.name] then return end
-
-    local bg
-    local bold = hl.bold
-
-    local custom_hl_name = custom_hls[key:lower()]
-    if custom_hl_name ~= nil then
-      bg = get_bg(custom_hl_name)
-      bold = get_bold(custom_hl_name) or hl.bold
-    else
-      local link_bg = get_bg(hl.shade_link)
-      if link_bg == nil then
-        Utils.warn(string.format("highlights %s don't have bg, use fallback", hl.shade_link))
-        link_bg = 3229523
+      local custom_hl_name = custom_hls[key:lower()]
+      if custom_hl_name ~= nil then
+        bg = get_bg(custom_hl_name) or hl.bg
+        bold = get_bold(custom_hl_name) or hl.bold
       end
-      bg = H.shade_color(link_bg, hl.shade)
-    end
 
-    api.nvim_set_hl(0, hl.name, { bg = bg, default = true, bold = bold })
-  end)
+      api.nvim_set_hl(0, hl.name, { bg = bg, default = true, bold = bold })
+    end
+  )
+  vim.iter(Highlights.conflict):each(
+    ---@param key string
+    ---@param hl avante.HighlightDefinition
+    function(key, hl)
+      --- only set shade linked highlights
+      if hl.shade_link == nil or hl.shade == nil then return end
+
+      if already_set_highlights[hl.name] then return end
+
+      ---@type string|integer|nil
+      local bg
+      local bold = hl.bold
+
+      local custom_hl_name = custom_hls[key:lower()]
+      if custom_hl_name ~= nil then
+        bg = get_bg(custom_hl_name)
+        bold = get_bold(custom_hl_name) or hl.bold
+      else
+        local link_bg = get_bg(hl.shade_link)
+        if link_bg == nil then
+          Utils.warn(string.format("highlights %s don't have bg, use fallback", hl.shade_link))
+          link_bg = 3229523
+        end
+        bg = H.shade_color(link_bg, hl.shade)
+      end
+
+      api.nvim_set_hl(0, hl.name, { bg = bg, default = true, bold = bold })
+    end
+  )
 end
 
 setmetatable(M, {

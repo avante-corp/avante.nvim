@@ -77,9 +77,12 @@ function M:list_models(timeout)
     return {}
   end
 
+  ---@type AvanteProviderModelList
   local models = {}
   for _, model in ipairs(result) do
+    ---@type table<string, string>
     local details = model.details or {}
+    ---@type string[]
     local display = {}
     for _, key in ipairs({ "family", "parameter_size", "quantization_level" }) do
       if details[key] then display[#display + 1] = details[key] end

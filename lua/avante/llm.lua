@@ -38,7 +38,9 @@ function M.summarize_memory(prev_memory, history_messages, cb)
     cb(nil)
     return
   end
+  ---@type string?
   local latest_timestamp = nil
+  ---@type string?
   local latest_message_uuid = nil
   for idx = #history_messages, 1, -1 do
     local message = history_messages[idx]
@@ -119,6 +121,7 @@ function M.generate_todos(user_input, cb)
     require("avante.llm_tools.write_todos"),
   }
 
+  ---@type avante.HistoryMessage[]
   local history_messages = {}
   cb = Utils.call_once(cb)
 
@@ -134,6 +137,7 @@ function M.generate_todos(user_input, cb)
       on_chunk = function() end,
       on_messages_add = function(msgs)
         msgs = vim.islist(msgs) and msgs or { msgs }
+        ---@cast msgs avante.HistoryMessage[]
         for _, msg in ipairs(msgs) do
           if not msg.uuid then msg.uuid = Utils.uuid() end
           local idx = nil
@@ -180,7 +184,7 @@ end
 ---@field user_input string
 ---@field tools AvanteLLMTool[]
 ---@field on_complete fun(error: string | nil): nil
----@field session_ctx? table
+---@field session_ctx? avante.SessionContext
 ---@field on_tool_log? fun(tool_id: string, tool_name: string, log: string, state: AvanteLLMToolUseState): nil
 ---@field on_start? fun(): nil
 ---@field on_chunk? fun(chunk: string): nil
@@ -192,12 +196,15 @@ function M.agent_loop(opts)
   table.insert(messages, { role = "user", content = "<task>" .. opts.user_input .. "</task>" })
 
   local memory_content = nil
+  ---@type avante.HistoryMessage[]
   local history_messages = {}
   local function no_op() end
+  ---@type avante.SessionContext
   local session_ctx = vim.tbl_extend("force", {}, opts.session_ctx or {})
   session_ctx.previous_response_id = nil
   session_ctx.resolved_api_route = nil
 
+  ---@type AvanteLLMStreamOptions
   local stream_options = {
     ask = true,
     memory = memory_content,
@@ -207,6 +214,7 @@ function M.agent_loop(opts)
     on_tool_log = opts.on_tool_log or no_op,
     on_messages_add = function(msgs)
       msgs = vim.islist(msgs) and msgs or { msgs }
+      ---@cast msgs avante.HistoryMessage[]
       for _, msg in ipairs(msgs) do
         local idx = nil
         for i, m in ipairs(history_messages) do
@@ -241,7 +249,9 @@ function M.agent_loop(opts)
     end,
   }
 
+  ---@type AvanteLLMMemorySummarizeCallback
   local function on_memory_summarize(pending_compaction_history_messages, on_stop)
+    ---@type table<string, boolean>
     local compaction_history_message_uuids = {}
     for _, msg in ipairs(pending_compaction_history_messages or {}) do
       compaction_history_message_uuids[msg.uuid] = true
@@ -311,6 +321,7 @@ function M.generate_prompts(opts)
   end
   local model_name = "unknown"
   local context_window = nil
+  ---@type "chat"|"responses"|nil
   local resolved_api_route = opts.session_ctx and opts.session_ctx.resolved_api_route or nil
   local use_file_paths = false
   if not is_acp_provider then
@@ -345,6 +356,7 @@ function M.generate_prompts(opts)
     end
   end
 
+  ---@type table<string, string>
   local viewed_files = {}
   if opts.history_messages then
     for _, message in ipairs(opts.history_messages) do
@@ -377,6 +389,7 @@ function M.generate_prompts(opts)
 
   -- Removed the original todos processing logic, now handled in context_messages
 
+  ---@type string
   local system_prompt
   if opts.prompt_opts and opts.prompt_opts.system_prompt then
     system_prompt = opts.prompt_opts.system_prompt
@@ -385,13 +398,15 @@ function M.generate_prompts(opts)
     system_prompt = Path.prompts.render_mode(mode, template_opts)
   end
 
-  if Config.system_prompt ~= nil then
+  local configured_system_prompt = Config.system_prompt
+  if configured_system_prompt ~= nil then
+    ---@type string
     local custom_system_prompt
-    if type(Config.system_prompt) == "function" then
+    if type(configured_system_prompt) == "function" then
       Utils.debug("Loading system_prompt from function...")
-      custom_system_prompt = Config.system_prompt()
-    elseif type(Config.system_prompt) == "string" then
-      custom_system_prompt = Config.system_prompt
+      custom_system_prompt = configured_system_prompt()
+    elseif type(configured_system_prompt) == "string" then
+      custom_system_prompt = configured_system_prompt
     end
 
     if custom_system_prompt ~= nil and custom_system_prompt ~= "" and custom_system_prompt ~= "null" then
@@ -484,6 +499,7 @@ function M.generate_prompts(opts)
     :totable()
 
   if opts.instructions ~= nil and opts.instructions ~= "" then
+    ---@type AvanteLLMMessage[]
     messages = vim.list_extend(messages, { { role = "user", content = opts.instructions } })
   end
 
@@ -538,8 +554,10 @@ function M.request(opts)
   return RigClient.start(provider, prompt_opts, handler_opts, opts.on_response_headers, opts.session_ctx)
 end
 
+---@type table<avante.LLMRequestState, boolean>
 local active_request_states = setmetatable({}, { __mode = "k" })
 
+---@param request_state avante.LLMRequestState
 local function stop_retry_timer(request_state)
   if request_state.retry_timer then
     request_state.retry_timer:stop()
@@ -548,6 +566,8 @@ local function stop_retry_timer(request_state)
   end
 end
 
+---@param request_state avante.LLMRequestState
+---@return boolean
 local function finish_request(request_state)
   if request_state.finished then return false end
   request_state.finished = true
@@ -562,6 +582,7 @@ local function release_transient_acp_client(opts, acp_client)
   if opts.acp_transient_client then pcall(acp_client.stop, acp_client) end
 end
 
+---@param opts AvanteLLMStreamOptions
 local function close_acp_request(opts)
   local request = opts.acp_request
   if not request then return end
@@ -635,18 +656,23 @@ function M._stream_acp(opts)
   ---@type avante.HistoryMessage?
   local last_tool_call_message = nil
   local acp_provider = acp_context(opts).provider
+  ---@type string?, integer
   local prev_text_message_id, prev_text_message_length = nil, 0
+  ---@type avante.HistoryMessage[]
   local history_messages = {}
   local get_history_messages = function()
     if opts.get_history_messages then return opts.get_history_messages() end
     return history_messages
   end
+  ---@param messages avante.HistoryMessage[]
   local on_messages_add = function(messages)
     if opts.on_chunk then
       for _, message in ipairs(messages) do
         if message.message.role == "assistant" and type(message.message.content) == "string" then
+          ---@type string
+          local content = message.message.content --[[@as string]]
           if message.uuid ~= prev_text_message_id then prev_text_message_length = 0 end
-          local chunk = message.message.content:sub(prev_text_message_length + 1)
+          local chunk = content:sub(prev_text_message_length + 1)
           opts.on_chunk(chunk)
           prev_text_message_id, prev_text_message_length = message.uuid, #message.message.content
         end
@@ -713,7 +739,9 @@ function M._stream_acp(opts)
           if update.sessionUpdate == "plan" then
             local request_opts = opts
             local todos = {}
-            for idx, entry in ipairs(update.entries) do
+            ---@type {status: string, content: string, priority: string}[]
+            local entries = update.entries
+            for idx, entry in ipairs(entries) do
               local status = "todo"
               if entry.status == "in_progress" then status = "doing" end
               if entry.status == "completed" then status = "done" end
@@ -785,6 +813,7 @@ function M._stream_acp(opts)
               if now - last_auto_nav < 200 then return end
 
               -- Only follow first location to avoid rapid jumping
+              ---@type {path: string, line?: integer}?
               local location = upd.locations[1]
               if not location or not location.path then return end
 
@@ -915,11 +944,18 @@ function M._stream_acp(opts)
         on_write_file = function(path, content, callback)
           local abs_path = Utils.to_absolute_path(path)
           local normalized_abs_path = vim.uv.fs_realpath(abs_path) or fn.resolve(Utils.abspath(abs_path))
-          local buffers = vim.tbl_filter(function(bufnr)
-            if not vim.api.nvim_buf_is_valid(bufnr) then return false end
-            local name = vim.api.nvim_buf_get_name(bufnr)
-            return name ~= "" and (vim.uv.fs_realpath(name) or fn.resolve(Utils.abspath(name))) == normalized_abs_path
-          end, vim.api.nvim_list_bufs())
+          ---@type integer[]
+          local buffers = vim.tbl_filter(
+            ---@param bufnr integer
+            ---@return boolean
+            function(bufnr)
+              if not vim.api.nvim_buf_is_valid(bufnr) then return false end
+              local name = vim.api.nvim_buf_get_name(bufnr)
+              return name ~= ""
+                and (vim.uv.fs_realpath(name) or fn.resolve(Utils.abspath(name))) == normalized_abs_path
+            end,
+            vim.api.nvim_list_bufs()
+          )
           for _, buf in ipairs(buffers) do
             if vim.bo[buf].modified then
               callback("Cannot write file with unsaved changes: " .. abs_path)
@@ -1151,6 +1187,7 @@ function M._continue_stream_acp(opts, acp_client, session_id)
     end
   end
   local history_messages = opts.history_messages or {}
+  ---@type {content: AvanteLLMMessageContent}?
   local current_message
   for i = #history_messages, 1, -1 do
     if history_messages[i].is_user_submission then
@@ -1397,6 +1434,8 @@ function M._stream(opts)
         if opts.get_todos then
           local todos = opts.get_todos()
           unfinished_todos = vim.tbl_filter(
+            ---@param todo avante.TODO
+            ---@return boolean
             function(todo) return todo.status ~= "done" and todo.status ~= "cancelled" end,
             todos
           )
@@ -1409,6 +1448,7 @@ function M._stream(opts)
         then
           opts.session_ctx.user_reminder_count = user_reminder_count + 1
           Utils.debug("user reminder count", user_reminder_count)
+          ---@type avante.HistoryMessage
           local message
           if #unfinished_todos > 0 then
             message = History.Message:new(
@@ -1534,7 +1574,11 @@ function M._stream(opts)
   return request
 end
 
+---@param first_response string
+---@param second_response string
+---@param opts AvanteLLMStreamOptions
 local function _merge_response(first_response, second_response, opts)
+  ---@type string
   local prompt = "\n" .. Config.dual_boost.prompt
   prompt = prompt
     :gsub("{{[%s]*provider1_output[%s]*}}", function() return first_response end)
@@ -1557,6 +1601,7 @@ end
 function M._dual_boost_stream(opts, Provider1, Provider2)
   Utils.debug("Starting Dual Boost Stream")
 
+  ---@type string[], AvanteLLMStreamOptions[]
   local collector, streams = {}, {}
   local terminal = false
   local timer = uv.new_timer()
@@ -1572,6 +1617,7 @@ function M._dual_boost_stream(opts, Provider1, Provider2)
     if not timer:is_closing() then timer:close() end
     if result then
       for _, stream_opts in ipairs(streams) do
+        ---@type avante.LLMRequestState
         local state = rawget(stream_opts, "_request_state")
         local request = state.request
         state.cancelled = true
@@ -1585,9 +1631,13 @@ function M._dual_boost_stream(opts, Provider1, Provider2)
   end
 
   -- Create options for both streams
+  ---@param index integer
+  ---@return AvanteLLMStreamOptions
   local function create_stream_opts(index)
+    ---@type string
     local response = ""
     local stream_opts = vim.tbl_extend("force", opts, {
+      ---@param chunk string
       on_chunk = function(chunk)
         if terminal then return end
         if chunk then response = response .. chunk end
@@ -1599,7 +1649,7 @@ function M._dual_boost_stream(opts, Provider1, Provider2)
         collector[index] = response
         if collector[1] ~= nil and collector[2] ~= nil then finish() end
       end,
-    })
+    }) ---@type AvanteLLMStreamOptions
     stream_opts.on_request = nil
     stream_opts.session_ctx = vim.deepcopy(opts.session_ctx or {})
     stream_opts.session_ctx.resolved_api_route = nil

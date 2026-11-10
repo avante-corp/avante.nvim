@@ -13,10 +13,13 @@ function M.show(selector)
   local pickers = require("telescope.pickers")
   local finders = require("telescope.finders")
   local conf = require("telescope.config").values
+  ---@type fun(): Sorter
+  local file_sorter = conf.file_sorter
   local actions = require("telescope.actions")
   local action_state = require("telescope.actions.state")
   local previewers = require("telescope.previewers")
 
+  ---@type avante.ui.SelectorItem[]
   local items = {}
   for _, item in ipairs(selector.items) do
     if not vim.list_contains(selector.selected_item_ids, item.id) then table.insert(items, item) end
@@ -30,6 +33,8 @@ function M.show(selector)
         default_text = selector.default_query,
         finder = finders.new_table({
           results = items,
+          ---@param entry avante.ui.SelectorItem
+          ---@return {value: string, display: string, ordinal: string}
           entry_maker = function(entry)
             return {
               value = entry.id,
@@ -38,7 +43,7 @@ function M.show(selector)
             }
           end,
         }),
-        sorter = conf.file_sorter(),
+        sorter = file_sorter(),
         previewer = selector.get_preview_content and previewers.new_buffer_previewer({
           title = "Preview",
           define_preview = function(self, entry)
@@ -65,15 +70,19 @@ function M.show(selector)
           map("i", "<c-del>", function()
             local picker = action_state.get_current_picker(prompt_bufnr)
 
+            ---@type {value: string}[]
             local selections
+            ---@type {value: string}[]
             local multi_selection = picker:get_multi_selection()
             if #multi_selection ~= 0 then
               selections = multi_selection
             else
-              selections = action_state.get_selected_entry()
-              selections = vim.islist(selections) and selections or { selections }
+              ---@type {value: string}?
+              local entry = action_state.get_selected_entry()
+              selections = entry and { entry } or {}
             end
 
+            ---@type string[]
             local selected_item_ids = vim
               .iter(selections)
               :map(function(selection) return selection.value end)
@@ -92,6 +101,8 @@ function M.show(selector)
 
                 local new_finder = finders.new_table({
                   results = new_items,
+                  ---@param entry avante.ui.SelectorItem
+                  ---@return {value: string, display: string, ordinal: string}
                   entry_maker = function(entry)
                     return {
                       value = entry.id,
@@ -108,13 +119,16 @@ function M.show(selector)
           actions.select_default:replace(function()
             local picker = action_state.get_current_picker(prompt_bufnr)
 
+            ---@type {value: string}[]
             local selections
+            ---@type {value: string}[]
             local multi_selection = picker:get_multi_selection()
             if #multi_selection ~= 0 then
               selections = multi_selection
             else
-              selections = action_state.get_selected_entry()
-              selections = vim.islist(selections) and selections or { selections }
+              ---@type {value: string}?
+              local entry = action_state.get_selected_entry()
+              selections = entry and { entry } or {}
             end
 
             local selected_item_ids = vim

@@ -5,7 +5,7 @@ local Line = require("avante.ui.line")
 
 ---@alias AttemptCompletionInput {result: string, command?: string}
 
----@class AvanteLLMTool
+---@class avante.tools.attempt_completion: AvanteLLMTool
 local M = setmetatable({}, Base)
 
 M.name = "attempt_completion"

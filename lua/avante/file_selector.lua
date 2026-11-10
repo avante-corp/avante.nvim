@@ -14,6 +14,7 @@ local FileSelector = {}
 
 local function has_scheme(path) return path:find("^(?!term://)%w+://") ~= nil end
 
+---@param absolute_path string
 function FileSelector:process_directory(absolute_path)
   if absolute_path:sub(-1) == Utils.path_sep then absolute_path = absolute_path:sub(1, -2) end
   local files = Utils.scan_directory({ directory = absolute_path, add_dirs = false })
@@ -84,6 +85,7 @@ function FileSelector:reset()
   self:emit("update")
 end
 
+---@param filepath string
 function FileSelector:add_selected_file(filepath)
   if not filepath or filepath == "" or has_scheme(filepath) then return end
   if filepath:match("^oil:") then filepath = filepath:gsub("^oil:", "") end
@@ -154,6 +156,7 @@ end
 
 function FileSelector:open() self:show_selector_ui() end
 
+---@return string[]
 function FileSelector:get_filepaths()
   if type(Config.file_selector.provider_opts.get_filepaths) == "function" then
     ---@type avante.file_selector.opts.IGetFilepathsParams
@@ -164,6 +167,7 @@ function FileSelector:get_filepaths()
     return Config.file_selector.provider_opts.get_filepaths(params)
   end
 
+  ---@type table<string, boolean>
   local selected_filepaths_set = {}
   for _, abs_path in ipairs(self.selected_filepaths) do
     selected_filepaths_set[abs_path] = true
@@ -201,9 +205,12 @@ function FileSelector:show_selector_ui()
     if Config.file_selector.provider ~= nil then
       Utils.warn("config.file_selector is deprecated, please use config.selector instead!")
       if type(Config.file_selector.provider) == "function" then
-        local title = string.format("%s:", PROMPT_TITLE) ---@type string
-        local filepaths = self:get_filepaths() ---@type string[]
-        local params = { title = title, filepaths = filepaths, handler = handler } ---@type avante.file_selector.IParams
+        ---@type string
+        local title = string.format("%s:", PROMPT_TITLE)
+        ---@type string[]
+        local filepaths = self:get_filepaths()
+        ---@type avante.file_selector.IParams
+        local params = { title = title, filepaths = filepaths, handler = handler }
         Config.file_selector.provider(params)
       else
         ---@type avante.SelectorProvider
@@ -219,13 +226,18 @@ function FileSelector:show_selector_ui()
         elseif Config.file_selector.provider == "telescope" then
           provider = "telescope"
         elseif type(Config.file_selector.provider) == "function" then
-          provider = Config.file_selector.provider
+          provider = Config.file_selector.provider --[[@as fun(selector: avante.ui.Selector): nil]]
         end
         ---@cast provider avante.SelectorProvider
         local selector = Selector:new({
           provider = provider,
           title = PROMPT_TITLE,
-          items = vim.tbl_map(function(filepath) return { id = filepath, title = filepath } end, self:get_filepaths()),
+          items = vim.tbl_map(
+            ---@param filepath string
+            ---@return avante.ui.SelectorItem
+            function(filepath) return { id = filepath, title = filepath } end,
+            self:get_filepaths()
+          ),
           default_item_id = self.selected_filepaths[1],
           selected_item_ids = self.selected_filepaths,
           provider_opts = Config.file_selector.provider_opts,
@@ -242,7 +254,12 @@ function FileSelector:show_selector_ui()
       local selector = Selector:new({
         provider = Config.selector.provider,
         title = PROMPT_TITLE,
-        items = vim.tbl_map(function(filepath) return { id = filepath, title = filepath } end, self:get_filepaths()),
+        items = vim.tbl_map(
+          ---@param filepath string
+          ---@return avante.ui.SelectorItem
+          function(filepath) return { id = filepath, title = filepath } end,
+          self:get_filepaths()
+        ),
         default_item_id = self.selected_filepaths[1],
         selected_item_ids = self.selected_filepaths,
         provider_opts = Config.selector.provider_opts,
@@ -302,6 +319,7 @@ function FileSelector:get_selected_filepaths() return vim.deepcopy(self.selected
 
 ---@return nil
 function FileSelector:add_quickfix_files()
+  ---@type string[]
   local quickfix_files = vim
     .iter(vim.fn.getqflist({ items = 0 }).items)
     :filter(function(item) return item.bufnr ~= 0 end)

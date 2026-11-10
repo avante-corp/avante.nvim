@@ -6,7 +6,7 @@ local History = require("avante.history")
 local Line = require("avante.ui.line")
 local Highlights = require("avante.highlights")
 
----@class AvanteLLMTool
+---@class avante.tools.dispatch_agent: AvanteLLMTool
 local M = setmetatable({}, Base)
 
 M.name = "dispatch_agent"
@@ -88,15 +88,19 @@ end
 function M.on_render(input, opts)
   local result_message = opts.result_message
   local store = opts.store or {}
+  ---@type avante.HistoryMessage[]
   local messages = store.messages or {}
+  ---@type string[]
   local tool_use_summary = {}
   for _, msg in ipairs(messages) do
+    ---@type string?
     local summary
     local tool_use = History.Helpers.get_tool_use_data(msg)
     if tool_use then
       local tool_result = History.Helpers.get_tool_result(tool_use.id, messages)
       if tool_result then
         if tool_use.name == "ls" then
+          ---@type string
           local path = tool_use.input.path
           if tool_result.is_error then
             summary = string.format("Ls %s: failed", path)
@@ -105,7 +109,9 @@ function M.on_render(input, opts)
             if ok then summary = string.format("Ls %s: %d paths", path, #filepaths) end
           end
         elseif tool_use.name == "grep" then
+          ---@type string
           local path = tool_use.input.path
+          ---@type string
           local query = tool_use.input.query
           if tool_result.is_error then
             summary = string.format("Grep %s in %s: failed", query, path)
@@ -114,18 +120,22 @@ function M.on_render(input, opts)
             if ok then summary = string.format("Grep %s in %s: %d paths", query, path, #filepaths) end
           end
         elseif tool_use.name == "glob" then
+          ---@type string
           local path = tool_use.input.path
+          ---@type string
           local pattern = tool_use.input.pattern
           if tool_result.is_error then
             summary = string.format("Glob %s in %s: failed", pattern, path)
           else
             local ok, result = pcall(vim.json.decode, tool_result.content)
             if ok then
+              ---@type string[]?
               local matches = result.matches
               if matches then summary = string.format("Glob %s in %s: %d matches", pattern, path, #matches) end
             end
           end
         elseif tool_use.name == "view" then
+          ---@type string
           local path = tool_use.input.path
           if tool_result.is_error then
             summary = string.format("View %s: failed", path)
@@ -200,10 +210,13 @@ Your task is to help the user with their request: "${prompt}"
 Be thorough and use the tools available to you to find the most relevant information.
 When you're done, provide a clear and concise summary of what you found.]]):gsub("${prompt}", prompt)
 
+  ---@type avante.HistoryMessage[]
   local history_messages = {}
+  ---@type table<string, boolean>
   local tool_use_messages = {}
 
   local total_tokens = 0
+  ---@type string
   local result = ""
 
   ---@type avante.AgentLoopOptions
@@ -235,7 +248,7 @@ When you're done, provide a clear and concise summary of what you found.]]):gsub
         if tool_use then
           tool_use_messages[msg.uuid] = true
           if tool_use.name == "attempt_completion" and tool_use.input and tool_use.input.result then
-            result = tool_use.input.result
+            result = tool_use.input.result --[[@as string]]
           end
         end
       end

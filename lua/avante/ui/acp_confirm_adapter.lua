@@ -39,6 +39,7 @@ end
 ---@param options avante.acp.PermissionOption[]
 ---@return avante.ui.ACPConfirmAdapter.ButtonOption[]
 function M.generate_buttons_for_acp_options(options)
+  ---@type avante.ui.ACPConfirmAdapter.ButtonOption[]
   local items = vim
     .iter(options)
     :map(function(item)

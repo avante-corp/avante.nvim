@@ -126,10 +126,13 @@ local function collect_tool_info(messages)
       if info then
         info.result = result
         if info.path then
+          ---@type HistoryFileInfo?
           local f = files[info.path]
           if not f then
             f = {}
-            files[info.path] = f
+            files[
+              info.path --[[@as string]]
+            ] = f
           end
           f.last_tool_id = result.tool_use_id
           if info.kind == "edit" and not (result.is_error or result.is_user_declined) then
@@ -185,24 +188,27 @@ local function update_view_result(tool_info, stale_view)
   else
     local view_result, view_error = require("avante.llm_tools.view").func(
       { path = tool_info.path, start_line = use.input.start_line, end_line = use.input.end_line },
-      {}
+      { session_ctx = {} }
     )
-    result.content = view_error and ("Error: " .. view_error) or view_result
+    ---@cast view_result string?
+    result.content = view_error and ("Error: " .. view_error) or view_result or ""
     result.is_error = view_error ~= nil
   end
 end
 
 ---Generates synthetic "view" tool invocation to tell LLM to refresh its view of a file after editing
 ---@param tool_use AvanteLLMToolUse
----@param path any
----@param stale_view any
+---@param path string
+---@param stale_view boolean
 ---@return avante.HistoryMessage[]
 local function generate_view_messages(tool_use, path, stale_view)
+  ---@type boolean|string|table|nil, string?
   local view_result, view_error
   if stale_view then
     view_result = stale_view_content(path)
   else
-    view_result, view_error = require("avante.llm_tools.view").func({ path = path }, {})
+    view_result, view_error = require("avante.llm_tools.view").func({ path = path }, { session_ctx = {} })
+    ---@cast view_result string?
   end
 
   if view_error then view_result = "Error: " .. view_error end
@@ -230,7 +236,7 @@ local function generate_view_messages(tool_use, path, stale_view)
     Message:new_user_synthetic({
       type = "tool_result",
       tool_use_id = view_tool_use_id,
-      content = view_result,
+      content = view_result or "",
       is_error = view_error ~= nil,
       is_user_declined = false,
     }),
@@ -275,6 +281,7 @@ end
 local function refresh_history(messages, tools, files, add_diagnostic, tools_to_keep)
   ---@type avante.HistoryMessage[]
   local updated_messages = {}
+  ---@type table<string, avante.HistoryMessage>
   local converted_results = {}
   local pending_messages = {}
 
@@ -353,6 +360,7 @@ M.update_tool_invocation_history = function(messages, max_tool_use, add_diagnost
   local tools, files = collect_tool_info(messages)
 
   -- Keep the newest calls within the budget, including their synthetic calls.
+  ---@type table<string, boolean>?
   local tools_to_keep
   if max_tool_use then
     tools_to_keep = {}
@@ -388,8 +396,11 @@ function M.get_pending_tools(messages)
   local last_turn_id = nil
   if #messages > 0 then last_turn_id = messages[#messages].turn_id end
 
-  local pending_tool_uses = {} ---@type AvantePartialLLMToolUse[]
-  local pending_tool_uses_messages = {} ---@type avante.HistoryMessage[]
+  ---@type AvantePartialLLMToolUse[]
+  local pending_tool_uses = {}
+  ---@type avante.HistoryMessage[]
+  local pending_tool_uses_messages = {}
+  ---@type table<string, boolean>
   local tool_result_seen = {}
 
   for idx = #messages, 1, -1 do

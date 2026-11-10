@@ -41,11 +41,15 @@ function Selector:new(opts)
   o.default_query = opts.default_query
   o.items = vim
     .iter(opts.items)
-    :map(function(item)
-      local new_item = vim.deepcopy(item)
-      new_item.title = new_item.title:gsub("\n", " ")
-      return new_item
-    end)
+    :map(
+      ---@param item avante.ui.SelectorItem
+      ---@return avante.ui.SelectorItem
+      function(item)
+        local new_item = vim.deepcopy(item)
+        new_item.title = new_item.title:gsub("\n", " ")
+        return new_item
+      end
+    )
     :totable()
   o.default_item_id = opts.default_item_id
   o.provider_opts = opts.provider_opts or {}

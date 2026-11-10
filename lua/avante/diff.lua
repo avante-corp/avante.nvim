@@ -30,24 +30,24 @@ local M = {}
 ---@field incoming string
 
 ---@class RangeMark
----@field label integer
----@field content string
+---@field label integer?
+---@field content integer?
 
 ---@class PositionMarks
 ---@field current RangeMark
 ---@field incoming RangeMark
 
----@class Range
+---@class avante.ConflictRange
 ---@field range_start integer
 ---@field range_end integer
 ---@field content_start integer
 ---@field content_end integer
 
 ---@class ConflictPosition
----@field incoming Range
----@field middle Range
----@field current Range
----@field marks PositionMarks
+---@field incoming avante.ConflictRange
+---@field middle {range_start?: integer, range_end?: integer}
+---@field current avante.ConflictRange
+---@field marks? PositionMarks
 
 ---@class ConflictBufferCache
 ---@field lines table<integer, boolean> map of conflicted line numbers
@@ -168,7 +168,7 @@ end
 ---TODO: should extmarks be ephemeral? or is it less expensive to save them and only re-apply
 ---them when a buffer changes since otherwise we have to reparse the whole buffer constantly
 ---@param bufnr integer
----@param positions table
+---@param positions ConflictPosition[]
 ---@param lines string[]
 local function highlight_conflicts(bufnr, positions, lines)
   M.clear(bufnr)
@@ -200,7 +200,9 @@ end
 ---@return boolean
 ---@return ConflictPosition[]
 local function detect_conflicts(lines)
+  ---@type ConflictPosition[]
   local positions = {}
+  ---@type {current: {range_start: integer, content_start: integer, range_end?: integer, content_end?: integer}, incoming: {range_start?: integer, content_start?: integer, range_end?: integer, content_end?: integer}, middle: {range_start?: integer, range_end?: integer}}?, boolean
   local position, has_middle = nil, false
   for index, line in ipairs(lines) do
     local lnum = index - 1
@@ -223,6 +225,7 @@ local function detect_conflicts(lines)
     if position ~= nil and has_middle and line:match(conflict_end) then
       position.incoming.range_end = lnum
       position.incoming.content_end = lnum - 1
+      ---@cast position ConflictPosition
       positions[#positions + 1] = position
 
       position, has_middle = nil, false
@@ -237,6 +240,7 @@ end
 ---@param opts table?
 ---@return ConflictPosition?
 local function find_position(bufnr, comparator, opts)
+  ---@type ConflictBufferCache?
   local match = visited_buffers[bufnr]
   if not match then return end
   local line = Utils.get_cursor_pos()
@@ -378,7 +382,9 @@ end
 function H.clear_buffer_mappings(bufnr)
   if not bufnr or not vim.b[bufnr].avante_conflict_mappings_set then return end
 
-  for _, diff_mapping in pairs(Config.mappings.diff) do
+  ---@type table<string, string>
+  local mappings = Config.mappings.diff
+  for _, diff_mapping in pairs(mappings) do
     pcall(vim.api.nvim_buf_del_keymap, bufnr, "n", diff_mapping)
   end
 
@@ -449,8 +455,9 @@ end
 local function quickfix_items_from_positions(item, items, visited_buf)
   if vim.tbl_isempty(visited_buf.positions) then return end
   for _, pos in ipairs(visited_buf.positions) do
-    for key, value in pairs(pos) do
+    for key, value in pairs({ current = pos.current, incoming = pos.incoming, middle = pos.middle }) do
       if vim.tbl_contains({ name_map.ours, name_map.theirs, name_map.base }, key) and not vim.tbl_isempty(value) then
+        ---@cast value {range_start: integer}
         local lnum = value.range_start + 1
         local next_item = vim.deepcopy(item)
         next_item.text = string.format("%s change", key, lnum)
@@ -564,6 +571,7 @@ end
 function M.process_position(bufnr, side, position, enable_autojump)
   local lines = {}
   if vim.tbl_contains({ SIDES.OURS, SIDES.THEIRS }, side) then
+    ---@type avante.ConflictRange
     local data = position[name_map[side]]
     lines = Utils.get_buf_lines(data.content_start, data.content_end + 1)
   elseif side == SIDES.BOTH then

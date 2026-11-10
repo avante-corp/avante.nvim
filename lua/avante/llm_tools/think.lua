@@ -3,7 +3,7 @@ local Base = require("avante.llm_tools.base")
 local Highlights = require("avante.highlights")
 local Utils = require("avante.utils")
 
----@class AvanteLLMTool
+---@class avante.tools.think: AvanteLLMTool
 local M = setmetatable({}, Base)
 
 M.name = "think"
@@ -11,6 +11,7 @@ M.name = "think"
 function M.enabled()
   local Providers = require("avante.providers")
   local Config = require("avante.config")
+  ---@type AvanteACPProvider?
   local acp_provider = Config.acp_providers[Config.provider]
   if acp_provider then return true end
   local provider = Providers[Config.provider]
@@ -73,7 +74,7 @@ function M.on_render(input, opts)
 end
 
 ---@type AvanteLLMToolFunc<ThinkingInput>
-function M.func(input, opts)
+function M.func(_input, opts)
   local on_complete = opts.on_complete
   if not on_complete then return false, "on_complete not provided" end
   on_complete(true, nil)

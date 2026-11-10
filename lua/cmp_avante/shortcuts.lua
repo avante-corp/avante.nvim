@@ -1,5 +1,3 @@
-local api = vim.api
-
 ---@class ShortcutsSource : cmp.Source
 local ShortcutsSource = {}
 ShortcutsSource.__index = ShortcutsSource
@@ -54,7 +52,7 @@ function ShortcutsSource:complete(params, callback)
   })
 end
 
-function ShortcutsSource:execute(item, callback)
+function ShortcutsSource:execute(_item, callback)
   -- ShortcutsSource should only provide completion, not perform replacement
   -- The actual shortcut replacement is handled in sidebar.lua handle_submit function
   callback()

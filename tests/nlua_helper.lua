@@ -83,21 +83,32 @@ function Path:unlink() vim.fs.rm(self.filename, { recursive = true, force = true
 
 function Path:copy(opts)
   local destination = tostring(opts.destination)
+  local results = {}
   if self:is_dir() then
     if opts.recursive then
       vim.fn.mkdir(destination, "p")
       for _, entry in ipairs(self:list()) do
-        local source = self:joinpath(entry)
-        source:copy({ destination = vim.fs.joinpath(destination, entry), recursive = true, override = opts.override })
+        if opts.hidden ~= false or entry:sub(1, 1) ~= "." then
+          local source = self:joinpath(entry)
+          local target = Path:new(vim.fs.joinpath(destination, entry))
+          results[target] = source:copy({
+            destination = target,
+            recursive = true,
+            override = opts.override,
+            hidden = opts.hidden,
+          })
+        end
       end
     end
-    return
+    return results
   end
 
-  if not opts.override and vim.uv.fs_stat(destination) then return end
+  local target = Path:new(destination)
+  if opts.override == false and vim.uv.fs_stat(destination) then return { [target] = false } end
   local parent = vim.fs.dirname(destination)
   if parent and parent ~= "." then vim.fn.mkdir(parent, "p") end
   vim.fn.writefile(vim.fn.readfile(self.filename, "b"), destination, "b")
+  return { [target] = true }
 end
 
 package.preload["plenary.path"] = function() return Path end

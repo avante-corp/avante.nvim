@@ -7,6 +7,7 @@ local M = {}
 local api = vim.api
 local fn = vim.fn
 
+---@type avante.LRUCache<string, string>
 local _file_content_lru_cache = LRUCache:new(60)
 
 api.nvim_create_autocmd("BufWritePost", {
@@ -45,6 +46,7 @@ end
 function M.write_atomically(filepath, content)
   local uv = vim.uv or vim.loop
   local stat = uv.fs_stat(filepath)
+  ---@type integer?, string?, string?
   local fd, temp_path, open_err
   local pid = uv.os_getpid()
   local create_mode = stat and stat.mode or 438
@@ -85,20 +87,25 @@ function M.is_in_project(filepath)
   return abs_filepath:sub(1, #project_root) == project_root
 end
 
+---@param filepath string
+---@return string?, string?
 function M.get_file_icon(filepath)
   local filetype = Filetype.detect(filepath, {}) or "unknown"
-  ---@type string
+  ---@type string?, string?
   local icon, hl
   ---@diagnostic disable-next-line: undefined-field
   if _G.MiniIcons ~= nil then
-    ---@diagnostic disable-next-line: undefined-global
-    icon, hl, _ = MiniIcons.get("filetype", filetype) -- luacheck: ignore
+    ---@type {get: fun(category: string, name: string): string, string, boolean}
+    local mini_icons = rawget(_G, "MiniIcons")
+    icon, hl = mini_icons.get("filetype", filetype)
   else
     local ok, devicons = pcall(require, "nvim-web-devicons")
     if ok then
-      icon, hl = devicons.get_icon(filepath, filetype, { default = false })
+      ---@type {get_icon: fun(name: string, ext?: string, opts?: {default?: boolean}): string?, string?}
+      local icons = devicons
+      icon, hl = icons.get_icon(filepath, filetype, { default = false })
       if not icon then
-        icon, hl = devicons.get_icon(filepath, nil, { default = true })
+        icon, hl = icons.get_icon(filepath, nil, { default = true })
         icon = icon or " "
       end
     else

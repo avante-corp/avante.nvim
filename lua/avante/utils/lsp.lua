@@ -14,6 +14,8 @@ function M.get_clients(opts)
 end
 
 --- return function or variable or class
+---@param node TSNode?
+---@return TSNode?
 local function get_ts_node_parent(node)
   if not node then return nil end
   local type = node:type()
@@ -36,6 +38,8 @@ local function get_ts_node_parent(node)
   return get_ts_node_parent(node:parent())
 end
 
+---@param location lsp.Location
+---@return string[]
 local function get_full_definition(location)
   local uri = location.uri
   local filepath = uri:gsub("^file://", "")
@@ -111,7 +115,15 @@ function M.read_definitions(bufnr, symbol_name, show_line_numbers, on_complete)
         return
       end
       if not result.result then goto continue end
-      local definitions = vim.tbl_filter(function(d) return d.name == symbol_name end, result.result)
+      ---@type lsp.SymbolInformation[]
+      local symbols = result.result
+      ---@type lsp.SymbolInformation[]
+      local definitions = vim.tbl_filter(
+        ---@param d lsp.SymbolInformation
+        ---@return boolean
+        function(d) return d.name == symbol_name end,
+        symbols
+      )
       if #definitions == 0 then
         on_complete(nil, "No definition found")
         return
@@ -153,27 +165,31 @@ local severity = {
 ---@return AvanteDiagnostic[]
 function M.get_diagnostics(bufnr)
   if bufnr == nil then bufnr = vim.api.nvim_get_current_buf() end
-  local diagnositcs = ---@type vim.Diagnostic[]
-    vim.diagnostic.get(bufnr, {
-      severity = {
-        vim.diagnostic.severity.ERROR,
-        vim.diagnostic.severity.WARN,
-        vim.diagnostic.severity.INFO,
-        vim.diagnostic.severity.HINT,
-      },
-    })
+  ---@type vim.Diagnostic[]
+  local diagnositcs = vim.diagnostic.get(bufnr, {
+    severity = {
+      vim.diagnostic.severity.ERROR,
+      vim.diagnostic.severity.WARN,
+      vim.diagnostic.severity.INFO,
+      vim.diagnostic.severity.HINT,
+    },
+  })
   return vim
     .iter(diagnositcs)
-    :map(function(diagnostic)
-      local d = {
-        content = diagnostic.message,
-        start_line = diagnostic.lnum + 1,
-        end_line = diagnostic.end_lnum and diagnostic.end_lnum + 1 or diagnostic.lnum + 1,
-        severity = severity[diagnostic.severity],
-        source = diagnostic.source,
-      }
-      return d
-    end)
+    :map(
+      ---@param diagnostic vim.Diagnostic
+      ---@return AvanteDiagnostic
+      function(diagnostic)
+        local d = {
+          content = diagnostic.message,
+          start_line = diagnostic.lnum + 1,
+          end_line = diagnostic.end_lnum and diagnostic.end_lnum + 1 or diagnostic.lnum + 1,
+          severity = severity[diagnostic.severity],
+          source = diagnostic.source,
+        }
+        return d
+      end
+    )
     :totable()
 end
 

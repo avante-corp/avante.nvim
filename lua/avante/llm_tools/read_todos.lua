@@ -1,6 +1,6 @@
 local Base = require("avante.llm_tools.base")
 
----@class AvanteLLMTool
+---@class avante.tools.read_todos: AvanteLLMTool
 local M = setmetatable({}, Base)
 
 M.name = "read_todos"
@@ -25,7 +25,10 @@ M.returns = {
 
 M.on_render = function() return {} end
 
-function M.func(input, opts)
+---@param _input table
+---@param opts AvanteLLMToolFuncOpts
+---@return avante.TODO[]|false|nil, string?
+function M.func(_input, opts)
   local on_complete = opts.on_complete
   local sidebar = require("avante").get()
   if not sidebar then return false, "Avante sidebar not found" end

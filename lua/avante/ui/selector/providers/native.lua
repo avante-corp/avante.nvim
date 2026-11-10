@@ -16,6 +16,8 @@ function M.show(selector)
     items,
     vim.tbl_deep_extend("force", {
       prompt = selector.title,
+      ---@param item avante.ui.SelectorItem
+      ---@return string
       format_item = function(item)
         local title = item.title
         if item.id == selector.default_item_id then title = "● " .. title end

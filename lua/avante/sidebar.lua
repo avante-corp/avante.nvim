@@ -105,6 +105,7 @@ local RESP_SEPARATOR = "-------"
 
 ---This is a list of known sidebar containers or sub-windows. They are listed in
 ---the order they appear in the sidebar, from top to bottom.
+---@type avante.SidebarContainerName[]
 local SIDEBAR_CONTAINERS = {
   "result",
   "selected_code",
@@ -121,7 +122,7 @@ local SIDEBAR_CONTAINERS = {
 ---@field id integer
 ---@field augroup integer
 ---@field code avante.CodeState
----@field containers { result?: NuiSplit, todos?: NuiSplit, selected_code?: NuiSplit, selected_files?: NuiSplit, input?: NuiSplit }
+---@field containers table<avante.SidebarContainerName, NuiSplit | nil>
 ---@field file_selector FileSelector
 ---@field chat_history avante.ChatHistory | nil
 ---@field chat_history_project_root string | nil Project owning the loaded history; keeps async saves in that project after buffer or cwd changes
@@ -334,6 +335,7 @@ function Sidebar:open(opts)
     vim.g.avante_login = true
   end
 
+  ---@type AvanteACPProvider?
   local acp_provider = Config.acp_providers[Config.provider]
   if acp_provider and not opts.new_chat and (not opts.question or opts.question == "") then
     self:resume_pending_acp_import()
@@ -465,7 +467,7 @@ end
 
 ---@class AvanteReplacementResult
 ---@field content string
----@field current_filepath string
+---@field current_filepath? string
 ---@field is_searching boolean
 ---@field is_replacing boolean
 ---@field is_thinking boolean
@@ -493,6 +495,7 @@ local function transform_result_content(result_content, prev_filepath)
 
   local search_start = 0
 
+  ---@type string?
   local current_filepath
 
   local waiting_for_breakline = false
@@ -710,6 +713,7 @@ end
 ---@return TSNode[]
 local function tree_sitter_markdown_parse_code_blocks(source)
   local query = require("vim.treesitter.query")
+  ---@type vim.treesitter.LanguageTree?
   local parser
   if type(source) == "string" then
     parser = vim.treesitter.get_string_parser(source, "markdown")
@@ -740,12 +744,15 @@ end
 ---@param response_content string
 ---@return table<string, AvanteCodeSnippet[]>
 local function extract_code_snippets_map(response_content)
+  ---@type AvanteCodeSnippet[]
   local snippets = {}
   local lines = vim.split(response_content, "\n")
 
   -- use tree-sitter-markdown to parse all code blocks in response_content
   local lang = "text"
+  ---@type integer?, integer?
   local start_line, end_line
+  ---@type integer?, integer?
   local start_line_in_response_buf, end_line_in_response_buf
   local explanation_start_line = 0
   for _, node in ipairs(tree_sitter_markdown_parse_code_blocks(response_content)) do
@@ -805,6 +812,7 @@ local function extract_code_snippets_map(response_content)
     end
   end
 
+  ---@type table<string, AvanteCodeSnippet[]>
   local snippets_map = {}
   for _, snippet in ipairs(snippets) do
     if snippet.filepath == "" then goto continue end
@@ -816,6 +824,8 @@ local function extract_code_snippets_map(response_content)
   return snippets_map
 end
 
+---@param bufnr integer
+---@param snippets AvanteCodeSnippet[]
 local function insert_conflict_contents(bufnr, snippets)
   -- sort snippets by start_line
   table.sort(snippets, function(a, b) return a.range[1] < b.range[1] end)
@@ -825,7 +835,7 @@ local function insert_conflict_contents(bufnr, snippets)
   local offset = 0
 
   for _, snippet in ipairs(snippets) do
-    local start_line, end_line = unpack(snippet.range)
+    local start_line, end_line = snippet.range[1], snippet.range[2]
 
     local first_line_content = lines[start_line]
     local old_first_line_indentation = ""
@@ -933,6 +943,7 @@ end
 local function parse_codeblocks(buf)
   local codeblocks = {}
   local lines = Utils.get_buf_lines(0, -1, buf)
+  ---@type string?, integer?, boolean?
   local lang, start_line, valid
   for _, node in ipairs(tree_sitter_markdown_parse_code_blocks(buf)) do
     if node:type() == "language" then
@@ -960,13 +971,12 @@ local function minimize_snippet(original_lines, snippet)
   local original_snippet_content = table.concat(original_snippet_lines, "\n")
   local snippet_content = snippet.content
   local snippet_lines = vim.split(snippet_content, "\n")
-  ---@diagnostic disable-next-line: assign-type-mismatch
-  local patch = vim.text.diff( ---@type integer[][]
+  local patch = vim.text.diff(
     original_snippet_content,
     snippet_content,
     ---@diagnostic disable-next-line: missing-fields
     { algorithm = "histogram", result_type = "indices", ctxlen = vim.o.scrolloff }
-  )
+  ) --[=[@as integer[][]]=]
   ---@type AvanteCodeSnippet[]
   local new_snippets = {}
   for _, hunk in ipairs(patch) do
@@ -1056,6 +1066,7 @@ end
 function Sidebar:apply(current_cursor)
   local response, response_start_line = self:get_content_between_separators()
   local all_snippets_map = extract_code_snippets_map(response)
+  ---@type table<string, AvanteCodeSnippet[]>
   local selected_snippets_map = {}
   if current_cursor then
     if self.containers.result and self.containers.result.winid then
@@ -1155,8 +1166,12 @@ function Sidebar:render_header(winid, bufnr, header_text, hl, reverse_hl, opts)
   if not Config.windows.sidebar_header.enabled then return end
   if not bufnr or not api.nvim_buf_is_valid(bufnr) then return end
 
+  ---@param text string
+  ---@param highlight string
+  ---@return string
   local function format_segment(text, highlight) return "%#" .. highlight .. "#" .. text end
 
+  ---@type string?
   local model_name = nil
   if opts.include_model and Config.windows.sidebar_header.include_model then
     if Config.acp_providers[Config.provider] then
@@ -1167,7 +1182,7 @@ function Sidebar:render_header(winid, bufnr, header_text, hl, reverse_hl, opts)
       end
       model_name = table.concat(parts, " | ")
     else
-      model_name = Config.provider .. " | " .. Config.providers[Config.provider].model
+      model_name = Config.provider .. " | " .. (Config.providers[Config.provider].model or "")
     end
   end
 
@@ -1192,6 +1207,7 @@ function Sidebar:render_header(winid, bufnr, header_text, hl, reverse_hl, opts)
     end
   end
 
+  ---@type string
   local winbar_text
   if Config.windows.sidebar_header.align == "left" then
     winbar_text = header_text .. "%=" .. format_segment("", Highlights.AVANTE_SIDEBAR_WIN_HORIZONTAL_SEPARATOR)
@@ -1388,11 +1404,12 @@ function Sidebar:render_tool_use_control_buttons()
   end
 end
 
+---@param codeblocks AvanteCodeblock[]
 function Sidebar:bind_sidebar_keys(codeblocks)
   ---@param direction "next" | "prev"
   local function jump_to_codeblock(direction)
     local cursor_line = api.nvim_win_get_cursor(self.containers.result.winid)[1]
-    ---@type AvanteCodeblock
+    ---@type AvanteCodeblock?
     local target_block
 
     if direction == "next" then
@@ -1440,7 +1457,8 @@ function Sidebar:bind_sidebar_keys(codeblocks)
     local result_lines = Utils.get_buf_lines(0, -1, self.containers.result.bufnr)
     local end_search_line = direction == "next" and #result_lines or 1
     local step = direction == "next" and 1 or -1
-    local query_pos ---@type integer|nil
+    ---@type integer|nil
+    local query_pos
     for i = start_search_line, end_search_line, step do
       local result_line = result_lines[i]
       if result_line == RESP_SEPARATOR then
@@ -1723,7 +1741,7 @@ function Sidebar:get_split_candidate(container_name)
   if start_index > 1 then
     for i = start_index - 1, 1, -1 do
       local container = self.containers[SIDEBAR_CONTAINERS[i]]
-      if Utils.is_valid_container(container, true) then return container.winid end
+      if container and Utils.is_valid_container(container, true) then return container.winid end
     end
   end
   return nil
@@ -1745,6 +1763,7 @@ function Sidebar:switch_window_focus(direction)
   end
 
   if current_index and #ordered_winids > 1 then
+    ---@type integer
     local next_index
     if direction == "next" then
       next_index = (current_index % #ordered_winids) + 1
@@ -1832,6 +1851,7 @@ end
 
 function Sidebar:toggle_code_window()
   -- Collect all windows that do not belong to the sidebar
+  ---@type integer[]
   local winids = vim
     .iter(api.nvim_tabpage_list_wins(self.id))
     :filter(function(winid) return not self:is_sidebar_winid(winid) end)
@@ -1957,7 +1977,9 @@ function Sidebar:update_content(content, opts)
     opts or {}
   )
 
+  ---@type avante.ui.Line[]
   local history_lines
+  ---@type table<string, [integer, integer]>
   local tool_message_positions
   if not self._cached_history_lines or self._history_cache_invalidated then
     history_lines, tool_message_positions = self:get_history_lines(self.chat_history, self.show_logo)
@@ -2035,6 +2057,7 @@ end
 ---@param selected_code AvanteSelectedCode?
 ---@return string
 local function render_chat_record_prefix(timestamp, provider, model, mode, request, selected_filepaths, selected_code)
+  ---@type string
   local res
   local acp_provider = Config.acp_providers[provider]
   if acp_provider then
@@ -2049,6 +2072,7 @@ local function render_chat_record_prefix(timestamp, provider, model, mode, reque
   if selected_filepaths ~= nil and #selected_filepaths > 0 then
     res = res .. "\n- Selected files:"
     for _, path in ipairs(selected_filepaths) do
+      ---@type string
       res = res .. "\n  - " .. path
     end
   end
@@ -2100,7 +2124,15 @@ function Sidebar:_get_message_lines(ctx, message, messages, ignore_record_prefix
   local lines = Render.message_to_lines(message, messages, expanded)
   if message.is_user_submission and not ignore_record_prefix then
     ctx.selected_filepaths = message.selected_filepaths
-    local text = table.concat(vim.tbl_map(function(line) return tostring(line) end, lines), "\n")
+    local text = table.concat(
+      vim.tbl_map(
+        ---@param line avante.ui.Line
+        ---@return string
+        function(line) return tostring(line) end,
+        lines
+      ),
+      "\n"
+    )
     local prefix = render_chat_record_prefix(
       message.timestamp,
       message.provider,
@@ -2127,7 +2159,15 @@ function Sidebar:_get_message_lines(ctx, message, messages, ignore_record_prefix
   end
   if message.message.role == "assistant" then
     if message.is_usage_summary or History.Helpers.is_tool_use_message(message) then return lines end
-    local text = table.concat(vim.tbl_map(function(line) return tostring(line) end, lines), "\n")
+    local text = table.concat(
+      vim.tbl_map(
+        ---@param line avante.ui.Line
+        ---@return string
+        function(line) return tostring(line) end,
+        lines
+      ),
+      "\n"
+    )
     local transformed = transform_result_content(text, ctx.prev_filepath)
     ctx.prev_filepath = transformed.current_filepath
     local displayed_content = generate_display_content(transformed)
@@ -2140,6 +2180,7 @@ function Sidebar:_get_message_lines(ctx, message, messages, ignore_record_prefix
   return lines
 end
 
+---@type avante.LRUCache<string, avante.ui.Line[]>
 local _message_to_lines_lru_cache = LRUCache:new(100)
 
 ---Get formatted conversation lines
@@ -2171,7 +2212,9 @@ function Sidebar:get_message_lines(ctx, message, messages, ignore_record_prefix)
       if type(item) == "string" then
         text_len = text_len + #item
       else
-        for _, subitem in pairs(item) do
+        for _, subitem in
+          pairs(item --[[@as table<string, string|number|boolean|table|userdata>]])
+        do
           if type(subitem) == "string" then text_len = text_len + #subitem end
         end
       end
@@ -2179,6 +2222,7 @@ function Sidebar:get_message_lines(ctx, message, messages, ignore_record_prefix)
   elseif type(content) == "string" then
     text_len = #content
   end
+  ---@type string
   local cache_key = message.uuid
     .. ":"
     .. message.state
@@ -2207,6 +2251,7 @@ function Sidebar:get_history_lines(history, ignore_record_prefix)
   local ctx = {}
   ---@type avante.ui.Line[]
   local res = {}
+  ---@type table<string, [integer, integer]>
   local tool_message_positions = {}
   local is_first_user_submission = true
   for _, message in ipairs(history_messages) do
@@ -2215,6 +2260,7 @@ function Sidebar:get_history_lines(history, ignore_record_prefix)
     if message.is_user_submission then
       if not is_first_user_submission then
         if ignore_record_prefix then
+          ---@type avante.ui.Line[]
           res = vim.list_extend(res, { Line:new({ { "" } }), Line:new({ { "" } }) })
         else
           res = vim.list_extend(res, { Line:new({ { "" } }), Line:new({ { RESP_SEPARATOR } }), Line:new({ { "" } }) })
@@ -2280,6 +2326,7 @@ end
 function Sidebar.render_history_content(history)
   local history_messages = History.get_history_messages(history)
   local ctx = {}
+  ---@type string[][]
   local group = {}
   for _, message in ipairs(history_messages) do
     local text = render_message(message, history_messages, ctx)
@@ -2315,6 +2362,7 @@ function Sidebar:get_content_between_separators(position)
   local separator = RESP_SEPARATOR
   local cursor_line = position or Utils.get_cursor_pos()
   local lines = Utils.get_buf_lines(0, -1, self.containers.result.bufnr)
+  ---@type integer?, integer?
   local start_line, end_line
 
   for i = cursor_line, 1, -1 do
@@ -2345,6 +2393,9 @@ function Sidebar:get_content_between_separators(position)
   return content, start_line
 end
 
+---@param sidebar avante.Sidebar
+---@param stream_cancelled boolean
+---@param callback fun(err: {message: string}?)
 local function delete_acp_session(sidebar, stream_cancelled, callback)
   sidebar.acp_client_generation = sidebar.acp_client_generation + 1
   local client = sidebar.acp_client
@@ -2450,7 +2501,8 @@ end
 
 function Sidebar:render_state()
   if not Utils.is_valid_container(self.containers.result) then return end
-  if not self.current_state then return end
+  local current_state = self.current_state
+  if not current_state then return end
   local lines = vim.api.nvim_buf_get_lines(self.containers.result.bufnr, 0, -1, false)
   if self.state_extmark_id then
     api.nvim_buf_del_extmark(self.containers.result.bufnr, STATE_NAMESPACE, self.state_extmark_id)
@@ -2475,11 +2527,14 @@ function Sidebar:render_state()
   then
     spinner_char = ""
   end
+  ---@type string
   local virt_line
   if spinner_char == "" then
-    virt_line = " " .. self.current_state .. " "
+    ---@type string
+    virt_line = " " .. current_state .. " "
   else
-    virt_line = " " .. spinner_char .. " " .. self.current_state .. " "
+    ---@type string
+    virt_line = " " .. spinner_char .. " " .. current_state .. " "
   end
 
   local win_width = api.nvim_win_get_width(self.containers.result.winid)
@@ -2865,6 +2920,7 @@ end
 function Sidebar:show_input_hint()
   self:close_input_hint() -- Close the existing hint window
 
+  ---@type string
   local hint_text = (fn.mode() ~= "i" and Config.mappings.submit.normal or Config.mappings.submit.insert) .. ": submit"
   if Config.behaviour.enable_token_counting then
     local input_value = table.concat(api.nvim_buf_get_lines(self.containers.input.bufnr, 0, -1, false), "\n")
@@ -2910,6 +2966,7 @@ function Sidebar:show_selected_files_hint()
   local col_number = cursor_pos[2]
 
   local selected_filepaths_ = self.file_selector:get_selected_filepaths()
+  ---@type string
   local hint
   if #selected_filepaths_ == 0 then
     hint = string.format(" [%s: add] ", Config.mappings.sidebar.add_file)
@@ -3172,6 +3229,7 @@ function Sidebar:handle_submit(request)
   local code_bufnr = self.code.bufnr
   local history_project_root = self.chat_history_project_root or Utils.root.get({ buf = code_bufnr })
   self.chat_history_project_root = self.chat_history_project_root or history_project_root
+  ---@type AvanteACPProvider?
   local acp_provider = Config.acp_providers[Config.provider]
   local acp_context = acp_provider
     and {
@@ -3225,6 +3283,7 @@ function Sidebar:handle_submit(request)
   vim.keymap.set("n", "k", on_k, { buffer = self.containers.result.bufnr })
   vim.keymap.set("n", "G", on_G, { buffer = self.containers.result.bufnr })
 
+  ---@type table<string, number>, table<string, integer>
   local task_usage, usage_reports = {}, {}
   local usage_requests = 0
   local function is_request_history_visible()
@@ -3291,10 +3350,14 @@ function Sidebar:handle_submit(request)
     self:save_history(chat_history, code_bufnr, history_project_root)
   end
 
+  ---@param tool_id string
+  ---@param key string
+  ---@param value any
   local function set_tool_use_store(tool_id, key, value)
     if not is_current_request() then return end
     local tool_use_message = History.Helpers.get_tool_use_message(tool_id, chat_history.messages)
     if tool_use_message then
+      ---@type table<string, any>
       local tool_use_store = tool_use_message.tool_use_store or {}
       tool_use_store[key] = value
       tool_use_message.tool_use_store = tool_use_store
@@ -3394,6 +3457,7 @@ function Sidebar:handle_submit(request)
     end, 0)
   end
 
+  ---@type avante.HistoryMessage?
   local user_message
   if request and request ~= "" then
     user_message = History.Message:new("user", request, {
@@ -3473,6 +3537,7 @@ function Sidebar:handle_submit(request)
         if not is_current_request() then return end
         if not usage then return end
         usage_requests = usage_requests + 1
+        ---@type table<string, number>
         local counts = vim.tbl_extend("force", {}, usage)
         if usage.prompt_tokens ~= nil and usage.cached_input_tokens ~= nil then
           counts.uncached_input_tokens = math.max(0, usage.prompt_tokens - usage.cached_input_tokens)
@@ -3881,6 +3946,7 @@ function Sidebar:create_selected_files_container()
     end
 
     local lines_to_set = {}
+    ---@type {line_nr: integer, icon: string, hl: string?}[]
     local highlights_to_apply = {}
 
     local project_path = Utils.root.get()
@@ -3892,7 +3958,8 @@ function Sidebar:create_selected_files_container()
       if hl and hl ~= "" then table.insert(highlights_to_apply, { line_nr = i, icon = icon, hl = hl }) end
     end
 
-    local selected_files_count = #lines_to_set ---@type integer
+    ---@type integer
+    local selected_files_count = #lines_to_set
     local selected_files_buf = api.nvim_win_get_buf(self.containers.selected_files.winid)
     Utils.unlock_buf(selected_files_buf)
     api.nvim_buf_clear_namespace(selected_files_buf, SELECTED_FILES_ICON_NAMESPACE, 0, -1)

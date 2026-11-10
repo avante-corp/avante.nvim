@@ -1,11 +1,13 @@
 local Utils = require("avante.utils")
 
 ---@class avante.HistoryMessage
+---@field new fun(self: avante.HistoryMessage, role: "user"|"assistant", content: AvanteLLMMessageContentItem, opts?: avante.HistoryMessage.Opts): avante.HistoryMessage
 local M = {}
 M.__index = M
 
 ---@class avante.HistoryMessage.Opts
 ---@field uuid? string
+---@field timestamp? string
 ---@field turn_id? string
 ---@field order? integer
 ---@field state? avante.HistoryMessageState
@@ -28,17 +30,15 @@ function M:new(role, content, opts)
   ---@type AvanteLLMMessage
   local message = { role = role, content = type(content) == "string" and content or { content } }
   ---@type avante.HistoryMessage
-  local obj = {
+  local obj = setmetatable({
     message = message,
     uuid = Utils.uuid(),
     state = "generated",
     timestamp = Utils.get_timestamp(),
     is_user_submission = false,
     visible = true,
-  }
-  obj = vim.tbl_extend("force", obj, opts or {})
-  ---@cast obj avante.HistoryMessage
-  return setmetatable(obj, M)
+  }, M)
+  return setmetatable(vim.tbl_extend("force", obj, opts or {}), M) --[[@as avante.HistoryMessage]]
 end
 
 ---Creates a new instance of synthetic (dummy) history message

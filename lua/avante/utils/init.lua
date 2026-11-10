@@ -291,18 +291,24 @@ function M.get_visual_selection_and_range()
   local SelectionResult = require("avante.selection_result")
 
   -- Get the start and end positions of Visual mode
+  ---@type integer[]
   local start_pos = fn.getpos("v")
+  ---@type integer[]
   local end_pos = fn.getpos(".")
 
   -- Get the start and end line and column numbers
+  ---@type integer
   local start_line = start_pos[2]
+  ---@type integer
   local start_col = start_pos[3]
+  ---@type integer
   local end_line = end_pos[2]
+  ---@type integer
   local end_col = end_pos[3]
   -- If the start point is after the end point, swap them
   if start_line > end_line or (start_line == end_line and start_col > end_col) then
-    start_line, end_line = end_line, start_line
-    start_col, end_col = end_col, start_col
+    start_line, end_line = end_pos[2], start_pos[2]
+    start_col, end_col = end_pos[3], start_pos[3]
   end
   local content = "" -- luacheck: ignore
   local range = Range:new({ lnum = start_line, col = start_col }, { lnum = end_line, col = end_col })
@@ -381,7 +387,7 @@ function M.is_valid_container(container, check_winid)
 end
 
 ---@param name string?
----@return table
+---@return vim.api.keyset.get_hl_info
 function M.get_hl(name)
   if not name then return {} end
   return api.nvim_get_hl(0, { name = name, link = false })
@@ -460,12 +466,15 @@ function M.warn(msg, opts)
   M.notify(msg, opts)
 end
 
+---@generic T
+---@param ... T
 function M.debug(...)
   local args = { ... }
   if #args == 0 then return end
 
   -- Get caller information
   local info = debug.getinfo(2, "Sl")
+  ---@type string
   local caller_source = info.source:match("@(.+)$") or "unknown"
   local caller_module = caller_source:gsub("\\", "/"):gsub("^.*/lua/", ""):gsub("%.lua$", ""):gsub("/", ".")
 
@@ -474,11 +483,11 @@ function M.debug(...)
     "[" .. timestamp .. "] [AVANTE] [DEBUG] [" .. caller_module .. ":" .. info.currentline .. "]",
   }
 
-  for _, arg in ipairs(args) do
-    if type(arg) == "string" then
-      table.insert(formated_args, arg)
+  for i = 1, #args do
+    if type(args[i]) == "string" then
+      table.insert(formated_args, args[i])
     else
-      table.insert(formated_args, vim.inspect(arg))
+      table.insert(formated_args, vim.inspect(args[i]))
     end
   end
 
@@ -488,14 +497,23 @@ function M.debug(...)
   print(unpack(formated_args))
 end
 
+---@generic T
+---@param tbl T[]
+---@param value T
+---@return integer | nil
 function M.tbl_indexof(tbl, value)
-  for i, v in ipairs(tbl) do
-    if v == value then return i end
+  for i = 1, #tbl do
+    if tbl[i] == value then return i end
   end
   return nil
 end
 
+---@param winid integer
+---@param opt_name string
+---@param key string
+---@param value string
 function M.update_win_options(winid, opt_name, key, value)
+  ---@type string
   local cur_opt_value = api.nvim_get_option_value(opt_name, { win = winid })
 
   if cur_opt_value:find(key .. ":") then
@@ -599,7 +617,9 @@ function M.fallback(v, default_value) return type(v) == "nil" and default_value 
 ---@param ... string URL parts to join
 ---@return string Joined URL
 function M.url_join(...)
+  ---@type string[]
   local parts = { ... }
+  ---@type string
   local result = parts[1] or ""
 
   for i = 2, #parts do
@@ -618,7 +638,7 @@ function M.url_join(...)
     ::continue::
   end
 
-  if result:sub(-1) == "/" then result = result:sub(1, -2) end
+  if result:sub(-1) == "/" then return result:sub(1, -2) end
 
   return result
 end
@@ -650,6 +670,9 @@ function M.trim_space(text)
   return text:gsub("%s*", "")
 end
 
+---@generic T: string|nil
+---@param text T
+---@return T
 function M.trim_escapes(text)
   if not text then return text end
   local res = text
@@ -670,6 +693,7 @@ end
 ---@return integer | nil start_line
 ---@return integer | nil end_line
 function M.try_find_match(original_lines, target_lines, compare_fn)
+  ---@type integer?, integer?
   local start_line, end_line
   for i = 1, #original_lines - #target_lines + 1 do
     local match = true
@@ -876,6 +900,8 @@ function M.get_recent_filepaths(limit, filenames, same_file_ext)
   return recent_files
 end
 
+---@param pattern string
+---@return string
 local function pattern_to_lua(pattern)
   local lua_pattern = pattern:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%1")
   lua_pattern = lua_pattern:gsub("%*%*/", ".-/")
@@ -885,6 +911,9 @@ local function pattern_to_lua(pattern)
   return lua_pattern
 end
 
+---@param gitignore_path string
+---@return string[] ignore_patterns
+---@return string[] negate_patterns
 function M.parse_gitignore(gitignore_path)
   local ignore_patterns = {}
   local negate_patterns = {}
@@ -893,6 +922,7 @@ function M.parse_gitignore(gitignore_path)
 
   for line in file:lines() do
     if line:match("%S") and not line:match("^#") then
+      ---@type string
       local trimmed_line = line:match("^%s*(.-)%s*$")
       if trimmed_line:sub(1, 1) == "!" then
         table.insert(negate_patterns, pattern_to_lua(trimmed_line:sub(2)))
@@ -911,6 +941,10 @@ end
 -- @param ignore_patterns string[]
 -- @param negate_patterns string[]
 -- @return boolean
+---@param file string
+---@param ignore_patterns string[]
+---@param negate_patterns string[]
+---@return boolean
 function M.is_ignored(file, ignore_patterns, negate_patterns)
   for _, pattern in ipairs(negate_patterns) do
     if file:match(pattern) then return false end
@@ -995,14 +1029,19 @@ function M.scan_directory(options)
     end
   end
 
+  ---@type string[]
   local files = vim.fn.systemlist(cmd)
 
   files = vim
     .iter(files)
-    :map(function(file)
-      if not M.is_absolute_path(file) then return vim.fs.joinpath(options.directory, file) end
-      return file
-    end)
+    :map(
+      ---@param file string
+      ---@return string
+      function(file)
+        if not M.is_absolute_path(file) then return vim.fs.joinpath(options.directory, file) end
+        return file
+      end
+    )
     :totable()
 
   if options.max_depth ~= nil and not cmd_supports_max_depth then
@@ -1019,7 +1058,9 @@ function M.scan_directory(options)
   end
 
   if options.add_dirs then
+    ---@cast files string[]
     local dirs = {}
+    ---@type table<string, boolean>
     local dirs_seen = {}
     for _, file in ipairs(files) do
       local dir = M.get_parent_path(file)
@@ -1034,6 +1075,8 @@ function M.scan_directory(options)
   return files
 end
 
+---@param filepath string
+---@return string
 function M.get_parent_path(filepath)
   if filepath == nil then error("filepath cannot be nil") end
   if filepath == "" then return "" end
@@ -1070,6 +1113,7 @@ function M.is_first_letter_uppercase(str) return string.match(str, "^[A-Z]") ~= 
 ---@return { new_content: string, enable_project_context: boolean, enable_diagnostics: boolean }
 function M.extract_mentions(content)
   -- if content contains @codebase, enable project context and remove @codebase
+  ---@type string
   local new_content = content
   local enable_project_context = false
   local enable_diagnostics = false
@@ -1177,6 +1221,7 @@ function M.get_shortcuts()
   local result = {}
 
   -- Create a map of builtin shortcuts by name for quick lookup
+  ---@type table<string, AvanteShortcut>
   local builtin_map = {}
   for _, shortcut in ipairs(builtin_shortcuts) do
     builtin_map[shortcut.name] = shortcut
@@ -1207,6 +1252,7 @@ end
 ---@return boolean has_shortcuts
 function M.extract_shortcuts(content)
   local shortcuts = M.get_shortcuts()
+  ---@type string
   local new_content = content
   local has_shortcuts = false
 
@@ -1214,7 +1260,7 @@ function M.extract_shortcuts(content)
     local pattern = "#" .. shortcut.name
     if content:match(pattern) then
       has_shortcuts = true
-      new_content = new_content:gsub(pattern, shortcut.prompt)
+      new_content = string.gsub(new_content, pattern, shortcut.prompt)
     end
   end
 
@@ -1229,7 +1275,8 @@ function M.open_buffer(path, set_current_buf)
 
   local abs_path = M.is_absolute_path(path) and path or vim.fs.joinpath(M.get_project_root(), path)
 
-  local bufnr ---@type integer
+  ---@type integer
+  local bufnr
   if set_current_buf then
     bufnr = vim.fn.bufnr(abs_path)
     if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) and vim.bo[bufnr].modified then
@@ -1252,7 +1299,9 @@ end
 ---@return { start_line: integer, end_line: integer, content: string[] }[]
 local function get_buffer_content_diffs(bufnr, new_lines)
   local old_lines = api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  ---@type { start_line: integer, end_line: integer, content: string[] }[]
   local diffs = {}
+  ---@type integer?
   local prev_diff_idx = nil
   for i, line in ipairs(new_lines) do
     if line ~= old_lines[i] then
@@ -1309,6 +1358,7 @@ function M.update_buffer_lines(ns_id, bufnr, old_lines, new_lines, skip_line_cou
 
   -- Collect the text representation of each line and track their positions.
   local cleaned_text_lines = {}
+  ---@type integer[]
   local line_positions = {}
   local current_line_0b = skip_line_count
 
@@ -1374,6 +1424,7 @@ function M.is_same_file(filepath_a, filepath_b) return M.uniform_path(filepath_a
 ---@return string
 function M.trim_think_content(content) return (content:gsub("^<think>.-</think>", "", 1)) end
 
+---@type avante.LRUCache<string, string>
 local _filetype_lru_cache = LRUCache:new(60)
 
 function M.get_filetype(filepath)
@@ -1421,6 +1472,7 @@ function M.read_file_from_buf_or_disk(filepath)
   -- Fallback: read file from disk
   local file, open_err = io.open(abs_path, "r")
   if file then
+    ---@type string
     local content = file:read("*all")
     file:close()
     content = content:gsub("\r\n", "\n")
@@ -1519,11 +1571,16 @@ function M.random_string(length)
   return table.concat(result)
 end
 
+---@param win_a integer
+---@param win_b integer
+---@return boolean
 function M.is_left_adjacent(win_a, win_b)
   if not vim.api.nvim_win_is_valid(win_a) or not vim.api.nvim_win_is_valid(win_b) then return false end
 
-  local _, col_a = unpack(vim.fn.win_screenpos(win_a))
-  local _, col_b = unpack(vim.fn.win_screenpos(win_b))
+  ---@type integer
+  local col_a = vim.fn.win_screenpos(win_a)[2]
+  ---@type integer
+  local col_b = vim.fn.win_screenpos(win_b)[2]
   local width_a = vim.api.nvim_win_get_width(win_a)
 
   local right_edge_a = col_a + width_a
@@ -1531,9 +1588,14 @@ function M.is_left_adjacent(win_a, win_b)
   return right_edge_a + 1 == col_b
 end
 
+---@param win_a integer
+---@param win_b integer
+---@return boolean
 function M.is_top_adjacent(win_a, win_b)
-  local row_a, _ = unpack(vim.fn.win_screenpos(win_a))
-  local row_b, _ = unpack(vim.fn.win_screenpos(win_b))
+  ---@type integer
+  local row_a = vim.fn.win_screenpos(win_a)[1]
+  ---@type integer
+  local row_b = vim.fn.win_screenpos(win_b)[1]
   local height_a = vim.api.nvim_win_get_height(win_a)
   return row_a + height_a + 1 == row_b
 end
@@ -1543,9 +1605,10 @@ function M.should_hidden_border(win_a, win_b)
 end
 
 ---@param fields AvanteLLMToolParamField[]
----@return table[] properties
+---@return table<string, avante.JSONSchema> properties
 ---@return string[] required
 function M.llm_tool_param_fields_to_json_schema(fields)
+  ---@type table<string, avante.JSONSchema>
   local properties = {}
   local required = {}
   for _, field in ipairs(fields) do
@@ -1588,6 +1651,7 @@ function M.get_commands(sidebar)
   local builtin_commands = require("avante.slashcommands").get_builtin_commands()
 
   local commands = {}
+  ---@type table<string, boolean>
   local seen = {}
   for _, command in ipairs(Config.slash_commands) do
     if not seen[command.name] then
@@ -1610,7 +1674,9 @@ function M.get_commands(sidebar)
     and require("avante.libs.acp_client").is_same_process_config(client.config, Config.acp_providers[Config.provider])
   then
     local session_id = sidebar.chat_history and sidebar.chat_history.acp_session_id
-    for _, command in ipairs(client.session_commands and client.session_commands[session_id] or {}) do
+    ---@type {name: string, description?: string}[]
+    local session_commands = client.session_commands and client.session_commands[session_id] or {}
+    for _, command in ipairs(session_commands) do
       if not seen[command.name] then
         table.insert(
           commands,
@@ -1629,6 +1695,7 @@ function M.get_timestamp() return tostring(os.date("%Y-%m-%d %H:%M:%S")) end
 function M.uuid()
   local UUID_V4_VERSION_BITS = 0x40
   local UUID_VARIANT_BITS = 0x80
+  ---@type integer[]
   local bytes = { string.byte(assert(vim.uv.random(16)), 1, 16) }
   bytes[7] = UUID_V4_VERSION_BITS + bytes[7] % 0x10
   bytes[9] = UUID_VARIANT_BITS + bytes[9] % 0x40
@@ -1652,11 +1719,13 @@ end
 ---@return string|nil remaining_text Concatenated remaining arguments (if collect_remaining is true)
 function M.parse_args(fargs, options)
   options = options or {}
+  ---@type table<string, string|boolean>
   local parsed_args = {}
   local remaining_parts = {}
   local boolean_keys = options.boolean_keys or {}
 
   -- Create a lookup table for boolean keys for faster access
+  ---@type table<string, boolean>
   local boolean_keys_lookup = {}
   for _, key in ipairs(boolean_keys) do
     boolean_keys_lookup[key] = true
@@ -1731,6 +1800,7 @@ function M.fix_diff(diff)
   diff = diff:gsub("-------  ", "------- SEARCH\n")
   diff = diff:gsub("=======  ", "=======\n")
 
+  ---@type string[]
   local fixed_diff_lines = {}
   local lines = vim.split(diff, "\n")
   local first_line = lines[1]

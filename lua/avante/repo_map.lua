@@ -20,6 +20,11 @@ local filetype_map = {
 ---@field stringify_definitions fun(lang: string, source: string): string
 local repo_map_lib = nil
 
+---@class AvanteRepoMapEntry
+---@field path string
+---@field lang string
+---@field defs string
+
 local RepoMap = {}
 
 ---@return AvanteRepoMap|nil
@@ -40,6 +45,9 @@ function RepoMap.get_ts_lang(filepath)
   return filetype_map[filetype] or filetype
 end
 
+---@param project_root string
+---@param file_ext string
+---@return AvanteRepoMapEntry[]?
 function RepoMap._build_repo_map(project_root, file_ext)
   local output = {}
 
@@ -67,6 +75,7 @@ function RepoMap._build_repo_map(project_root, file_ext)
   return output
 end
 
+---@type table<string, AvanteRepoMapEntry[]>
 local cache = {}
 
 function RepoMap.get_repo_map(file_ext)
@@ -83,6 +92,8 @@ function RepoMap.get_repo_map(file_ext)
   return repo_map
 end
 
+---@param file_ext? string
+---@return AvanteRepoMapEntry[]?
 function RepoMap._get_repo_map(file_ext)
   -- Add safety check at the start of the function
   if not file_ext then
@@ -99,6 +110,7 @@ function RepoMap._get_repo_map(file_ext)
   if cached then return cached end
 
   local Path = require("avante.path")
+  ---@type AvanteRepoMapEntry[]?
   local repo_map
 
   local function build_and_save()
@@ -135,7 +147,9 @@ function RepoMap._get_repo_map(file_ext)
       local definitions = repo_map_lib.stringify_definitions(RepoMap.get_ts_lang(abs_filepath), content)
       if definitions == "" then return end
       local found = false
-      for _, m in ipairs(repo_map) do
+      for _, m in
+        ipairs(repo_map --[=[@as AvanteRepoMapEntry[]]=])
+      do
         if m.path == rel_filepath then
           m.defs = definitions
           found = true

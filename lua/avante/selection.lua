@@ -17,7 +17,7 @@ local PRIORITY = (vim.hl or vim.highlight).priorities.user
 ---@class avante.Selection
 ---@field id integer
 ---@field selection avante.SelectionResult | nil
----@field cursor_pos table | nil
+---@field cursor_pos [integer, integer] | nil
 ---@field shortcuts_extmark_id integer | nil
 ---@field shortcuts_hint_timer? uv.uv_timer_t
 ---@field selected_code_extmark_id integer | nil
@@ -147,8 +147,10 @@ function Selection:submit_input(input)
   local function on_chunk(chunk)
     full_response = full_response .. chunk
     local response_lines_ = vim.split(full_response, "\n")
+    ---@type string[]
     local response_lines = {}
     local in_code_block = false
+    ---@type string
     local line_processed
     for _, line in ipairs(response_lines_) do
       if line:match("^<code>") then
@@ -267,9 +269,13 @@ function Selection:create_editing_input(request, line1, line2)
     return
   end
 
+  ---@type integer
   local start_row
+  ---@type integer
   local start_col
+  ---@type integer
   local end_row
+  ---@type integer
   local end_col
   if vim.fn.mode() == "V" then
     start_row = self.selection.range.start.lnum - 1

@@ -1,3 +1,5 @@
+---@class avante.Logger
+---@field [string] fun(...): boolean?
 local log = {}
 
 -- NOTE: These functions are initialised as empty for type checking purposes
@@ -29,6 +31,7 @@ function log.get_logfile() return vim.fs.joinpath(vim.fn.stdpath("log"), "avante
 ---@package
 function log.open_logfile() vim.cmd.e(log.get_logfile()) end
 
+---@type file*?, string?
 local logfile, openerr
 ---@private
 ---Opens log file. Returns true if file is open, false on error
@@ -57,6 +60,7 @@ local function open_logfile()
   return true
 end
 
+---@type table<string|integer, string|integer>
 local log_levels = vim.deepcopy(vim.log.levels)
 for levelstr, levelnr in pairs(vim.log.levels) do
   log_levels[levelnr] = levelstr
@@ -78,6 +82,7 @@ end
 for level, levelnr in pairs(vim.log.levels) do
   log[level:lower()] = function(...)
     if log.level == vim.log.levels.OFF or not open_logfile() then return false end
+    ---@cast logfile file*
     local argc = select("#", ...)
     if levelnr < log.level then return false end
     if argc == 0 then return true end

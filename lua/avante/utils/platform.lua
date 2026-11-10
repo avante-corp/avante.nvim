@@ -11,6 +11,7 @@ local sysname = (uname.sysname or ""):upper()
 local function file_contains(path, needle)
   local f = io.open(path, "r")
   if not f then return false end
+  ---@type boolean, string?
   local ok, data = pcall(function() return f:read("*a") end)
   f:close()
   return ok and data and data:match(needle) ~= nil

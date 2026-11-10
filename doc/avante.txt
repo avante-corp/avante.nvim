@@ -467,56 +467,53 @@ avante.Config                                                    *avante.Config*
 
     Fields: ~
         {debug}                       (boolean)
-        {log_level}                   (vim.log.levels)                    will keep requests and responses on the filesystem. Check the logs to find their paths
+        {log_level}                   (vim.log.levels)                          will keep requests and responses on the filesystem. Check the logs to find their paths
         {memory_summary_provider?}    (avante.ProviderName)
-        {mode}                        (avante.Mode)                       Avante.nvim provides two interaction modes:
-                                                                          - *agentic* (default): Uses AI tools to automatically generate and apply code changes
-                                                                          - *legacy*: Uses the traditional planning method without automatic tool execution
+        {mode}                        (avante.Mode)                             Avante.nvim provides two interaction modes:
+                                                                                - *agentic* (default): Uses AI tools to automatically generate and apply code changes
+                                                                                - *legacy*: Uses the traditional planning method without automatic tool execution
 
-                                                                          **When should you use legacy mode?**
-                                                                          - If you prefer more control over what actions the AI takes
-                                                                          - If you're concerned about security with automatic tool execution
-                                                                          - If you want to manually review each step before applying changes
-                                                                          - If you're working in a sensitive environment where automatic code changes aren't desired
-        {auto_suggestions_provider?}  (avante.ProviderName)               WARNING: Since auto-suggestions are a high-frequency operation and therefore expensive,
-                                                                          currently designating it as `copilot` provider is dangerous because: https://github.com/yetone/avante.nvim/issues/1048
-                                                                          Of course, you can reduce the request frequency by increasing `suggestion.debounce`.
-        {providers}                   (table<string,AvanteProvider>)     To add support for custom provider, follow the format below
-                                                                         See https://github.com/avante-corp/avante.nvim/wiki#custom-providers for more details
-        {acp_providers}               (table<string,AvanteACPProvider>)  Agent Client Protocol providers.  |avante-acp|
+                                                                                **When should you use legacy mode?**
+                                                                                - If you prefer more control over what actions the AI takes
+                                                                                - If you're concerned about security with automatic tool execution
+                                                                                - If you want to manually review each step before applying changes
+                                                                                - If you're working in a sensitive environment where automatic code changes aren't desired
+        {auto_suggestions_provider?}  (avante.ProviderName)                     WARNING: Since auto-suggestions are a high-frequency operation and therefore expensive,
+                                                                                currently designating it as `copilot` provider is dangerous because: https://github.com/yetone/avante.nvim/issues/1048
+                                                                                Of course, you can reduce the request frequency by increasing `suggestion.debounce`.
+        {providers}                   (table<string,AvanteProvider>)           To add support for custom provider, follow the format below
+                                                                               See https://github.com/avante-corp/avante.nvim/wiki#custom-providers for more details
+        {acp_providers}               (table<string,AvanteACPProvider>)        Agent Client Protocol providers.  |avante-acp|
         {provider?}                   (avante.ProviderName)
-                                                                         Default provider on startup. An explicit :AvanteSwitchProvider --save choice takes precedence.
-                                                                         If undefined, avante loads the last provider used.
-        {system_prompt?}              (string|nil|fun():string)
-                                                                         System prompt
-        {override_prompt_dir}         (string|nil|fun():string)           override_prompt_dir allows you to specify a directory containing your own custom prompt templates, which will override the built-in templates. This is useful if you want to maintain a set of custom prompts outside of your Neovim configuration.
-                                                                         <lua
-                                                                          -- Example: Override with prompts from a specific directory
-                                                                          vim.g.avante = {
-                                                                            override_prompt_dir = vim.fn.expand("~/.config/nvim/avante_prompts"),
-                                                                          })
+                                                                               Default provider on startup. An explicit :AvanteSwitchProvider --save choice takes precedence.
+                                                                               If undefined, avante loads the last provider used.
+        {system_prompt?}              (string|fun():string)
+                                                                               System prompt
+        {override_prompt_dir}         (string|nil|fun():string)                 override_prompt_dir allows you to specify a directory containing your own custom prompt templates, which will override the built-in templates. This is useful if you want to maintain a set of custom prompts outside of your Neovim configuration.
+                                                                               <lua
+                                                                                -- Example: Override with prompts from a specific directory
+                                                                                vim.g.avante = {
+                                                                                  override_prompt_dir = vim.fn.expand("~/.config/nvim/avante_prompts"),
+                                                                                })
 
-                                                                          -- Example: Override with prompts from a function (dynamic directory)
-                                                                          vim.g.avante = {
-                                                                            override_prompt_dir = function()
-                                                                              -- Your logic to determine the prompt directory
-                                                                              return vim.fn.expand("~/.config/nvim/my_dynamic_prompts")
-                                                                            end,
-                                                                          })
-                                                                         <
+                                                                                -- Example: Override with prompts from a function (dynamic directory)
+                                                                                vim.g.avante = {
+                                                                                  override_prompt_dir = function()
+                                                                                    -- Your logic to determine the prompt directory
+                                                                                    return vim.fn.expand("~/.config/nvim/my_dynamic_prompts")
+                                                                                  end,
+                                                                                })
+                                                                               <
         {rules}                       (table)
-        {rag_service}                 (avante.Config.RagService)         RAG service configuration.
+        {rag_service}                 (avante.Config.RagService)               RAG service configuration.
 
-        {web_search_engine}           (avante.Config.WebSearchEngine)    Web search configuration.
-        {behaviour}                   (avante.Config.Behaviour)          Behaviour and automation options.
-        {prompt_logger}               (avante.Config.PromptLogger)       Prompt logging options.
-        {history}                     (avante.Config.History)            Chat history storage options.
-        {windows}                     (table)
-        {disabled_tools}              (string[])                         You can choose to disable tools by their names in case you want to avoid its usage (like Claude 3.7 overusing the python tool). For example: `{ "python" }`
-        {custom_tools}                (AvanteSlashCommand[])             see |avante-custom-tools|
-        {slash_commands}              (AvanteSlashCommand[])             see |avante-slashcommands|
-        {shortcuts}                   (AvanteShortcut[])                 see |avante-shortcuts|
-        {ask_opts}                    (AskOptions)
+        {web_search_engine}           (avante.Config.WebSearchEngine)          Web search configuration.
+        {behaviour}                   (avante.Config.Behaviour)                Behaviour and automation options.
+        {prompt_logger}               (avante.Config.PromptLogger)             Prompt logging options.
+        {history}                     (avante.Config.History)                  Chat history storage options.
+        {windows}                     (avante.Config.Windows)
+        {disabled_tools}              (string[])                               You can choose to disable tools by their names in case you want to avoid its usage (like Claude 3.7 overusing the python tool). For example: `{ "python" }`
+        {custom_tools}                (AvanteLLMTool[]|fun():AvanteLLMTool[])
 
 
 avante.Mode                                                        *avante.Mode*
@@ -546,16 +543,44 @@ AvanteToggleCodeWindowFromInput                *AvanteToggleCodeWindowFromInput*
         {normal:string|nil,insert:string|nil}
 
 
+avante.Config.Windows                                    *avante.Config.Windows*
+
+
 AvantePosition                                                  *AvantePosition*
 
     Type: ~
         
 
 
+avante.Config.EditWindow                              *avante.Config.EditWindow*
+
+    Fields: ~
+        {height?}  (number)
+        {width?}   (number)
+
+
 AvanteInitialDiff                                            *AvanteInitialDiff*
 
     Type: ~
         
+
+
+AvanteConflictConfig                                      *AvanteConflictConfig*
+
+
+AvanteSelectionConfig                                    *AvanteSelectionConfig*
+     Allows selecting code or other data in a buffer and ask LLM questions about it or
+     to perform edits/transformations.
+
+    Fields: ~
+        {enabled}       (boolean)
+        {hint_display}  ()
+
+
+AvanteRepoMapConfig                                        *AvanteRepoMapConfig*
+
+
+AvanteFileSelectorConfig                              *AvanteFileSelectorConfig*
 
 
 avante.SelectorProvider                                *avante.SelectorProvider*
@@ -1014,16 +1039,16 @@ Sidebar                                                         *avante-sidebar*
 avante.Sidebar                                                  *avante.Sidebar*
 
     Fields: ~
-        {id}                         (integer)                                                                                               This is avante's main view, a vertical column of several windows, most of the time:
-                                                                                                                                             1. the result
-                                                                                                                                             2. selected code
-                                                                                                                                             3. user input
+        {id}                         (integer)                                           This is avante's main view, a vertical column of several windows, most of the time:
+                                                                                         1. the result
+                                                                                         2. selected code
+                                                                                         3. user input
         {augroup}                    (integer)
         {code}                       (avante.CodeState)
-        {containers}                 ({result?:NuiSplit,todos?:NuiSplit,selected_code?:NuiSplit,selected_files?:NuiSplit,input?:NuiSplit})
+        {containers}                 (table<avante.SidebarContainerName,NuiSplit|nil>)
         {file_selector}              (FileSelector)
         {chat_history}               (avante.ChatHistory|nil)
-        {chat_history_project_root}  (string|nil)                                                                                           Project owning the loaded history; keeps async saves in that project after buffer or cwd changes
+        {chat_history_project_root}  (string|nil)                                       Project owning the loaded history; keeps async saves in that project after buffer or cwd changes
         {current_state}              (avante.GenerateState|nil)
         {state_timer}                (table|nil)
         {state_spinner_chars}        (string[])
@@ -1035,7 +1060,7 @@ avante.Sidebar                                                  *avante.Sidebar*
         {old_result_lines}           (avante.ui.Line[])
         {token_count}                (integer|nil)
         {acp_client}                 (avante.acp.ACPClient|nil)
-        {acp_client_generation}      (integer)                                                                                              Bumped whenever the ACP client is dropped, so a connection still in flight is discarded
+        {acp_client_generation}      (integer)                                          Bumped whenever the ACP client is dropped, so a connection still in flight is discarded
         {pending_acp_import}         (avante.PendingAcpImport|nil)
         {post_render?}               (fun(sidebar:avante.Sidebar))
         {permission_handler}         (fun(id:string)|nil)
@@ -1167,7 +1192,7 @@ AvanteReplacementResult                                *AvanteReplacementResult*
 
     Fields: ~
         {content}                      (string)
-        {current_filepath}             (string)
+        {current_filepath?}            (string)
         {is_searching}                 (boolean)
         {is_replacing}                 (boolean)
         {is_thinking}                  (boolean)
@@ -1282,7 +1307,10 @@ Sidebar:unbind_edit_user_request_key()
 Sidebar:render_tool_use_control_buttons()
 
 
-Sidebar:bind_sidebar_keys()                   *avante-sidebar:bind_sidebar_keys*
+Sidebar:bind_sidebar_keys({codeblocks})       *avante-sidebar:bind_sidebar_keys*
+
+    Parameters: ~
+        {codeblocks}  (AvanteCodeblock[])
 
 
 Sidebar:unbind_sidebar_keys()               *avante-sidebar:unbind_sidebar_keys*
@@ -1757,7 +1785,7 @@ MentionsSource:complete({params}, {callback})       *avante-completion:complete*
 MentionsSource:execute({completion_item}, {callback})
 
     Parameters: ~
-        {completion_item}  (table)
+        {completion_item}  (lsp.CompletionItem)
         {callback}         (fun(response:{behavior:number}))
 
 
@@ -1895,16 +1923,34 @@ M.stop_rag_service()                       *avante-rag-service.stop_rag_service*
      the process yourself
 
 
-M.get_scheme()                                   *avante-rag-service.get_scheme*
+M.get_scheme({uri})                              *avante-rag-service.get_scheme*
      http or https
 
+    Parameters: ~
+        {uri}  (string)
 
-M.to_container_uri()                       *avante-rag-service.to_container_uri*
+    Returns: ~
+        (string)
+
+
+M.to_container_uri({uri})                  *avante-rag-service.to_container_uri*
     Transforms URI when used with docker
 
+    Parameters: ~
+        {uri}  (string)
 
-M.to_local_uri()                               *avante-rag-service.to_local_uri*
+    Returns: ~
+        (string)
+
+
+M.to_local_uri({uri})                          *avante-rag-service.to_local_uri*
     Transforms URI when used with docker
+
+    Parameters: ~
+        {uri}  (string)
+
+    Returns: ~
+        (string)
 
 
 M.is_ready()                                       *avante-rag-service.is_ready*
@@ -2026,7 +2072,17 @@ M.tool_logs_to_lines({tool_name}, {logs})
         (avante.ui.Line[])
 
 
-M.get_diff_lines()                       *avante-messages-render.get_diff_lines*
+                                         *avante-messages-render.get_diff_lines*
+M.get_diff_lines({old_str}, {new_str}, {decoration?}, {truncate?})
+
+    Parameters: ~
+        {old_str}      (string)
+        {new_str}      (string)
+        {decoration?}  (string)
+        {truncate?}    (boolean)
+
+    Returns: ~
+        (avante.ui.Line[])
 
 
                                       *avante-messages-render.get_content_lines*
@@ -2233,7 +2289,7 @@ M._tools                                                              *M._tools*
 avante.ProcessToolUseOpts                            *avante.ProcessToolUseOpts*
 
     Fields: ~
-        {session_ctx}          (table)
+        {session_ctx}          (avante.SessionContext)
         {on_log?}              (fun(tool_id:string,tool_name:string,log:string,state:AvanteLLMToolUseState):nil)
         {set_tool_use_store?}  (fun(tool_id:string,key:string,value:any):nil)
         {on_complete?}         (fun(result:string|nil,error:string|nil):nil)
@@ -2267,7 +2323,7 @@ M.stringify_tool_use({tool_use})        *avante-custom-tools.stringify_tool_use*
 ==============================================================================
 Avante bash                                                  *avante-tools-bash*
 
-AvanteLLMTool                                                    *AvanteLLMTool*
+avante.tools.bash : AvanteLLMTool                            *avante.tools.bash*
 
 
 M.get_description()                          *avante-tools-bash.get_description*
@@ -2574,7 +2630,7 @@ M.is_valid_container()                         *avante-utils.is_valid_container*
 M.get_hl()                                                 *avante-utils.get_hl*
 
     Returns: ~
-        (table)
+        (vim.api.keyset.get_hl_info)
 
 
 M.norm({path})                                               *avante-utils.norm*
@@ -2618,13 +2674,32 @@ M.warn({msg}, {opts?})                                       *avante-utils.warn*
         {opts?}  (LazyNotifyOpts)
 
 
-M.debug()                                                   *avante-utils.debug*
+M.debug({...})                                              *avante-utils.debug*
+    @generic T
+
+    Parameters: ~
+        {...}  (T)
 
 
-M.tbl_indexof()                                       *avante-utils.tbl_indexof*
+M.tbl_indexof({tbl}, {value})                         *avante-utils.tbl_indexof*
+    @generic T
+
+    Parameters: ~
+        {tbl}    (T[])
+        {value}  (T)
+
+    Returns: ~
+        (integer|nil)
 
 
-M.update_win_options()                         *avante-utils.update_win_options*
+                                               *avante-utils.update_win_options*
+M.update_win_options({winid}, {opt_name}, {key}, {value})
+
+    Parameters: ~
+        {winid}     (integer)
+        {opt_name}  (string)
+        {key}       (string)
+        {value}     (string)
 
 
 M.get_win_options()                               *avante-utils.get_win_options*
@@ -2719,7 +2794,14 @@ M.get_indentation({text})                         *avante-utils.get_indentation*
 M.trim_space()                                         *avante-utils.trim_space*
 
 
-M.trim_escapes()                                     *avante-utils.trim_escapes*
+M.trim_escapes({text})                               *avante-utils.trim_escapes*
+    @generic T: string|nil
+
+    Parameters: ~
+        {text}  (T)
+
+    Returns: ~
+        (T)
 
 
                                                    *avante-utils.try_find_match*
@@ -2809,10 +2891,26 @@ M.get_recent_filepaths({limit?}, {filenames?}, {same_file_ext?})
         (string[])
 
 
-M.parse_gitignore()                               *avante-utils.parse_gitignore*
+M.parse_gitignore({gitignore_path})               *avante-utils.parse_gitignore*
+
+    Parameters: ~
+        {gitignore_path}  (string)
+
+    Returns: ~
+        (string[])  ignore_patterns
+        (string[])  negate_patterns
 
 
-M.is_ignored()                                         *avante-utils.is_ignored*
+                                                       *avante-utils.is_ignored*
+M.is_ignored({file}, {ignore_patterns}, {negate_patterns})
+
+    Parameters: ~
+        {file}             (string)
+        {ignore_patterns}  (string[])
+        {negate_patterns}  (string[])
+
+    Returns: ~
+        (boolean)
 
 
 M.scan_directory({options})                        *avante-utils.scan_directory*
@@ -2824,7 +2922,13 @@ M.scan_directory({options})                        *avante-utils.scan_directory*
         (string[])
 
 
-M.get_parent_path()                               *avante-utils.get_parent_path*
+M.get_parent_path({filepath})                     *avante-utils.get_parent_path*
+
+    Parameters: ~
+        {filepath}  (string)
+
+    Returns: ~
+        (string)
 
 
 M.make_relative_path()                         *avante-utils.make_relative_path*
@@ -2998,10 +3102,24 @@ M.parse_iso8601_date({iso_str})                *avante-utils.parse_iso8601_date*
 M.random_string()                                   *avante-utils.random_string*
 
 
-M.is_left_adjacent()                             *avante-utils.is_left_adjacent*
+M.is_left_adjacent({win_a}, {win_b})             *avante-utils.is_left_adjacent*
+
+    Parameters: ~
+        {win_a}  (integer)
+        {win_b}  (integer)
+
+    Returns: ~
+        (boolean)
 
 
-M.is_top_adjacent()                               *avante-utils.is_top_adjacent*
+M.is_top_adjacent({win_a}, {win_b})               *avante-utils.is_top_adjacent*
+
+    Parameters: ~
+        {win_a}  (integer)
+        {win_b}  (integer)
+
+    Returns: ~
+        (boolean)
 
 
 M.should_hidden_border()                     *avante-utils.should_hidden_border*
@@ -3014,8 +3132,8 @@ M.llm_tool_param_fields_to_json_schema({fields})
         {fields}  (AvanteLLMToolParamField[])
 
     Returns: ~
-        (table[])   properties
-        (string[])  required
+        (table<string,avante.JSONSchema>)  properties
+        (string[])                         required
 
 
 M.get_commands({sidebar?})                           *avante-utils.get_commands*
@@ -3100,6 +3218,49 @@ Curl wrapper                                                 *avante-utils-curl*
  `--data-binary @file` and `--config file`, and the files are removed once curl exits.
 
 
+avante.utils.curl.Response                          *avante.utils.curl.Response*
+
+    Fields: ~
+        {status}   (integer)
+        {headers}  (string[])
+        {body}     (string)
+        {exit}     (integer)
+
+
+avante.utils.curl.Error                                *avante.utils.curl.Error*
+
+    Fields: ~
+        {message}  (string)
+        {stderr}   (string)
+        {exit}     (integer)
+
+
+avante.utils.curl.Options                            *avante.utils.curl.Options*
+
+    Fields: ~
+        {headers?}       (table<string,string>)
+        {query?}         (table<string,string|number>)
+        {body?}          (string|table<string,string|number>)
+        {data?}          (table<string,string|number>)
+        {raw_body?}      (string|table<string,string|number>)
+        {in_file?}       (string)
+        {accept?}        (string)
+        {auth?}          (string|string[])
+        {form?}          (table<string,string>)
+        {raw?}           (string[])
+        {output?}        (string)
+        {timeout?}       (number)
+        {http_version?}  (string)
+        {proxy?}         (string)
+        {insecure?}      (boolean)
+        {compressed?}    (boolean)
+        {callback?}      (fun(response:avante.utils.curl.Response))
+        {stream?}        (fun(err:string|nil,data:string|nil,job:Job))
+        {on_error?}      (fun(err:avante.utils.curl.Error))
+        {dry_run?}       (boolean)
+        {dump?}          (string[])
+
+
 avante.utils.curl                                            *avante.utils.curl*
 
 
@@ -3118,22 +3279,22 @@ M.get({url}, {opts?})                                    *avante-utils-curl.get*
 
     Parameters: ~
         {url}    (string)
-        {opts?}  (table)   plenary.curl options
+        {opts?}  (avante.utils.curl.Options)
 
     Returns: ~
-        (any)    result
-        (fun())  cleanup
+        (avante.utils.curl.Response|Job|string[])  Response for sync requests, Job for callback/stream, arguments for dry_run
+        (fun())                                    cleanup
 
 
 M.post({url}, {opts?})                                  *avante-utils-curl.post*
 
     Parameters: ~
         {url}    (string)
-        {opts?}  (table)   plenary.curl options
+        {opts?}  (avante.utils.curl.Options)
 
     Returns: ~
-        (any)    result
-        (fun())  cleanup
+        (avante.utils.curl.Response|Job|string[])  Response for sync requests, Job for callback/stream, arguments for dry_run
+        (fun())                                    cleanup
 
 
 ==============================================================================
@@ -3479,6 +3640,7 @@ Model providers                                               *avante-providers*
 avante.Providers                                              *avante.Providers*
 
     Fields: ~
+        {string}   (AvanteProviderFunctor)
         {azure}    (AvanteProviderFunctor)
         {bedrock}  (AvanteBedrockProviderFunctor)
         {claude}   (AvanteClaudeProviderFunctor)

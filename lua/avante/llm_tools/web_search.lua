@@ -63,11 +63,13 @@ local function get_api_key(api_key_name)
   return api_key, nil
 end
 
----@param query_params table<string, any>
+---@param query_params table<string, string>
 ---@return string
 local function encode_query(query_params)
+  ---@type string
   local query_string = ""
   for key, value in pairs(query_params) do
+    ---@type string
     query_string = query_string .. key .. "=" .. vim.uri_encode(value) .. "&"
   end
   return query_string
@@ -148,6 +150,8 @@ local function web_search_serpapi_func(input, opts)
         local results = vim
           .iter(body.organic_results)
           :map(
+            ---@param result {title: string, link?: string, url?: string, snippet?: string, date?: string, description?: string, content?: string}
+            ---@return table<string, string>
             function(result)
               return {
                 title = result.title,
@@ -189,6 +193,8 @@ local function web_search_searchapi_func(input, opts)
         local results = vim
           .iter(body.organic_results)
           :map(
+            ---@param result {title: string, link?: string, url?: string, snippet?: string, date?: string, description?: string, content?: string}
+            ---@return table<string, string>
             function(result)
               return {
                 title = result.title,
@@ -236,6 +242,8 @@ local function web_search_google_func(input, opts)
         local results = vim
           .iter(body.items)
           :map(
+            ---@param result {title: string, link?: string, url?: string, snippet?: string, date?: string, description?: string, content?: string}
+            ---@return table<string, string>
             function(result)
               return {
                 title = result.title,
@@ -273,8 +281,14 @@ local function web_search_kagi_func(input, opts)
       if body.data ~= nil then
         local results = vim
           .iter(body.data)
-          :filter(function(result) return result.t == 0 end)
+          :filter(
+            ---@param result {t: integer}
+            ---@return boolean
+            function(result) return result.t == 0 end
+          )
           :map(
+            ---@param result {title: string, link?: string, url?: string, snippet?: string, date?: string, description?: string, content?: string}
+            ---@return table<string, string>
             function(result)
               return {
                 title = result.title,
@@ -312,6 +326,8 @@ local function web_search_brave_func(input, opts)
     function(body)
       if body.web == nil then return "", nil end
       local results = vim.iter(body.web.results):map(
+        ---@param result {title: string, link?: string, url?: string, snippet?: string, date?: string, description?: string, content?: string}
+        ---@return table<string, string>
         function(result)
           return {
             title = result.title,
@@ -353,6 +369,8 @@ local function web_search_firecrawl_func(input, opts)
       local results = vim
         .iter(body.data.web)
         :map(
+          ---@param result {title: string, link?: string, url?: string, snippet?: string, date?: string, description?: string, content?: string}
+          ---@return table<string, string>
           function(result)
             return {
               title = result.title,
@@ -392,9 +410,13 @@ local function web_search_serply_func(input, opts)
         .iter(body.results)
         -- skip the occasional result whose link is not a page URL
         :filter(
+          ---@param result {title: string, link?: string, url?: string, snippet?: string, date?: string, description?: string, content?: string}
+          ---@return boolean
           function(result) return type(result.link) == "string" and result.link:match("^https?://") ~= nil end
         )
         :map(
+          ---@param result {title: string, link?: string, url?: string, snippet?: string, date?: string, description?: string, content?: string}
+          ---@return table<string, string>
           function(result)
             return {
               title = result.title,
@@ -434,6 +456,8 @@ local function web_search_outcrawl_func(input, opts)
       local results = vim
         .iter(body.hits)
         :map(
+          ---@param result {title: string, link?: string, url?: string, snippet?: string, date?: string, description?: string, content?: string}
+          ---@return table<string, string>
           function(result)
             return {
               title = result.title,
@@ -468,12 +492,15 @@ local function web_search_specstream_func(input, opts)
       -- The API wraps every reply as { data, error }; a body without the wrapper is read as it is.
       local data = type(body.data) == "table" and body.data or body
       if type(data.sources) ~= "table" then
+        ---@type string?
         local err = type(body.error) == "table" and body.error.message or body.message
         return "", type(err) == "string" and err or nil
       end
       local results = vim
         .iter(data.sources)
         :map(
+          ---@param result {title: string, link?: string, url?: string, snippet?: string, date?: string, description?: string, content?: string}
+          ---@return table<string, string>
           function(result)
             return {
               title = result.title,
@@ -514,6 +541,8 @@ local function web_search_sofya_func(input, opts)
       local results = vim
         .iter(body.results)
         :map(
+          ---@param result {title: string, link?: string, url?: string, snippet?: string, date?: string, description?: string, content?: string}
+          ---@return table<string, string>
           function(result)
             return {
               title = result.title,
@@ -542,6 +571,8 @@ local function web_search_searxng_func(input, opts)
     function(body)
       if body.results == nil then return "", nil end
       local results = vim.iter(body.results):map(
+        ---@param result {title: string, link?: string, url?: string, snippet?: string, date?: string, description?: string, content?: string}
+        ---@return table<string, string>
         function(result)
           return {
             title = result.title,
@@ -585,17 +616,21 @@ local function web_search_keenable_func(input, opts)
       local results = vim
         .iter(body.results)
         :filter(function(result) return type(result.url) == "string" and result.url ~= "" end)
-        :map(function(result)
-          -- prefer the short description; the snippet can be a long page excerpt
-          local snippet = result.description
-          if snippet == nil or snippet == "" then
-            snippet = result.snippet or ""
-            if vim.fn.strchars(snippet) > KEENABLE_SNIPPET_MAX_CHARS then
-              snippet = vim.fn.strcharpart(snippet, 0, KEENABLE_SNIPPET_MAX_CHARS) .. "…"
+        :map(
+          ---@param result {title: string, url: string, description?: string, snippet?: string}
+          ---@return table<string, string>
+          function(result)
+            -- prefer the short description; the snippet can be a long page excerpt
+            local snippet = result.description
+            if snippet == nil or snippet == "" then
+              snippet = result.snippet or ""
+              if vim.fn.strchars(snippet) > KEENABLE_SNIPPET_MAX_CHARS then
+                snippet = vim.fn.strcharpart(snippet, 0, KEENABLE_SNIPPET_MAX_CHARS) .. "…"
+              end
             end
+            return { title = result.title, url = result.url, snippet = snippet }
           end
-          return { title = result.title, url = result.url, snippet = snippet }
-        end)
+        )
         :totable()
       return vim.json.encode(results), nil
     end
@@ -607,8 +642,8 @@ end
 ---@return AvanteLLMTool
 local function web_search_tool(provider, func)
   return {
-    name = "web_search_" .. provider,
-    description = "Search the web using " .. provider,
+    name = "web_search_" .. provider, ---@type string
+    description = "Search the web using " .. provider, ---@type string
     param = {
       type = "table",
       fields = {

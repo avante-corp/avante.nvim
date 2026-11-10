@@ -41,7 +41,7 @@ run_typechecker() {
 main() {
     # TODO pass it as arg
     local dest_dir="$AVANTE_RUNTIME_TEST_DIR"
-    local luarc_path="$dest_dir/luarc.json"
+    local luarc_path="$PWD/.luarc.json"
 
     for arg in "$@"; do
         case $arg in

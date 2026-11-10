@@ -83,6 +83,7 @@ local rag_exec = "avante-rag-service"
 ---@see launch_rag_service
 function M.run_rag_service()
   local started_at = os.time()
+  ---@type fun()
   local add_resource_with_delay
   local function add_resource()
     if not M.is_ready() then
@@ -123,10 +124,12 @@ end
 ---@return integer
 function M.get_rag_service_port()
   local url = M.get_rag_service_url()
+  ---@type string?, string?
   local scheme, authority = url:match("^([%a][%w+.-]*)://([^/?#]+)")
   scheme = scheme and scheme:lower()
   if not authority or (scheme ~= "http" and scheme ~= "https") then error("rag_service.url must be an HTTP(S) URL") end
   authority = authority:gsub("^.*@", "")
+  ---@type string?, string?
   local host, suffix
   if authority:sub(1, 1) == "[" then
     host, suffix = authority:match("^(%[[^%]]+%])(.*)$")
@@ -309,6 +312,8 @@ function M.stop_rag_service()
 end
 
 --- http or https
+---@param uri string
+---@return string
 function M.get_scheme(uri)
   local scheme = uri:match("^(%w+)://")
   if scheme == nil then return "unknown" end
@@ -316,11 +321,14 @@ function M.get_scheme(uri)
 end
 
 ---Transforms URI when used with docker
+---@param uri string
+---@return string
 function M.to_container_uri(uri)
   local runner = M.get_rag_service_runner()
   if runner ~= "docker" then return uri end
   local scheme = M.get_scheme(uri)
   if scheme == "file" then
+    ---@type string
     local path = uri:match("^file://(.*)$")
     local host_dir = rawget(Config.rag_service or {}, "host_mount") or assert(os.getenv("HOME"), "HOME is not set")
     if path:sub(1, #host_dir) == host_dir then path = "/host" .. path:sub(#host_dir + 1) end
@@ -330,6 +338,8 @@ function M.to_container_uri(uri)
 end
 
 ---Transforms URI when used with docker
+---@param uri string
+---@return string
 function M.to_local_uri(uri)
   if M.get_rag_service_runner() ~= "docker" then return uri end
   local scheme = M.get_scheme(uri)
@@ -387,6 +397,7 @@ function M.add_resource(uri)
     end
   end
   if not already_added then
+    ---@type table<string, boolean>
     local names_map = {}
     for _, resource in ipairs(resources_resp.resources) do
       names_map[resource.name] = true

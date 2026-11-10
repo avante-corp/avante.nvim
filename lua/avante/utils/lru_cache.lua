@@ -1,20 +1,21 @@
----@class avante.LRUCacheNode
----@field key any
----@field value any
----@field prev? avante.LRUCacheNode
----@field next? avante.LRUCacheNode
+---@class avante.LRUCacheNode<K, V>
+---@field key K
+---@field value V
+---@field prev? avante.LRUCacheNode<K, V>
+---@field next? avante.LRUCacheNode<K, V>
 
----@class avante.LRUCache
+---@class avante.LRUCache<K, V>
 ---@field capacity integer
----@field cache table<any, avante.LRUCacheNode>
----@field head? avante.LRUCacheNode
----@field tail? avante.LRUCacheNode
+---@field cache table<K, avante.LRUCacheNode<K, V>>
+---@field head? avante.LRUCacheNode<K, V>
+---@field tail? avante.LRUCacheNode<K, V>
 ---@field size integer
 local LRUCache = {}
 LRUCache.__index = LRUCache
 
+---@generic K, V
 ---@param capacity integer
----@return avante.LRUCache
+---@return avante.LRUCache<K, V>
 function LRUCache:new(capacity)
   return setmetatable({
     capacity = capacity,
@@ -26,6 +27,7 @@ function LRUCache:new(capacity)
 end
 
 -- Internal function: Move node to head (indicating most recently used)
+---@param node avante.LRUCacheNode<K, V>
 function LRUCache:_move_to_head(node)
   if self.head == node then return end
 
@@ -47,6 +49,8 @@ function LRUCache:_move_to_head(node)
 end
 
 -- Get value from cache
+---@param key K
+---@return V|nil
 function LRUCache:get(key)
   local node = self.cache[key]
   if not node then return nil end
@@ -57,6 +61,8 @@ function LRUCache:get(key)
 end
 
 -- Set value in cache
+---@param key K
+---@param value V
 function LRUCache:set(key, value)
   local node = self.cache[key]
 
@@ -81,6 +87,7 @@ function LRUCache:set(key, value)
 end
 
 -- Remove specified cache entry
+---@param key K
 function LRUCache:remove(key)
   local node = self.cache[key]
   if not node then return end
@@ -102,9 +109,11 @@ function LRUCache:remove(key)
 end
 
 -- Get current size of cache
+---@return integer
 function LRUCache:get_size() return self.size end
 
 -- Get capacity of cache
+---@return integer
 function LRUCache:get_capacity() return self.capacity end
 
 -- Print current cache contents (for debugging)
@@ -116,11 +125,15 @@ function LRUCache:print_cache()
   end
 end
 
+---@return K[]
 function LRUCache:keys()
+  ---@type K[]
   local keys = {}
+  ---@type avante.LRUCacheNode<K, V>?
   local node = self.head
   while node do
     table.insert(keys, node.key)
+    ---@type avante.LRUCacheNode<K, V>?
     node = node.next
   end
   return keys

@@ -1,7 +1,7 @@
 local Helpers = require("avante.llm_tools.helpers")
 local Base = require("avante.llm_tools.base")
 
----@class AvanteLLMTool
+---@class avante.tools.glob: AvanteLLMTool
 local M = setmetatable({}, Base)
 
 M.name = "glob"
@@ -52,6 +52,7 @@ function M.func(input, opts)
   if not Helpers.has_permission_to_access(abs_path) then return "", "No permission to access path: " .. abs_path end
   if on_log then on_log("path: " .. abs_path) end
   if on_log then on_log("pattern: " .. input.pattern) end
+  ---@type string[]
   local files = vim.fn.glob(abs_path .. "/" .. input.pattern, true, true)
   local truncated_files = {}
   local is_truncated = false

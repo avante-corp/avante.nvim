@@ -1,6 +1,6 @@
 local Base = require("avante.llm_tools.base")
 
----@class AvanteLLMTool
+---@class avante.tools.write_todos: AvanteLLMTool
 local M = setmetatable({}, Base)
 
 M.name = "write_todos"

@@ -6,44 +6,58 @@ local Selector = require("avante.ui.selector")
 ---@class avante.ModelSelector
 local M = {}
 
-M.list_models_invoked = {}
-M.list_models_returned = {}
+M.list_models_invoked = {} ---@type table<string, boolean>
+M.list_models_returned = {} ---@type table<AvanteProviderModelList, boolean>
 
+---@type table<string, AvanteProviderModelList>
 local list_models_cached_result = {}
+
+---@class avante.ModelSelectorEntry
+---@field name string
+---@field display_name string
+---@field provider_name string
+---@field model string
 
 ---@brief Lists models available for a single provider
 --- Calls provider's list_models and caches result
 ---@param provider_name string
----@param provider_cfg table
+---@param provider_cfg AvanteProviderFunctor
 ---@param timeout? integer Timeout in milliseconds
----@return table
+---@return avante.ModelSelectorEntry[]
 local function create_model_entries(provider_name, provider_cfg, timeout)
+  ---@type avante.ModelSelectorEntry[]
   local res = {}
-  if provider_cfg.list_models then
+  local list_models = provider_cfg.list_models
+  if list_models then
+    ---@type AvanteProviderModelList?
     local models
     -- API keys and subscriptions can expose different models at the same endpoint.
     local cache_key = (provider_cfg.auth_type or "api_key") .. ":" .. (provider_cfg.endpoint or provider_name)
-    if type(provider_cfg.list_models) == "function" then
+    if type(list_models) == "function" then
       if M.list_models_invoked[cache_key] then return {} end
       M.list_models_invoked[cache_key] = true
       local cached_result = list_models_cached_result[cache_key]
       if cached_result then
         models = cached_result
       else
-        models = provider_cfg:list_models(timeout)
+        models = list_models(provider_cfg, timeout)
         -- Failed lookups return an empty list; retry after login or transient failures.
         if models and #models > 0 then list_models_cached_result[cache_key] = models end
       end
     else
-      if M.list_models_returned[provider_cfg.list_models] then return {} end
-      M.list_models_returned[provider_cfg.list_models] = true
-      models = provider_cfg.list_models
+      ---@type AvanteProviderModelList
+      local configured_models = list_models
+      if M.list_models_returned[configured_models] then return {} end
+      M.list_models_returned[configured_models] = true
+      models = configured_models
     end
     if models then
       -- If list_models is defined, use it to create entries
       res = vim
         .iter(models)
         :map(
+          ---@param model AvanteProviderModel
+          ---@return avante.ModelSelectorEntry
           function(model)
             return {
               name = model.name or model.id,
@@ -89,6 +103,7 @@ end
 function M.open(all, timeout)
   M.list_models_invoked = {}
   M.list_models_returned = {}
+  ---@type avante.ModelSelectorEntry[]
   local models = {}
 
   Utils.info("listing models")
@@ -106,7 +121,13 @@ function M.open(all, timeout)
   end
 
   -- Sort models by name for stable display
-  table.sort(models, function(a, b) return (a.name or "") < (b.name or "") end)
+  table.sort(
+    models,
+    ---@param a avante.ModelSelectorEntry
+    ---@param b avante.ModelSelectorEntry
+    ---@return boolean
+    function(a, b) return (a.name or "") < (b.name or "") end
+  )
 
   if #models == 0 then
     Utils.warn("No models available in config")
@@ -115,14 +136,19 @@ function M.open(all, timeout)
 
   local items = vim
     .iter(models)
-    :map(function(item)
-      return {
-        id = item.name,
-        title = item.name,
-      }
-    end)
+    :map(
+      ---@param item avante.ModelSelectorEntry
+      ---@return avante.ui.SelectorItem
+      function(item)
+        return {
+          id = item.name,
+          title = item.name,
+        }
+      end
+    )
     :totable()
 
+  ---@type AvanteProvider?
   local current_provider = Config.providers[Config.provider]
   local current_model = current_provider and current_provider.model
   local default_item = vim.iter(models):find(
@@ -131,6 +157,7 @@ function M.open(all, timeout)
 
   local function on_select(item_ids)
     if not item_ids then return end
+    ---@type avante.ModelSelectorEntry?
     local choice = vim.iter(models):find(function(item) return item.name == item_ids[1] end)
     if not choice then return end
 

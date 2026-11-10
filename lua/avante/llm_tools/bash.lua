@@ -4,7 +4,7 @@
 local Base = require("avante.llm_tools.base")
 local Config = require("avante.config")
 
----@class AvanteLLMTool
+---@class avante.tools.bash: AvanteLLMTool
 ---Gives access to bash
 local M = setmetatable({}, Base)
 

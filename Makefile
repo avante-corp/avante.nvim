@@ -97,9 +97,13 @@ luastylecheck:
 
 .PHONY: luaannotationcheck
 luaannotationcheck:
-	@if rg -n --glob '*.lua' --glob '!target/**' '^--- @' .; then \
+	@annotation_status=0; \
+	rg -n --glob '*.lua' --glob '!target/**' '^[[:blank:]]*---[[:blank:]]+@' . || annotation_status=$$?; \
+	if [ $$annotation_status -eq 0 ]; then \
 		echo "Invalid Lua annotation syntax: remove the space after ---" >&2; \
 		exit 1; \
+	elif [ $$annotation_status -ne 1 ]; then \
+		exit $$annotation_status; \
 	fi
 
 stylefix:

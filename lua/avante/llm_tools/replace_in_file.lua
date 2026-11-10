@@ -8,7 +8,7 @@ local PRIORITY = (vim.hl or vim.highlight).priorities.user
 local NAMESPACE = vim.api.nvim_create_namespace("avante-diff")
 local KEYBINDING_NAMESPACE = vim.api.nvim_create_namespace("avante-diff-keybinding")
 
----@class AvanteLLMTool
+---@class avante.tools.replace_in_file: AvanteLLMTool
 local M = setmetatable({}, Base)
 
 M.name = "replace_in_file"
@@ -106,6 +106,8 @@ function M.func(input, opts)
   local on_complete = opts.on_complete
   local session_ctx = opts.session_ctx
   if not on_complete then return false, "on_complete not provided" end
+  local tool_use_id = opts.tool_use_id
+  if not tool_use_id then return false, "tool_use_id not provided" end
 
   if not input.path or not input.the_diff then
     return false, "path and the_diff are required " .. vim.inspect(input)
@@ -116,22 +118,26 @@ function M.func(input, opts)
 
   local is_streaming = opts.streaming or false
 
-  session_ctx.prev_streaming_diff_timestamp_map = session_ctx.prev_streaming_diff_timestamp_map or {}
+  ---@type table<string, number>
+  local prev_streaming_diff_timestamp_map_by_tool = session_ctx.prev_streaming_diff_timestamp_map or {}
+  session_ctx.prev_streaming_diff_timestamp_map = prev_streaming_diff_timestamp_map_by_tool
   local current_timestamp = os.time()
   if is_streaming then
-    local prev_streaming_diff_timestamp = session_ctx.prev_streaming_diff_timestamp_map[opts.tool_use_id]
+    local prev_streaming_diff_timestamp = prev_streaming_diff_timestamp_map_by_tool[tool_use_id]
     if prev_streaming_diff_timestamp ~= nil then
       if current_timestamp - prev_streaming_diff_timestamp < 2 then
         return false, "Diff hasn't changed in the last 2 seconds"
       end
     end
     local streaming_diff_lines_count = Utils.count_lines(input.the_diff)
-    session_ctx.streaming_diff_lines_count_history = session_ctx.streaming_diff_lines_count_history or {}
-    local prev_streaming_diff_lines_count = session_ctx.streaming_diff_lines_count_history[opts.tool_use_id]
+    ---@type table<string, integer>
+    local streaming_diff_lines_count_history_by_tool = session_ctx.streaming_diff_lines_count_history or {}
+    session_ctx.streaming_diff_lines_count_history = streaming_diff_lines_count_history_by_tool
+    local prev_streaming_diff_lines_count = streaming_diff_lines_count_history_by_tool[tool_use_id]
     if streaming_diff_lines_count == prev_streaming_diff_lines_count then
       return false, "Diff lines count hasn't changed"
     end
-    session_ctx.streaming_diff_lines_count_history[opts.tool_use_id] = streaming_diff_lines_count
+    streaming_diff_lines_count_history_by_tool[tool_use_id] = streaming_diff_lines_count
   end
 
   local diff = Utils.fix_diff(input.the_diff)
@@ -144,6 +150,7 @@ function M.func(input, opts)
   local is_replacing = false
   local current_old_lines = {}
   local current_new_lines = {}
+  ---@type avante.RoughReplacementBlock[]
   local rough_diff_blocks = {}
 
   for _, line in ipairs(diff_lines) do
@@ -186,16 +193,18 @@ Please make sure the diff is formatted correctly, and that the SEARCH/REPLACE bl
     return false, err
   end
 
-  session_ctx.prev_streaming_diff_timestamp_map[opts.tool_use_id] = current_timestamp
+  prev_streaming_diff_timestamp_map_by_tool[tool_use_id] = current_timestamp
 
   local bufnr, err = Helpers.get_bufnr(abs_path)
   if err then return false, err end
 
-  session_ctx.undo_joined = session_ctx.undo_joined or {}
-  local undo_joined = session_ctx.undo_joined[opts.tool_use_id]
+  ---@type table<string, boolean>
+  local undo_joined_by_tool = session_ctx.undo_joined or {}
+  session_ctx.undo_joined = undo_joined_by_tool
+  local undo_joined = undo_joined_by_tool[tool_use_id]
   if not undo_joined then
     pcall(vim.cmd.undojoin)
-    session_ctx.undo_joined[opts.tool_use_id] = true
+    undo_joined_by_tool[tool_use_id] = true
   end
 
   local original_lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
@@ -203,6 +212,8 @@ Please make sure the diff is formatted correctly, and that the SEARCH/REPLACE bl
   if not sidebar then return false, "Avante sidebar not found" end
 
   --- add line numbers to rough_diff_block
+  ---@param rough_diff_block avante.RoughReplacementBlock
+  ---@return string?
   local function complete_rough_diff_block(rough_diff_block)
     local old_lines = rough_diff_block.old_lines
     local new_lines = rough_diff_block.new_lines
@@ -213,8 +224,18 @@ Please make sure the diff is formatted correctly, and that the SEARCH/REPLACE bl
     end
     local original_indentation = Utils.get_indentation(original_lines[start_line])
     if original_indentation ~= Utils.get_indentation(old_lines[1]) then
-      old_lines = vim.tbl_map(function(line) return original_indentation .. line end, old_lines)
-      new_lines = vim.tbl_map(function(line) return original_indentation .. line end, new_lines)
+      old_lines = vim.tbl_map(
+        ---@param line string
+        ---@return string
+        function(line) return original_indentation .. line end,
+        old_lines
+      )
+      new_lines = vim.tbl_map(
+        ---@param line string
+        ---@return string
+        function(line) return original_indentation .. line end,
+        new_lines
+      )
     end
     rough_diff_block.old_lines = old_lines
     rough_diff_block.new_lines = new_lines
@@ -223,15 +244,21 @@ Please make sure the diff is formatted correctly, and that the SEARCH/REPLACE bl
     return nil
   end
 
-  session_ctx.rough_diff_blocks_to_diff_blocks_cache_map = session_ctx.rough_diff_blocks_to_diff_blocks_cache_map or {}
-  local rough_diff_blocks_to_diff_blocks_cache =
-    session_ctx.rough_diff_blocks_to_diff_blocks_cache_map[opts.tool_use_id]
+  ---@type table<string, table<string, {diff_blocks: avante.ReplacementBlock[], base_line: integer}>>
+  local rough_diff_blocks_to_diff_blocks_cache_map_by_tool = session_ctx.rough_diff_blocks_to_diff_blocks_cache_map
+    or {}
+  session_ctx.rough_diff_blocks_to_diff_blocks_cache_map = rough_diff_blocks_to_diff_blocks_cache_map_by_tool
+  ---@type table<string, {diff_blocks: avante.ReplacementBlock[], base_line: integer}>?
+  local rough_diff_blocks_to_diff_blocks_cache = rough_diff_blocks_to_diff_blocks_cache_map_by_tool[tool_use_id]
   if not rough_diff_blocks_to_diff_blocks_cache then
     rough_diff_blocks_to_diff_blocks_cache = {}
-    session_ctx.rough_diff_blocks_to_diff_blocks_cache_map[opts.tool_use_id] = rough_diff_blocks_to_diff_blocks_cache
+    rough_diff_blocks_to_diff_blocks_cache_map_by_tool[tool_use_id] = rough_diff_blocks_to_diff_blocks_cache
   end
 
+  ---@param rough_diff_blocks_ avante.ReplacementBlock[]
+  ---@return avante.ReplacementBlock[]
   local function rough_diff_blocks_to_diff_blocks(rough_diff_blocks_)
+    ---@type avante.ReplacementBlock[]
     local res = {}
     local base_line_ = 0
     for idx, rough_diff_block in ipairs(rough_diff_blocks_) do
@@ -250,6 +277,7 @@ Please make sure the diff is formatted correctly, and that the SEARCH/REPLACE bl
       end
       local old_string = table.concat(old_lines, "\n")
       local new_string = table.concat(new_lines, "\n")
+      ---@type integer[][]
       local patch
       if Config.behaviour.minimize_diff then
         ---@diagnostic disable-next-line: assign-type-mismatch, missing-fields
@@ -261,10 +289,12 @@ Please make sure the diff is formatted correctly, and that the SEARCH/REPLACE bl
       else
         patch = { { 1, #old_lines, 1, #new_lines } }
       end
+      ---@type avante.ReplacementBlock[]
       local diff_blocks_ = {}
       for _, hunk in ipairs(patch) do
-        local start_a, count_a, start_b, count_b = unpack(hunk)
-        local diff_block = {}
+        local start_a, count_a, start_b, count_b = hunk[1], hunk[2], hunk[3], hunk[4]
+        ---@type avante.ReplacementBlock
+        local diff_block = { old_lines = {}, new_lines = {}, start_line = 0, end_line = 0 }
         if count_a > 0 then
           diff_block.old_lines = vim.list_slice(rough_diff_block.old_lines, start_a, start_a + count_a - 1)
         else
@@ -313,6 +343,7 @@ Please make sure the diff is formatted correctly, and that the SEARCH/REPLACE bl
     end
   end
 
+  ---@cast rough_diff_blocks avante.ReplacementBlock[]
   local diff_blocks = rough_diff_blocks_to_diff_blocks(rough_diff_blocks)
 
   table.sort(diff_blocks, function(a, b) return a.start_line < b.start_line end)
@@ -571,11 +602,15 @@ Please make sure the diff is formatted correctly, and that the SEARCH/REPLACE bl
       base_line_ = base_line_ + #diff_block.new_lines - #diff_block.old_lines
       local deleted_virt_lines = vim
         .iter(diff_block.old_lines)
-        :map(function(line)
-          --- append spaces to the end of the line
-          local line_ = line .. string.rep(" ", max_col - #line)
-          return { { line_, Highlights.TO_BE_DELETED_WITHOUT_STRIKETHROUGH } }
-        end)
+        :map(
+          ---@param line string
+          ---@return [string, string][]
+          function(line)
+            --- append spaces to the end of the line
+            local line_ = line .. string.rep(" ", max_col - #line)
+            return { { line_, Highlights.TO_BE_DELETED_WITHOUT_STRIKETHROUGH } }
+          end
+        )
         :totable()
       local end_row = start_line + #diff_block.new_lines - 1
       local delete_extmark_id =
@@ -596,48 +631,67 @@ Please make sure the diff is formatted correctly, and that the SEARCH/REPLACE bl
     end
   end
 
-  session_ctx.extmark_id_map = session_ctx.extmark_id_map or {}
-  local extmark_id_map = session_ctx.extmark_id_map[opts.tool_use_id]
+  ---@type table<string, table<integer, integer>>
+  local extmark_id_map_by_tool = session_ctx.extmark_id_map or {}
+  session_ctx.extmark_id_map = extmark_id_map_by_tool
+  ---@type table<integer, integer>?
+  local extmark_id_map = extmark_id_map_by_tool[tool_use_id]
   if not extmark_id_map then
     extmark_id_map = {}
-    session_ctx.extmark_id_map[opts.tool_use_id] = extmark_id_map
+    extmark_id_map_by_tool[tool_use_id] = extmark_id_map
   end
-  session_ctx.virt_lines_map = session_ctx.virt_lines_map or {}
-  local virt_lines_map = session_ctx.virt_lines_map[opts.tool_use_id]
+  ---@type table<string, table<integer, [string, string][][]>>
+  local virt_lines_map_by_tool = session_ctx.virt_lines_map or {}
+  session_ctx.virt_lines_map = virt_lines_map_by_tool
+  ---@type table<integer, [string, string][][]>?
+  local virt_lines_map = virt_lines_map_by_tool[tool_use_id]
   if not virt_lines_map then
     virt_lines_map = {}
-    session_ctx.virt_lines_map[opts.tool_use_id] = virt_lines_map
+    virt_lines_map_by_tool[tool_use_id] = virt_lines_map
   end
 
-  session_ctx.last_orig_diff_end_line_map = session_ctx.last_orig_diff_end_line_map or {}
-  local last_orig_diff_end_line = session_ctx.last_orig_diff_end_line_map[opts.tool_use_id]
+  ---@type table<string, integer>
+  local last_orig_diff_end_line_map_by_tool = session_ctx.last_orig_diff_end_line_map or {}
+  session_ctx.last_orig_diff_end_line_map = last_orig_diff_end_line_map_by_tool
+  local last_orig_diff_end_line = last_orig_diff_end_line_map_by_tool[tool_use_id]
   if not last_orig_diff_end_line then
     last_orig_diff_end_line = 1
-    session_ctx.last_orig_diff_end_line_map[opts.tool_use_id] = last_orig_diff_end_line
+    last_orig_diff_end_line_map_by_tool[tool_use_id] = last_orig_diff_end_line
   end
-  session_ctx.last_resp_diff_end_line_map = session_ctx.last_resp_diff_end_line_map or {}
-  local last_resp_diff_end_line = session_ctx.last_resp_diff_end_line_map[opts.tool_use_id]
+  ---@type table<string, integer>
+  local last_resp_diff_end_line_map_by_tool = session_ctx.last_resp_diff_end_line_map or {}
+  session_ctx.last_resp_diff_end_line_map = last_resp_diff_end_line_map_by_tool
+  local last_resp_diff_end_line = last_resp_diff_end_line_map_by_tool[tool_use_id]
   if not last_resp_diff_end_line then
     last_resp_diff_end_line = 1
-    session_ctx.last_resp_diff_end_line_map[opts.tool_use_id] = last_resp_diff_end_line
+    last_resp_diff_end_line_map_by_tool[tool_use_id] = last_resp_diff_end_line
   end
-  session_ctx.prev_diff_blocks_map = session_ctx.prev_diff_blocks_map or {}
-  local prev_diff_blocks = session_ctx.prev_diff_blocks_map[opts.tool_use_id]
+  ---@type table<string, avante.ReplacementBlock[]>
+  local prev_diff_blocks_map_by_tool = session_ctx.prev_diff_blocks_map or {}
+  session_ctx.prev_diff_blocks_map = prev_diff_blocks_map_by_tool
+  ---@type avante.ReplacementBlock[]?
+  local prev_diff_blocks = prev_diff_blocks_map_by_tool[tool_use_id]
   if not prev_diff_blocks then
     prev_diff_blocks = {}
-    session_ctx.prev_diff_blocks_map[opts.tool_use_id] = prev_diff_blocks
+    prev_diff_blocks_map_by_tool[tool_use_id] = prev_diff_blocks
   end
 
+  ---@param diff_blocks_ avante.ReplacementBlock[]
+  ---@return avante.ReplacementBlock[]
   local function get_unstable_diff_blocks(diff_blocks_)
     local new_diff_blocks = {}
     for _, diff_block in ipairs(diff_blocks_) do
-      local has = vim.iter(prev_diff_blocks):find(function(prev_diff_block)
-        if prev_diff_block.start_line ~= diff_block.start_line then return false end
-        if prev_diff_block.end_line ~= diff_block.end_line then return false end
-        if #prev_diff_block.old_lines ~= #diff_block.old_lines then return false end
-        if #prev_diff_block.new_lines ~= #diff_block.new_lines then return false end
-        return true
-      end)
+      local has = vim.iter(prev_diff_blocks):find(
+        ---@param prev_diff_block avante.ReplacementBlock
+        ---@return boolean
+        function(prev_diff_block)
+          if prev_diff_block.start_line ~= diff_block.start_line then return false end
+          if prev_diff_block.end_line ~= diff_block.end_line then return false end
+          if #prev_diff_block.old_lines ~= #diff_block.old_lines then return false end
+          if #prev_diff_block.new_lines ~= #diff_block.new_lines then return false end
+          return true
+        end
+      )
       if has == nil then table.insert(new_diff_blocks, diff_block) end
     end
     return new_diff_blocks
@@ -645,7 +699,7 @@ Please make sure the diff is formatted correctly, and that the SEARCH/REPLACE bl
 
   local function highlight_streaming_diff_blocks()
     local unstable_diff_blocks = get_unstable_diff_blocks(diff_blocks)
-    session_ctx.prev_diff_blocks_map[opts.tool_use_id] = diff_blocks
+    prev_diff_blocks_map_by_tool[tool_use_id] = diff_blocks
     local max_col = vim.o.columns
     for _, diff_block in ipairs(unstable_diff_blocks) do
       local new_lines = diff_block.new_lines
@@ -661,12 +715,17 @@ Please make sure the diff is formatted correctly, and that the SEARCH/REPLACE bl
       if #new_lines == 0 then goto continue end
       local virt_lines = vim
         .iter(new_lines)
-        :map(function(line)
-          --- append spaces to the end of the line
-          local line_ = line .. string.rep(" ", max_col - #line)
-          return { { line_, Highlights.INCOMING } }
-        end)
+        :map(
+          ---@param line string
+          ---@return [string, string][]
+          function(line)
+            --- append spaces to the end of the line
+            local line_ = line .. string.rep(" ", max_col - #line)
+            return { { line_, Highlights.INCOMING } }
+          end
+        )
         :totable()
+      ---@type integer
       local extmark_line
       if #diff_block.old_lines > 0 then
         extmark_line = math.max(0, start_line - 2 + #diff_block.old_lines)

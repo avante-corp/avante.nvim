@@ -113,6 +113,7 @@ end
 ---Cleanup all registered ACP clients
 function M.cleanup_all_acp_clients()
   Utils.debug("Cleaning up all ACP clients...")
+  ---@type table<avante.acp.ACPClient, boolean>
   local pending = {}
   local wait_timeout = 600
   for client_id, client in pairs(M.acp_clients) do
@@ -361,6 +362,7 @@ function H.autocmds()
       if Utils.is_sidebar_buffer(current_buf) then return end
 
       local non_sidebar_wins = 0
+      ---@type integer[]
       local sidebar_wins = {}
       for _, win in ipairs(vim.api.nvim_list_wins()) do
         if vim.api.nvim_win_is_valid(win) then
