@@ -87,11 +87,20 @@ docgen:
 		> doc/avante.txt
 	nvim -u NONE -i NONE --headless +'helptags doc' +'quit!'
 
+.PHONY: luacheck
 luacheck:
-	luacheck `find \( -path './target' -prune \) -o -name "*.lua" -print` --codes
+	luacheck `find \( -path './target' -prune \) -o -name "*.lua" -print` --codes --no-cache
 
+.PHONY: luastylecheck
 luastylecheck:
 	stylua --check lua/ plugin/ tests/
+
+.PHONY: luaannotationcheck
+luaannotationcheck:
+	@if rg -n --glob '*.lua' --glob '!target/**' '^--- @' .; then \
+		echo "Invalid Lua annotation syntax: remove the space after ---" >&2; \
+		exit 1; \
+	fi
 
 stylefix:
 	stylua lua/ plugin/
@@ -158,13 +167,12 @@ setup-deps:
 .PHONY: lint
 lint: luacheck luastylecheck ruststylecheck rustlint
 
-.PHONY: .luarc.json
-.luarc.json:
-	./scripts/setup-deps.sh generate-luarc ./.luarc.json
-
-.PHONY: lua-typecheck
-lua-typecheck:
+.PHONY: luatypecheck
+luatypecheck:
 	./scripts/lua-typecheck.sh
+
+.PHONY: luaallcheck
+luaallcheck: luacheck luastylecheck luaannotationcheck luatypecheck
 
 .PHONY: build-image
 build-image:

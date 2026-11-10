@@ -62,7 +62,7 @@ local BUSY_STATES = {
 ---Calls `callback` with a ready client for the current provider: the sidebar's own client when it
 ---is connected, otherwise a temporary one that `release` stops.
 ---@param sidebar avante.Sidebar|nil
----@param acp_provider table
+---@param acp_provider AvanteACPProvider
 ---@param callback fun(client: avante.acp.ACPClient, release: fun())
 local function with_client(sidebar, acp_provider, callback)
   local client = sidebar and sidebar.acp_client

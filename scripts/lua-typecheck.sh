@@ -31,7 +31,7 @@ run_typechecker() {
     command -v lua-language-server &>/dev/null || die "lua-language-server not found in PATH."
 
     log "Running Lua typechecker..."
-    lua-language-server --check="$PWD/lua" \
+    lua-language-server --check="$PWD" \
         --loglevel=trace \
         --configpath="$config_path" \
         --checklevel=Information

@@ -271,7 +271,7 @@ M.instructions_file = "avante.md"
 ---@field debug boolean
 --- will keep requests and responses on the filesystem. Check the logs to find their paths
 ---@field log_level vim.log.levels
----@field memory_summary_provider any TODO
+---@field memory_summary_provider? avante.ProviderName
 --- Avante.nvim provides two interaction modes:
 --- - *agentic* (default): Uses AI tools to automatically generate and apply code changes
 --- - *legacy*: Uses the traditional planning method without automatic tool execution
@@ -285,12 +285,12 @@ M.instructions_file = "avante.md"
 --- WARNING: Since auto-suggestions are a high-frequency operation and therefore expensive,
 --- currently designating it as `copilot` provider is dangerous because: https://github.com/yetone/avante.nvim/issues/1048
 --- Of course, you can reduce the request frequency by increasing `suggestion.debounce`.
----@field auto_suggestions_provider? boolean
+---@field auto_suggestions_provider? avante.ProviderName
 ---To add support for custom provider, follow the format below
 ---See https://github.com/avante-corp/avante.nvim/wiki#custom-providers for more details
----@field providers {string: AvanteProvider}
+---@field providers table<string, AvanteProvider>
 ---Agent Client Protocol providers.  |avante-acp|
----@field acp_providers {string: AvanteACPProvider}
+---@field acp_providers table<string, AvanteACPProvider>
 ---
 ---Default provider on startup. An explicit :AvanteSwitchProvider --save choice takes precedence.
 ---If undefined, avante loads the last provider used.
@@ -1153,6 +1153,7 @@ function M.setup(opts)
       },
     }
   )
+  ---@cast merged avante.Config
 
   local known_providers = vim.tbl_extend("force", merged.providers or {}, merged.acp_providers or {})
   local last_model, last_provider, save_provider = M.get_last_used_model(known_providers)
@@ -1216,6 +1217,7 @@ function M.get_window_width() return math.ceil(vim.o.columns * (M.windows.width 
 
 ---Get supported providers
 ---@param provider_name avante.ProviderName
+---@return AvanteSupportedProvider
 function M.get_provider_config(provider_name)
   local found = false
   local config = {}

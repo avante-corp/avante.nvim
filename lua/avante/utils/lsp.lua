@@ -187,6 +187,7 @@ end
 
 ---@param bufnr integer
 ---@param selection avante.SelectionResult
+---@return AvanteDiagnostic[]
 function M.get_current_selection_diagnostics(bufnr, selection)
   local diagnostics = M.get_diagnostics(bufnr)
   local selection_diagnostics = {}

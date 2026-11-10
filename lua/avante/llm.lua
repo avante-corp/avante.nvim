@@ -529,6 +529,7 @@ function M.calculate_tokens(opts)
 end
 
 ---@param opts avante.LLMRequestOpts
+---@return table?
 function M.request(opts)
   local provider = opts.provider
   local prompt_opts = opts.prompt_opts
@@ -609,11 +610,13 @@ local function track_acp_request(opts, acp_client)
   return request
 end
 
+---@param opts AvanteLLMStreamOptions
+---@return { cwd: string, provider: AvanteACPProvider }
 local function acp_context(opts)
   if not opts.acp_context then
     opts.acp_context = {
       cwd = Utils.root.get(),
-      provider = vim.deepcopy(Config.acp_providers[Config.provider] or {}),
+      provider = vim.deepcopy(assert(Config.acp_providers[Config.provider], "ACP provider is not configured")),
     }
   end
   return opts.acp_context
@@ -935,6 +938,7 @@ function M._stream_acp(opts)
         end,
       },
     })
+    ---@cast acp_config avante.acp.ClientConfig
     acp_client = ACPClient:new(acp_config)
     acp_client.update_request_context = function(next_opts)
       close_acp_request(opts)
@@ -1210,6 +1214,7 @@ function M._continue_stream_acp(opts, acp_client, session_id)
 end
 
 ---@param opts AvanteLLMStreamOptions
+---@return table?
 function M._stream(opts)
   if opts.acp_context or Config.acp_providers[Config.provider] then return M._stream_acp(opts) end
 
@@ -1289,8 +1294,10 @@ function M._stream(opts)
       if stop_opts.usage and opts.update_tokens_usage then opts.update_tokens_usage(stop_opts.usage) end
 
       ---@param tool_uses AvantePartialLLMToolUse[]
+      ---@param tool_use_messages avante.HistoryMessage[]
       ---@param tool_use_index integer
       ---@param tool_results AvanteLLMToolResult[]
+      ---@return nil
       local function handle_next_tool_use(tool_uses, tool_use_messages, tool_use_index, tool_results)
         if tool_use_index > #tool_uses then
           ---@type avante.HistoryMessage[]
@@ -1329,6 +1336,7 @@ function M._stream(opts)
         local partial_tool_use_message = tool_use_messages[tool_use_index]
         ---@param result string | nil
         ---@param error string | nil
+        ---@return nil
         local handle_tool_result = protect_callback(function(result, error)
           partial_tool_use_message.is_calling = false
           if request_state.finished then return end
@@ -1542,13 +1550,20 @@ local function _merge_response(first_response, second_response, opts)
   M._stream(opts)
 end
 
+---@param opts AvanteLLMStreamOptions
+---@param Provider1 AvanteProviderFunctor
+---@param Provider2 AvanteProviderFunctor
+---@return nil
 function M._dual_boost_stream(opts, Provider1, Provider2)
   Utils.debug("Starting Dual Boost Stream")
 
   local collector, streams = {}, {}
   local terminal = false
   local timer = uv.new_timer()
-  if not timer then return opts.on_stop({ reason = "error", error = "Failed to create dual boost timer" }) end
+  if not timer then
+    opts.on_stop({ reason = "error", error = "Failed to create dual boost timer" })
+    return
+  end
 
   local function finish(result)
     if terminal then return end
@@ -1589,6 +1604,7 @@ function M._dual_boost_stream(opts, Provider1, Provider2)
     stream_opts.session_ctx = vim.deepcopy(opts.session_ctx or {})
     stream_opts.session_ctx.resolved_api_route = nil
     rawset(stream_opts, "_request_state", { cancelled = false })
+    ---@cast stream_opts AvanteLLMStreamOptions
     return stream_opts
   end
 

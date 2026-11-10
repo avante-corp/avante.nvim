@@ -51,6 +51,7 @@ function M.switch_provider(provider_name, save_choice)
 end
 
 ---@param path string
+---@return string
 local function to_windows_path(path)
   local winpath = path:gsub("/", "\\")
 
@@ -65,6 +66,7 @@ end
 ---Defaults to download the libraries but passing `source=true` will force a local build via cargo
 ---Blocking as it waits for cargo to finish
 ---@param opts? {source?: boolean, version?: string}
+---@return vim.SystemCompleted
 function M.build(opts)
   opts = opts or { source = true }
   local version = opts.version or require("avante.version")
@@ -150,7 +152,8 @@ end
 
 M.zen_mode = M.full_view_ask
 
----@param opts? AskOptions
+---@param opts? AskOptions | string
+---@return boolean
 function M.ask(opts)
   opts = opts or {}
   if type(opts) == "string" then
@@ -175,6 +178,7 @@ function M.ask(opts)
   opts = vim.tbl_extend("force", { selection = Utils.get_visual_selection_and_range() }, opts)
 
   ---@param input string | nil
+  ---@return boolean
   local function ask(input)
     if chat_switch_is_blocked() then return false end
     Config.ask_opts = opts
@@ -236,6 +240,7 @@ function M.get_suggestion()
 end
 
 ---@param opts? AskOptions
+---@return false?
 function M.refresh(opts)
   opts = opts or {}
   local sidebar = require("avante").get()

@@ -84,6 +84,8 @@ local function format_response(resp, formatter) return formatter(vim.json.decode
 ---@param request_opts table
 ---@param opts AvanteLLMToolFuncOpts
 ---@param formatter WebSearchResponseFormatter
+---@return string? result
+---@return string? error
 local function request(method, url, request_opts, opts, formatter)
   if Config.web_search_engine.proxy then return nil, "web_search_engine.proxy is not supported by vim.net" end
   -- vim.net.request calls back from a fast event; on_complete may call nvim APIs, so leave it first.

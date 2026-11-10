@@ -81,13 +81,23 @@
 ---@field on_replay? fun(update: table): boolean
 ---@field additional_directories? string[]
 
+---@class avante.acp.PromptResult
+---@field stopReason "end_turn"|"cancelled"|string
+
+---@alias avante.acp.OperationCallback fun(result: table|nil, err: avante.acp.ACPError|nil)
+---@alias avante.acp.SessionCallback fun(session_id: string|nil, err: avante.acp.ACPError|nil)
+---@alias avante.acp.ErrorCallback fun(err: avante.acp.ACPError|nil)
+---@alias avante.acp.ListSessionsCallback fun(sessions: avante.acp.SessionInfo[], err: avante.acp.ACPError|nil)
+---@alias avante.acp.ConfigCallback fun(options: avante.acp.ConfigOption[]|nil, err: avante.acp.ACPError|nil)
+---@alias avante.acp.PromptCallback fun(result: avante.acp.PromptResult|nil, err: avante.acp.ACPError|nil)
+
 ---@class ACPHandlers
 ---@field on_session_update? fun(update: table)
 ---@field on_config_change? fun()
----@field on_request_permission? fun(tool_call: table, options: table[], callback: fun(option_id: string|nil))
+---@field on_request_permission? fun(tool_call: avante.acp.ToolCall, options: avante.acp.PermissionOption[], callback: fun(option_id: string|nil))
 ---@field on_read_file? fun(path: string, line: integer|nil, limit: integer|nil, callback: fun(content: string), error_callback: fun(message: string, kind?: string))
 ---@field on_write_file? fun(path: string, content: string, callback: fun(error_message?: string))
----@field on_error? fun(error: table)
+---@field on_error? fun(error: avante.acp.ACPError)
 ---@field on_state_change? fun(state: string)
 
 ---@class avante.acp.ClientConfig : AvanteACPProvider
@@ -98,14 +108,14 @@
 ---@field connection_state "disconnected"|"connecting"|"ready"|"error"
 ---@field native userdata|table|nil
 ---@field native_generation integer
----@field callbacks table<integer, fun(result: table|nil, err: avante.acp.ACPError|nil)>
+---@field callbacks table<integer, avante.acp.OperationCallback>
 ---@field connect_callbacks fun(err: avante.acp.ACPError|nil)[]
 ---@field stop_callbacks fun(err: avante.acp.ACPError|nil)[]
 ---@field session_replay_handlers table<string, fun(update: table): boolean>
 ---@field loading_sessions table<string, table>
 ---@field pending_session_operations integer
 ---@field session_commands table<string, { name: string, description?: string }[]>
----@field poll_timer any
+---@field poll_timer uv.uv_timer_t|nil
 ---@field reconnect_count integer
 ---@field stop_requested boolean
 ---@field is_stopping boolean
@@ -195,6 +205,9 @@ function ACPClient:new(config)
   }, self)
 end
 
+---@param left? AvanteACPProvider
+---@param right? AvanteACPProvider
+---@return boolean
 function ACPClient.is_same_process_config(left, right)
   if not left or not right then return false end
   return left.command == right.command
@@ -207,6 +220,10 @@ function ACPClient.is_same_process_config(left, right)
     and (left.session_close_timeout or 500) == (right.session_close_timeout or 500)
 end
 
+---@param lines string[]
+---@param line? integer
+---@param limit? integer
+---@return string[]
 function ACPClient._slice_lines(lines, line, limit)
   local first = line or 1
   local last = limit == nil and #lines or math.min(#lines, first + limit - 1)
@@ -666,6 +683,10 @@ local function session_setup(self, cwd, mcp_servers, additional_directories)
   }
 end
 
+---@param cwd string
+---@param mcp_servers avante.acp.McpServer[]|nil
+---@param callback avante.acp.SessionCallback
+---@param additional_directories? string[]
 function ACPClient:create_session(cwd, mcp_servers, callback, additional_directories)
   local setup = session_setup(self, cwd, mcp_servers, additional_directories)
   self.pending_session_operations = self.pending_session_operations + 1
@@ -683,6 +704,11 @@ function ACPClient:create_session(cwd, mcp_servers, callback, additional_directo
   end, setup)
 end
 
+---@param session_id string
+---@param cwd string
+---@param mcp_servers avante.acp.McpServer[]|nil
+---@param callback avante.acp.OperationCallback
+---@param opts? avante.acp.LoadSessionOpts
 function ACPClient:load_session(session_id, cwd, mcp_servers, callback, opts)
   if self.loading_sessions[session_id] then
     callback(nil, create_error("invalid_request", "Session is already loading"))
@@ -708,6 +734,11 @@ function ACPClient:load_session(session_id, cwd, mcp_servers, callback, opts)
   end, session_id, setup)
 end
 
+---@param session_id string
+---@param cwd string
+---@param mcp_servers avante.acp.McpServer[]|nil
+---@param callback avante.acp.OperationCallback
+---@param additional_directories? string[]
 function ACPClient:resume_session(session_id, cwd, mcp_servers, callback, additional_directories)
   local setup = session_setup(self, cwd, mcp_servers, additional_directories)
   self.pending_session_operations = self.pending_session_operations + 1
@@ -722,6 +753,8 @@ function ACPClient:resume_session(session_id, cwd, mcp_servers, callback, additi
   end, session_id, setup)
 end
 
+---@param session_id string
+---@param callback? avante.acp.ErrorCallback
 function ACPClient:close_session(session_id, callback)
   start_operation(self, "close_session", function(_, err)
     if not err then self.session_commands[session_id] = nil end
@@ -734,6 +767,8 @@ function ACPClient:close_session(session_id, callback)
   end, session_id)
 end
 
+---@param session_id string
+---@param callback? avante.acp.ErrorCallback
 function ACPClient:delete_session(session_id, callback)
   start_operation(self, "delete_session", function(_, err)
     if not err then self.session_commands[session_id] = nil end
@@ -754,6 +789,8 @@ function ACPClient:supports_load_session() return self.supports_load end
 ---@return boolean
 function ACPClient:supports_list_sessions() return self.supports_list end
 
+---@param cwd string
+---@param callback avante.acp.ListSessionsCallback
 function ACPClient:list_all_sessions(cwd, callback)
   start_operation(
     self,
@@ -763,6 +800,10 @@ function ACPClient:list_all_sessions(cwd, callback)
   )
 end
 
+---@param session_id string
+---@param config_id string
+---@param value string|boolean
+---@param callback? avante.acp.ConfigCallback
 function ACPClient:set_session_option(session_id, config_id, value, callback)
   start_operation(self, "set_session_option", function(result, err)
     if not err and self.active_session_id == session_id then apply_config_result(self, result) end
@@ -770,10 +811,14 @@ function ACPClient:set_session_option(session_id, config_id, value, callback)
   end, session_id, config_id, value)
 end
 
+---@param session_id string
+---@param prompt table[]
+---@param callback avante.acp.PromptCallback
 function ACPClient:send_prompt(session_id, prompt, callback)
   start_operation(self, "prompt", callback, session_id, prompt)
 end
 
+---@param session_id string
 function ACPClient:cancel_session(session_id) send_native(self, "cancel", session_id) end
 
 ---Whether the client can accept a new operation.

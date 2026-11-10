@@ -7,12 +7,10 @@ AVANTE_ROCKSPEC="$SCRIPT_DIR/../avante.nvim-dev-1.rockspec"
 
 # Optional integrations needed to resolve their types during Lua typechecking.
 OPTIONAL_DEPS=(
-    neodev.nvim
     snacks.nvim
     telescope.nvim
     nvim-cmp
     fzf-lua
-    copilot.lua
     lazy.nvim
 )
 
@@ -46,14 +44,11 @@ install_deps() {
 
 generate_luarc() {
     local luarc_path="${1}"
-    local luarc_template="$SCRIPT_DIR/../luarc.json.template"
+    local luarc_source="$SCRIPT_DIR/../.luarc.json"
 
     log_verbose "Generating luarc file at: $luarc_path"
     mkdir -p "$(dirname "$luarc_path")"
-
-    # LuaRocks installs all dependency modules into a shared Lua library directory.
-    # TODO does path depends on lua interpreter version?
-    sed 's#{{DEPS}}#, "$DEPS_PATH/share/lua/5.1"#' "$luarc_template" > "$luarc_path"
+    cp "$luarc_source" "$luarc_path"
 }
 
 main() {

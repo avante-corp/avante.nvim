@@ -456,6 +456,7 @@ function M.get(current)
 end
 
 ---@param id integer
+---@return Avante
 function M._init(id)
   local sidebar = M.sidebars[id]
   local selection = M.selections[id]
@@ -483,6 +484,7 @@ end
 M.toggle = { api = true }
 
 ---@param opts? AskOptions
+---@return boolean
 function M.toggle_sidebar(opts)
   opts = opts or {}
   if opts.ask == nil then opts.ask = true end
@@ -497,6 +499,7 @@ function M.toggle_sidebar(opts)
   return sidebar:toggle(opts)
 end
 
+---@return boolean
 function M.is_sidebar_open()
   local sidebar = M.get()
   if not sidebar then return false end
@@ -504,6 +507,7 @@ function M.is_sidebar_open()
 end
 
 ---@param opts? AskOptions
+---@return avante.Sidebar | false
 function M.open_sidebar(opts)
   opts = opts or {}
   if opts.ask == nil then opts.ask = true end

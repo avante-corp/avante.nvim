@@ -21,17 +21,19 @@ local Input = {}
 Input.__index = Input
 
 ---@param opts avante.ui.InputOption
+---@return avante.ui.Input
 function Input:new(opts)
-  local o = {}
-  setmetatable(o, Input)
-  o.provider = opts.provider
-  o.title = opts.title
-  o.default = opts.default or ""
-  o.completion = opts.completion
-  o.provider_opts = opts.provider_opts or {}
-  o.on_submit = opts.on_submit
-  o.conceal = opts.conceal or false
-  return o
+  ---@type avante.ui.Input
+  local input = {
+    provider = opts.provider,
+    title = opts.title,
+    default = opts.default or "",
+    completion = opts.completion,
+    provider_opts = opts.provider_opts or {},
+    on_submit = opts.on_submit,
+    conceal = opts.conceal or false,
+  }
+  return setmetatable(input, Input)
 end
 
 function Input:open()

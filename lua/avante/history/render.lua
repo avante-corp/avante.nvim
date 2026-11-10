@@ -222,6 +222,7 @@ end
 ---@param content any
 ---@param decoration string | nil
 ---@param truncate boolean | nil
+---@return avante.ui.Line[]
 function M.get_content_lines(content, decoration, truncate)
   local lines = {}
   local content_obj = content

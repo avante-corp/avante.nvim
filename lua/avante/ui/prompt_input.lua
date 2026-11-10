@@ -31,6 +31,7 @@ PromptInput.__index = PromptInput
 ---@field default_value? string
 
 ---@param opts? avante.ui.PromptInputOptions
+---@return avante.ui.PromptInput
 function PromptInput:new(opts)
   opts = opts or {}
   local obj = setmetatable({}, PromptInput)

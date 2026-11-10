@@ -11,6 +11,7 @@ Range.__index = Range
 ---Create a selection range
 ---@param start avante.RangeSelection Selection start point
 ---@param finish avante.RangeSelection Selection end point
+---@return avante.Range
 function Range:new(start, finish)
   local instance = setmetatable({}, Range)
   instance.start = start

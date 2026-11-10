@@ -7,7 +7,7 @@ local Config = require("avante.config")
 local ImgClip = nil
 
 ---@class AvanteClipboard
----@field get_base64_content fun(filepath: string): string | nil
+---@field get_base64_content fun(filepath: string): string
 ---
 ---@class avante.Clipboard: AvanteClipboard
 local M = {}
@@ -33,6 +33,7 @@ function M.setup()
 end
 
 ---@param line? string
+---@return boolean
 function M.paste_image(line)
   line = line or nil
   if not Config.support_paste_image() then return false end
@@ -53,9 +54,10 @@ function M.paste_image(line)
 end
 
 ---@param filepath string
+---@return string
 function M.get_base64_content(filepath)
   local os_mapping = Utils.get_os_name()
-  ---@type vim.SystemCompleted
+  ---@type { stdout: string, code: integer }
   local output
   if os_mapping == "darwin" or os_mapping == "linux" then
     output = Utils.shell_run(("cat %s | base64 | tr -d '\n'"):format(filepath))

@@ -17,10 +17,12 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
     - uses: $/.github/actions/install-nix
+    - name: Setup Lua dependencies
+      run: nix develop .#ci --command make setup-deps
     # Needs to be installed before running pyright
     - name: setup rag service venv
       run: nix develop .#ci --command make rag-venv
     - name: Run pre-commit
-      run: nix develop --command make pre-commit
+      run: nix develop .#ci --command make pre-commit
     - uses: pre-commit-ci/lite-action@v1.1.0
       if: always()

@@ -93,6 +93,7 @@ end
 
 ---@param input_cmd string
 ---@param shell_cmd string?
+---@return string[]
 local function get_cmd_for_shell(input_cmd, shell_cmd)
   local shell = vim.o.shell:lower()
   local cmd = {}
@@ -119,13 +120,13 @@ end
 --- This function will run given shell command synchronously.
 ---@param input_cmd string
 ---@param shell_cmd string?
----@return vim.SystemCompleted
+---@return { stdout: string, code: integer }
 function M.shell_run(input_cmd, shell_cmd)
   local cmd = get_cmd_for_shell(input_cmd, shell_cmd)
 
   local result = vim.system(cmd, { text = true }):wait()
 
-  return { stdout = result.stdout, code = result.code }
+  return { stdout = result.stdout or "", code = result.code }
 end
 
 ---@param input_cmd string
@@ -201,6 +202,7 @@ end
 ---@see https://github.com/LazyVim/LazyVim/blob/main/lua/lazyvim/util/toggle.lua
 
 ---@param toggle ToggleBind
+---@return ToggleBind.wrap
 function M.toggle_wrap(toggle)
   return setmetatable(toggle, {
     __call = function()
@@ -245,6 +247,7 @@ function M.safe_keymap_set(mode, lhs, rhs, opts)
   ---@cast modes -string
 
   ---@param m string
+  ---@return boolean
   ---@diagnostic disable-next-line: undefined-field
   modes = vim.tbl_filter(function(m) return not (Keys and Keys.have and Keys:have(lhs, m)) end, modes)
 
@@ -262,6 +265,7 @@ end
 
 ---@param str string
 ---@param opts? {suffix?: string, prefix?: string}
+---@return string
 function M.trim(str, opts)
   local res = str
   if not opts then return res end
@@ -272,6 +276,7 @@ function M.trim(str, opts)
   return res
 end
 
+---@return boolean
 function M.in_visual_mode()
   local current_mode = fn.mode()
   return current_mode == "v" or current_mode == "V" or current_mode == ""
@@ -390,6 +395,7 @@ function M.norm(path) return M.path.normalize(path) end
 
 ---@param msg string|string[]
 ---@param opts? LazyNotifyOpts
+---@return nil
 function M.notify(msg, opts)
   if msg == nil then return end
   if vim.in_fast_event() then
@@ -619,6 +625,7 @@ end
 
 -- luacheck: push no max comment line length
 ---@param type_name "'nil'" | "'number'" | "'string'" | "'boolean'" | "'table'" | "'function'" | "'thread'" | "'userdata'" | "'list'" | '"map"'
+---@param v any
 ---@return boolean
 function M.is_type(type_name, v)
   ---@diagnostic disable-next-line: deprecated
@@ -1441,6 +1448,8 @@ function M.icon(string_with_icon, utf8_fallback)
   end
 end
 
+---@param behavior "error"|"keep"|"force"
+---@param ... table
 ---@return table
 function M.deep_extend_with_metatable(behavior, ...)
   local tables = { ... }
@@ -1482,15 +1491,16 @@ end
 ---@return string|nil error
 function M.parse_iso8601_date(iso_str)
   local year, month, day, hour, min, sec = iso_str:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)Z")
-  if not year then return nil, "Invalid ISO 8601 format" end
+  if not (year and month and day and hour and min and sec) then return nil, "Invalid ISO 8601 format" end
 
+  ---@type osdateparam
   local time_table = {
-    year = tonumber(year),
-    month = tonumber(month),
-    day = tonumber(day),
-    hour = tonumber(hour),
-    min = tonumber(min),
-    sec = tonumber(sec),
+    year = assert(tonumber(year)),
+    month = assert(tonumber(month)),
+    day = assert(tonumber(day)),
+    hour = assert(tonumber(hour)),
+    min = assert(tonumber(min)),
+    sec = assert(tonumber(sec)),
     isdst = false,
   }
 
@@ -1674,6 +1684,7 @@ function M.parse_args(fargs, options)
 end
 
 ---@param tool_use AvanteLLMToolUse
+---@return boolean
 function M.is_edit_tool_use(tool_use)
   return tool_use.name == "str_replace"
     or tool_use.name == "edit_file"

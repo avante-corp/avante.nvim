@@ -1,4 +1,4 @@
----@meta types
+---@meta
 
 ---@class vim.api.create_autocmd.callback.args
 ---@field id number
@@ -166,7 +166,8 @@ vim.g.avante_login = vim.g.avante_login
 ---@field auth_type? "api_key" | "subscription" Defaults to api_key; Copilot defaults to subscription and supports only subscription
 ---@field hide_in_model_selector? boolean Dont show provider in |:AvanteSwitchProvider|
 ---@field context_window? integer Context window used to trigger local compaction
----@field use_response_api? boolean | fun(provider: AvanteDefaultBaseProvider, ctx?: any): boolean
+---@field use_response_api? boolean | fun(provider: AvanteDefaultBaseProvider, ctx?: AvantePromptOptions): boolean
+---@field _use_response_api_resolver? fun(provider: AvanteDefaultBaseProvider, ctx?: AvantePromptOptions): boolean
 ---@field support_previous_response_id? boolean Use Responses API response IDs for tool-result continuations
 ---
 ---
@@ -257,6 +258,7 @@ vim.g.avante_login = vim.g.avante_login
 ---
 ---@class AvanteACPProvider
 ---@field command string
+---@field model? string
 ---@field args? string[]
 ---@field env? table<string, string>
 ---@field auth_method? string
@@ -295,7 +297,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field get_tokens_usage? fun(): avante.LLMTokenUsage | nil
 ---
 ---@class AvanteGeneratePromptsOptions: AvanteTemplateOptions
----@field acp_context? { cwd: string, provider: table } Submission-time execution context
+---@field acp_context? { cwd: string, provider: AvanteACPProvider } Submission-time execution context
 ---@field instructions? string
 ---@field mode? AvanteLlmMode
 ---@field provider AvanteProviderFunctor | AvanteBedrockProviderFunctor | nil
@@ -369,7 +371,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field store table | nil
 ---@field result_message avante.HistoryMessage | nil
 ---
---- @alias avante.LLMToolOnRender<T> fun(input: T, opts: avante.LLMToolOnRenderOpts): avante.ui.Line[]
+---@alias avante.LLMToolOnRender<T> fun(input: T, opts: avante.LLMToolOnRenderOpts): avante.ui.Line[]
 ---
 ---@class AvanteLLMTool
 ---@field name string

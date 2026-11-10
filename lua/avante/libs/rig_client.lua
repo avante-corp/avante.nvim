@@ -137,7 +137,7 @@ end
 ---@param session_ctx? table
 ---@return avante.llm.NativeRequestInput
 function M._build_request(provider, prompt_opts, session_ctx)
-  local protocol = provider._protocol or provider._name
+  local protocol = assert(provider._protocol or provider._name, "Provider protocol is not set")
   local provider_conf, additional_params = Providers.parse_config(provider)
   local chatgpt = protocol == "openai" and provider_conf.auth_type == "subscription"
   local name = provider._name or protocol
@@ -201,13 +201,16 @@ function M._build_request(provider, prompt_opts, session_ctx)
     deployment = provider_conf.deployment
     if not deployment or deployment:match("^%s*$") then error("Azure deployment is not set", 0) end
   end
+  local model = provider_conf.model or deployment
+  if not model or model:match("^%s*$") then error("Provider model is not set", 0) end
 
+  ---@type avante.llm.NativeRequestInput
   local input = {
     provider = {
       name = name,
       dialect = rawget(provider_conf, "dialect"),
       protocol = protocol,
-      model = provider_conf.model or deployment,
+      model = model,
       deployment = deployment,
       baseUrl = provider_conf.endpoint,
       apiKey = credential,

@@ -2,20 +2,33 @@
   "$schema": "https://raw.githubusercontent.com/sumneko/vscode-lua/master/setting/schema.json",
   "runtime": {
     "version": "LuaJIT",
+    "path": [
+      "lua/?.lua",
+      "lua/?/init.lua",
+      "?.lua",
+      "?/init.lua"
+    ],
     "pathStrict": true
   },
   "workspace": {
     "library": [
       "$VIMRUNTIME/lua",
-      "$VIMRUNTIME/lua/vim/lsp",
-      "$PWD/lua",
       "${3rd}/luv/library",
-      "$DEPS_PATH/luvit-meta/library"
-      , "$DEPS_PATH/share/lua/5.1"
+      "${workspaceFolder}/target/tests/deps/share/lua/5.1",
+      "${env:DEPS_PATH}/share/lua/5.1"
     ],
     "ignoreDir": [
-      "/lua"
+      "tests"
     ],
-    "checkThirdParty": false
+    "checkThirdParty": "Disable"
+  },
+  "diagnostics": {
+    "neededFileStatus": {
+      "incomplete-signature-doc": "Any!",
+      "missing-local-export-doc": "Any!"
+    }
+  },
+  "type": {
+    "checkTableShape": true
   }
 }

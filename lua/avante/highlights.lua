@@ -123,6 +123,7 @@ function M.setup_conflict_highlights()
   local custom_hls = Config.highlights.diff
 
   ---@return number | nil
+  ---@param hl_name string
   local function get_bg(hl_name) return Utils.get_hl(hl_name).bg end
 
   local function get_bold(hl_name) return Utils.get_hl(hl_name).bold end
@@ -199,6 +200,7 @@ end
 
 ---@param attr integer
 ---@param percent integer
+---@return integer
 function H.alter(attr, percent) return math.floor(attr * (100 + percent) / 100) end
 
 ---@source https://stackoverflow.com/q/5560248

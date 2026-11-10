@@ -26,6 +26,8 @@ function M.show(selector)
       end
       return items
     end,
+    -- fzf_live accepts public options and normalizes them despite its Resolved annotation.
+    ---@diagnostic disable-next-line: param-type-mismatch
     vim.tbl_deep_extend("force", {
       prompt = selector.title,
       query = selector.default_query,

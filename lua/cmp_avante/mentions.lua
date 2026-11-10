@@ -37,6 +37,7 @@ local MentionsSource = {}
 MentionsSource.__index = MentionsSource
 
 ---@param get_mentions fun(): AvanteMention[]
+---@return mentions_source
 function MentionsSource:new(get_mentions)
   local instance = setmetatable({}, MentionsSource)
 
@@ -56,6 +57,8 @@ function MentionsSource:get_trigger_characters() return { "@" } end
 function MentionsSource:get_keyword_pattern() return [[\%(@\|#\|/\)\k*]] end
 
 ---@param params cmp.SourceCompletionApiParams
+---@param callback fun(response: lsp.CompletionResponse|nil)
+---@return nil
 function MentionsSource:complete(params, callback)
   ---@type string?
   local trigger_character

@@ -214,6 +214,7 @@ When you're done, provide a clear and concise summary of what you found.]]):gsub
     on_tool_log = session_ctx.on_tool_log,
     on_messages_add = function(msgs)
       msgs = vim.islist(msgs) and msgs or { msgs }
+      ---@cast msgs avante.HistoryMessage[]
       for _, msg in ipairs(msgs) do
         local idx = nil
         for i, m in ipairs(history_messages) do

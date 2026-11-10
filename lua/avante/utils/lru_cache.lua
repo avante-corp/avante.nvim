@@ -1,6 +1,20 @@
+---@class avante.LRUCacheNode
+---@field key any
+---@field value any
+---@field prev? avante.LRUCacheNode
+---@field next? avante.LRUCacheNode
+
+---@class avante.LRUCache
+---@field capacity integer
+---@field cache table<any, avante.LRUCacheNode>
+---@field head? avante.LRUCacheNode
+---@field tail? avante.LRUCacheNode
+---@field size integer
 local LRUCache = {}
 LRUCache.__index = LRUCache
 
+---@param capacity integer
+---@return avante.LRUCache
 function LRUCache:new(capacity)
   return setmetatable({
     capacity = capacity,

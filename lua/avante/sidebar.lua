@@ -196,6 +196,7 @@ end
 ---@field win_width integer | nil
 
 ---@param id integer the tabpage id retrieved from api.nvim_get_current_tabpage()
+---@return avante.Sidebar
 function Sidebar:new(id)
   return setmetatable({
     id = id,
@@ -286,6 +287,7 @@ end
 ---@field selection? avante.SelectionResult
 
 ---@param opts? AskOptions
+---@return boolean
 function Sidebar:can_open(opts)
   if not self.is_generating then return true end
   opts = opts or {}
@@ -303,6 +305,7 @@ function Sidebar:can_open(opts)
 end
 
 ---@param opts? SidebarOpenOptions
+---@return avante.Sidebar | false
 function Sidebar:open(opts)
   opts = opts or {}
   if not self:can_open(opts) then return false end
@@ -442,11 +445,13 @@ function Sidebar:focus_input()
 end
 
 ---Checks if sidebar is visible/open
+---@return boolean
 function Sidebar:is_open() return Utils.is_valid_container(self.containers.result, true) end
 
 function Sidebar:in_code_win() return self.code.winid == api.nvim_get_current_win() end
 
 ---@param opts AskOptions
+---@return boolean
 function Sidebar:toggle(opts)
   local in_visual_mode = Utils.in_visual_mode() and self:in_code_win()
   if self:is_open() and not in_visual_mode then
@@ -853,7 +858,8 @@ local function insert_conflict_contents(bufnr, snippets)
   end
 end
 
----@param codeblocks table<integer, any>
+---@param codeblocks AvanteCodeblock[]
+---@return AvanteCodeblock?
 local function is_cursor_in_codeblock(codeblocks)
   local cursor_line, _ = Utils.get_cursor_pos()
 
@@ -1140,6 +1146,10 @@ local base_win_options = {
 ---@param opts table?
 ---When include_model is set, in ACP mode, model will be rendered as "model | mode"
 ---else it will be set as
+---@param winid integer
+---@param bufnr integer
+---@param hl string
+---@param reverse_hl string
 function Sidebar:render_header(winid, bufnr, header_text, hl, reverse_hl, opts)
   opts = vim.tbl_extend("force", { include_model = false }, opts or {})
   if not Config.windows.sidebar_header.enabled then return end
@@ -1196,7 +1206,7 @@ function Sidebar:render_header(winid, bufnr, header_text, hl, reverse_hl, opts)
   api.nvim_set_option_value("winbar", winbar_text, { win = winid })
 end
 
---- @see render_header
+---@see render_header
 function Sidebar:render_result_header()
   if not Utils.is_valid_container(self.containers.result) then return end
   self:render_header(
@@ -1699,8 +1709,8 @@ end
 
 --- Given a desired container name, returns the window ID of the first valid container
 --- situated above it in the sidebar's order.
---- @param container_name string The name of the container to start searching from.
---- @return integer|nil The window ID of the previous valid container, or nil.
+---@param container_name string The name of the container to start searching from.
+---@return integer|nil The window ID of the previous valid container, or nil.
 function Sidebar:get_split_candidate(container_name)
   local start_index = 0
   for i, name in ipairs(SIDEBAR_CONTAINERS) do
@@ -1863,7 +1873,7 @@ function Sidebar:toggle_code_window()
 end
 
 --- Initialize the sidebar instance.
---- @return avante.Sidebar The Sidebar instance.
+---@return avante.Sidebar The Sidebar instance.
 function Sidebar:initialize()
   self.code.winid = api.nvim_get_current_win()
   self.code.bufnr = api.nvim_get_current_buf()
@@ -1935,6 +1945,7 @@ end, 50)
 
 ---@param content string concatenated content of the buffer
 ---@param opts? {focus?: boolean, scroll?: boolean, backspace?: integer, callback?: fun(): nil} whether to focus the result view
+---@return avante.Sidebar?
 function Sidebar:update_content(content, opts)
   if not Utils.is_valid_container(self.containers.result) then return end
 
@@ -2018,6 +2029,7 @@ end
 ---@param timestamp string|osdate
 ---@param provider string
 ---@param model string
+---@param mode string?
 ---@param request string
 ---@param selected_filepaths string[]
 ---@param selected_code AvanteSelectedCode?
@@ -2724,6 +2736,7 @@ function Sidebar:add_history_messages(messages, opts)
   local bufnr = opts.bufnr or self.code.bufnr
   local history_messages = History.get_history_messages(chat_history)
   messages = vim.islist(messages) and messages or { messages }
+  ---@cast messages avante.HistoryMessage[]
   for _, message in ipairs(messages) do
     set_user_message_metadata(self, message)
     local idx = nil
@@ -3684,6 +3697,7 @@ function Sidebar:adjust_result_container_layout()
 end
 
 ---@param opts AskOptions
+---@return avante.Sidebar
 function Sidebar:render(opts)
   self.augroup = api.nvim_create_augroup("avante_sidebar_" .. self.id, { clear = true })
 

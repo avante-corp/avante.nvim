@@ -121,6 +121,7 @@ function M.get_builtin_commands()
     .iter(builtin_commands)
     :map(
       ---@param command AvanteSlashCommand
+      ---@return AvanteSlashCommand
       function(command)
         local command_ = vim.deepcopy(command)
         command_.callback = callbacks[command.name]

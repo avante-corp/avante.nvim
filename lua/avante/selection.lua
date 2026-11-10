@@ -32,6 +32,7 @@ Selection.__index = Selection
 Selection.did_setup = false
 
 ---@param id integer the tabpage id retrieved from api.nvim_get_current_tabpage()
+---@return avante.Selection
 function Selection:new(id)
   return setmetatable({
     id = id,

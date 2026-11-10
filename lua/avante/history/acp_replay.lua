@@ -122,10 +122,13 @@ function M.apply_update(state, update)
 
   local id = update.toolCallId
   local patch = vim.tbl_extend("force", {}, update)
+  ---@cast patch avante.acp.ToolCallUpdate
   local changed = {}
   local message = state.tool_calls[id]
   if message then
-    message.acp_tool_call = vim.tbl_extend("force", message.acp_tool_call or {}, patch)
+    local tool_call = vim.tbl_extend("force", message.acp_tool_call or {}, patch)
+    ---@cast tool_call avante.acp.ToolCallUpdate
+    message.acp_tool_call = tool_call
     local tool_use = type(message.message.content) == "table" and message.message.content[1] or nil
     if type(tool_use) == "table" then
       if update.rawInput ~= nil then tool_use.input = update.rawInput end

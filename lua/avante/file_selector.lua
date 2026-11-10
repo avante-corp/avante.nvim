@@ -4,13 +4,11 @@ local Selector = require("avante.ui.selector")
 
 local PROMPT_TITLE = "(Avante) Add file(s)"
 
---- @class FileSelector
+---@class FileSelector
+---@field id integer
+---@field selected_filepaths string[] Absolute paths
+---@field event_handlers table<string, function[]>
 local FileSelector = {}
-
---- @class FileSelector
---- @field id integer
---- @field selected_filepaths string[] Absolute paths
---- @field event_handlers table<string, function[]>
 
 ---@alias FileSelectorHandler fun(self: FileSelector, on_select: fun(filepaths: string[] | nil)): nil
 
@@ -70,11 +68,14 @@ end
 ---@param id integer
 ---@return FileSelector
 function FileSelector:new(id)
-  return setmetatable({
+  ---@type FileSelector
+  local selector = {
     id = id,
     selected_filepaths = {},
     event_handlers = {},
-  }, { __index = self })
+  }
+  setmetatable(selector, { __index = self })
+  return selector
 end
 
 function FileSelector:reset()

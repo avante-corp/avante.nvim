@@ -27,6 +27,18 @@ repos:
     files: \.rs$
 - repo: local
   hooks:
+    - id: lua-annotationcheck
+      name: Lua annotation syntax
+      entry: make luaannotationcheck
+      language: system
+      files: '\.lua$'
+      pass_filenames: false
+    - id: lua-typecheck
+      name: Lua typecheck
+      entry: make luatypecheck
+      language: system
+      always_run: true
+      pass_filenames: false
     - id: clippy
       name: Rust Clippy
       entry: make rustlint

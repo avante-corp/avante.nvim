@@ -11,6 +11,7 @@ SelectionResult.__index = SelectionResult
 ---@param filetype string Filetype of the selected content
 ---@param content string Selected content
 ---@param range avante.Range Selection range
+---@return avante.SelectionResult
 function SelectionResult:new(filepath, filetype, content, range)
   local instance = setmetatable({}, self)
   instance.filepath = filepath
