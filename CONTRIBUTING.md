@@ -81,7 +81,7 @@ Use the Makefile targets to run checks; they set the test runtime and dependency
 ```
 make setup-deps
 make lint
-make lua-typecheck
+make luatypecheck
 make luatest
 make rusttest
 ```

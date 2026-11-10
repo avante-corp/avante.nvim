@@ -143,20 +143,32 @@ M._init({id})                                                *avante-init._init*
     Parameters: ~
         {id}  (integer)
 
+    Returns: ~
+        (Avante)
+
 
 M.toggle_sidebar({opts?})                           *avante-init.toggle_sidebar*
 
     Parameters: ~
         {opts?}  (AskOptions)
 
+    Returns: ~
+        (boolean)
+
 
 M.is_sidebar_open()                                *avante-init.is_sidebar_open*
+
+    Returns: ~
+        (boolean)
 
 
 M.open_sidebar({opts?})                               *avante-init.open_sidebar*
 
     Parameters: ~
         {opts?}  (AskOptions)
+
+    Returns: ~
+        (avante.Sidebar|false)
 
 
 M.close_sidebar()                                    *avante-init.close_sidebar*
@@ -455,55 +467,55 @@ avante.Config                                                    *avante.Config*
 
     Fields: ~
         {debug}                       (boolean)
-        {log_level}                   (vim.log.levels)                  will keep requests and responses on the filesystem. Check the logs to find their paths
-        {memory_summary_provider}     (any)                            TODO
-        {mode}                        (avante.Mode)                     Avante.nvim provides two interaction modes:
-                                                                        - *agentic* (default): Uses AI tools to automatically generate and apply code changes
-                                                                        - *legacy*: Uses the traditional planning method without automatic tool execution
+        {log_level}                   (vim.log.levels)                    will keep requests and responses on the filesystem. Check the logs to find their paths
+        {memory_summary_provider?}    (avante.ProviderName)
+        {mode}                        (avante.Mode)                       Avante.nvim provides two interaction modes:
+                                                                          - *agentic* (default): Uses AI tools to automatically generate and apply code changes
+                                                                          - *legacy*: Uses the traditional planning method without automatic tool execution
 
-                                                                        **When should you use legacy mode?**
-                                                                        - If you prefer more control over what actions the AI takes
-                                                                        - If you're concerned about security with automatic tool execution
-                                                                        - If you want to manually review each step before applying changes
-                                                                        - If you're working in a sensitive environment where automatic code changes aren't desired
-        {auto_suggestions_provider?}  (boolean)                         WARNING: Since auto-suggestions are a high-frequency operation and therefore expensive,
-                                                                        currently designating it as `copilot` provider is dangerous because: https://github.com/yetone/avante.nvim/issues/1048
-                                                                        Of course, you can reduce the request frequency by increasing `suggestion.debounce`.
-        {providers}                   ({string:AvanteProvider})        To add support for custom provider, follow the format below
-                                                                       See https://github.com/avante-corp/avante.nvim/wiki#custom-providers for more details
-        {acp_providers}               ({string:AvanteACPProvider})     Agent Client Protocol providers.  |avante-acp|
+                                                                          **When should you use legacy mode?**
+                                                                          - If you prefer more control over what actions the AI takes
+                                                                          - If you're concerned about security with automatic tool execution
+                                                                          - If you want to manually review each step before applying changes
+                                                                          - If you're working in a sensitive environment where automatic code changes aren't desired
+        {auto_suggestions_provider?}  (avante.ProviderName)               WARNING: Since auto-suggestions are a high-frequency operation and therefore expensive,
+                                                                          currently designating it as `copilot` provider is dangerous because: https://github.com/yetone/avante.nvim/issues/1048
+                                                                          Of course, you can reduce the request frequency by increasing `suggestion.debounce`.
+        {providers}                   (table<string,AvanteProvider>)     To add support for custom provider, follow the format below
+                                                                         See https://github.com/avante-corp/avante.nvim/wiki#custom-providers for more details
+        {acp_providers}               (table<string,AvanteACPProvider>)  Agent Client Protocol providers.  |avante-acp|
         {provider?}                   (avante.ProviderName)
-                                                                       Default provider on startup. An explicit :AvanteSwitchProvider --save choice takes precedence.
-                                                                       If undefined, avante loads the last provider used.
+                                                                         Default provider on startup. An explicit :AvanteSwitchProvider --save choice takes precedence.
+                                                                         If undefined, avante loads the last provider used.
         {system_prompt?}              (string|nil|fun():string)
-                                                                       System prompt
-        {override_prompt_dir}         (string|nil|fun():string)         override_prompt_dir allows you to specify a directory containing your own custom prompt templates, which will override the built-in templates. This is useful if you want to maintain a set of custom prompts outside of your Neovim configuration.
-                                                                       <lua
-                                                                        -- Example: Override with prompts from a specific directory
-                                                                        vim.g.avante = {
-                                                                          override_prompt_dir = vim.fn.expand("~/.config/nvim/avante_prompts"),
-                                                                        })
+                                                                         System prompt
+        {override_prompt_dir}         (string|nil|fun():string)           override_prompt_dir allows you to specify a directory containing your own custom prompt templates, which will override the built-in templates. This is useful if you want to maintain a set of custom prompts outside of your Neovim configuration.
+                                                                         <lua
+                                                                          -- Example: Override with prompts from a specific directory
+                                                                          vim.g.avante = {
+                                                                            override_prompt_dir = vim.fn.expand("~/.config/nvim/avante_prompts"),
+                                                                          })
 
-                                                                        -- Example: Override with prompts from a function (dynamic directory)
-                                                                        vim.g.avante = {
-                                                                          override_prompt_dir = function()
-                                                                            -- Your logic to determine the prompt directory
-                                                                            return vim.fn.expand("~/.config/nvim/my_dynamic_prompts")
-                                                                          end,
-                                                                        })
-                                                                       <
+                                                                          -- Example: Override with prompts from a function (dynamic directory)
+                                                                          vim.g.avante = {
+                                                                            override_prompt_dir = function()
+                                                                              -- Your logic to determine the prompt directory
+                                                                              return vim.fn.expand("~/.config/nvim/my_dynamic_prompts")
+                                                                            end,
+                                                                          })
+                                                                         <
         {rules}                       (table)
-        {rag_service}                 (avante.Config.RagService)       RAG service configuration.
+        {rag_service}                 (avante.Config.RagService)         RAG service configuration.
 
-        {web_search_engine}           (avante.Config.WebSearchEngine)  Web search configuration.
-        {behaviour}                   (avante.Config.Behaviour)        Behaviour and automation options.
-        {prompt_logger}               (avante.Config.PromptLogger)     Prompt logging options.
-        {history}                     (avante.Config.History)          Chat history storage options.
+        {web_search_engine}           (avante.Config.WebSearchEngine)    Web search configuration.
+        {behaviour}                   (avante.Config.Behaviour)          Behaviour and automation options.
+        {prompt_logger}               (avante.Config.PromptLogger)       Prompt logging options.
+        {history}                     (avante.Config.History)            Chat history storage options.
         {windows}                     (table)
-        {disabled_tools}              (string[])                       You can choose to disable tools by their names in case you want to avoid its usage (like Claude 3.7 overusing the python tool). For example: `{ "python" }`
-        {custom_tools}                (AvanteSlashCommand[])           see |avante-custom-tools|
-        {slash_commands}              (AvanteSlashCommand[])           see |avante-slashcommands|
-        {shortcuts}                   (AvanteShortcut[])               see |avante-shortcuts|
+        {disabled_tools}              (string[])                         You can choose to disable tools by their names in case you want to avoid its usage (like Claude 3.7 overusing the python tool). For example: `{ "python" }`
+        {custom_tools}                (AvanteSlashCommand[])             see |avante-custom-tools|
+        {slash_commands}              (AvanteSlashCommand[])             see |avante-slashcommands|
+        {shortcuts}                   (AvanteShortcut[])                 see |avante-shortcuts|
         {ask_opts}                    (AskOptions)
 
 
@@ -601,6 +613,9 @@ M.get_provider_config({provider_name})       *avante-config.get_provider_config*
     Parameters: ~
         {provider_name}  (avante.ProviderName)
 
+    Returns: ~
+        (AvanteSupportedProvider)
+
 
 ==============================================================================
 Avante API                                                          *avante-api*
@@ -648,6 +663,9 @@ M.build({opts?})                                              *avante-api.build*
     Parameters: ~
         {opts?}  ({source?:boolean,version?:string})
 
+    Returns: ~
+        (vim.SystemCompleted)
+
 
 AskOptions                                                          *AskOptions*
 
@@ -674,7 +692,10 @@ M.full_view_ask({opts?})                              *avante-api.full_view_ask*
 M.ask({opts?})                                                  *avante-api.ask*
 
     Parameters: ~
-        {opts?}  (AskOptions)
+        {opts?}  (AskOptions|string)
+
+    Returns: ~
+        (boolean)
 
 
 M.edit({request?}, {line1?}, {line2?})                         *avante-api.edit*
@@ -694,7 +715,7 @@ M.get_suggestion()                                   *avante-api.get_suggestion*
 M.refresh({opts?})                                          *avante-api.refresh*
 
     Parameters: ~
-        {opts?}  (AskOptions)
+        {opts?}  (AskOptions)  @return false?
 
 
 M.focus({opts?})                                              *avante-api.focus*
@@ -890,24 +911,30 @@ avante.ui.SelectorItem                                  *avante.ui.SelectorItem*
         {title}  (string)
 
 
-avante.ui.Selector                                          *avante.ui.Selector*
+avante.ui.SelectorOpts                                  *avante.ui.SelectorOpts*
 
     Fields: ~
-        {provider}             (avante.SelectorProvider)
-        {title}                (string)                      Prompt of the selector
-        {default_query}        (string|nil)                  Initial query entered in the selector
-        {items}                (avante.ui.SelectorItem[])
-        {default_item_id}      (string|nil)                  only used in native selector, marks it with a specific character. Duplicate of selected_item_ids ?
-        {selected_item_ids}    (string[]|nil)
-        {provider_opts}        (table|nil)                   provider-specific (fzf-lua/snacks) options forwarded to the provider
-        {on_select}            (fun(item_ids:string[]|nil))
-        {get_preview_content}  (fun(item_id:string):)
+        {provider}              (avante.SelectorProvider)
+        {title}                 (string)                      Prompt of the selector
+        {default_query}         (string|nil)                  Initial query entered in the selector
+        {items}                 (avante.ui.SelectorItem[])
+        {default_item_id}       (string|nil)                  only used in native selector, marks it with a specific character. Duplicate of selected_item_ids ?
+        {selected_item_ids}     (string[]|nil)
+        {provider_opts}         (table|nil)                   provider-specific (fzf-lua/snacks) options forwarded to the provider
+        {on_select}             (fun(item_ids:string[]|nil))
+        {get_preview_content?}  (fun(item_id:string):string)
+
+
+avante.ui.Selector : avante.ui.SelectorOpts                 *avante.ui.Selector*
 
 
 Selector:new({opts})                                    *avante-ui-selector:new*
 
     Parameters: ~
-        {opts}  (avante.ui.Selector)
+        {opts}  (avante.ui.SelectorOpts)
+
+    Returns: ~
+        (avante.ui.Selector)
 
 
 Selector:open()                                        *avante-ui-selector:open*
@@ -1044,6 +1071,9 @@ Sidebar:new({id})                                           *avante-sidebar:new*
     Parameters: ~
         {id}  (integer)  the tabpage id retrieved from api.nvim_get_current_tabpage()
 
+    Returns: ~
+        (avante.Sidebar)
+
 
 Sidebar.place_sign_at_first_line()     *avante-sidebar.place_sign_at_first_line*
 
@@ -1068,11 +1098,17 @@ Sidebar:can_open({opts?})                              *avante-sidebar:can_open*
     Parameters: ~
         {opts?}  (AskOptions)
 
+    Returns: ~
+        (boolean)
+
 
 Sidebar:open({opts?})                                      *avante-sidebar:open*
 
     Parameters: ~
         {opts?}  (SidebarOpenOptions)
+
+    Returns: ~
+        (avante.Sidebar|false)
 
 
 Sidebar:setup_colors()                             *avante-sidebar:setup_colors*
@@ -1111,6 +1147,9 @@ Sidebar:focus_input()                               *avante-sidebar:focus_input*
 Sidebar:is_open()                                       *avante-sidebar:is_open*
     Checks if sidebar is visible/open
 
+    Returns: ~
+        (boolean)
+
 
 Sidebar:in_code_win()                               *avante-sidebar:in_code_win*
 
@@ -1119,6 +1158,9 @@ Sidebar:toggle({opts})                                   *avante-sidebar:toggle*
 
     Parameters: ~
         {opts}  (AskOptions)
+
+    Returns: ~
+        (boolean)
 
 
 AvanteReplacementResult                                *AvanteReplacementResult*
@@ -1199,13 +1241,22 @@ Sidebar:retry_user_request()                 *avante-sidebar:retry_user_request*
 Sidebar:handle_expand_message()           *avante-sidebar:handle_expand_message*
 
 
-Sidebar:render_header()                           *avante-sidebar:render_header*
+                                                  *avante-sidebar:render_header*
+Sidebar:render_header({winid}, {bufnr}, {hl}, {reverse_hl})
     When include_model is set, in ACP mode, model will be rendered as "model | mode"
     else it will be set as
 
+    Parameters: ~
+        {winid}       (integer)
+        {bufnr}       (integer)
+        {hl}          (string)
+        {reverse_hl}  (string)
+
 
 Sidebar:render_result_header()             *avante-sidebar:render_result_header*
-     @see render_header
+
+    See: ~
+        |render_header|
 
 
 Sidebar:render_input({ask?})                       *avante-sidebar:render_input*
@@ -1243,11 +1294,16 @@ Sidebar:on_mount({opts})                               *avante-sidebar:on_mount*
         {opts}  (AskOptions)
 
 
-Sidebar:get_split_candidate()               *avante-sidebar:get_split_candidate*
+                                            *avante-sidebar:get_split_candidate*
+Sidebar:get_split_candidate({container_name})
      Given a desired container name, returns the window ID of the first valid container
      situated above it in the sidebar's order.
-     @param container_name string The name of the container to start searching from.
-     @return integer|nil The window ID of the previous valid container, or nil.
+
+    Parameters: ~
+        {container_name}  (string)  The name of the container to start searching from.
+
+    Returns: ~
+        (integer|nil)  window ID of the previous valid container, or nil.
 
 
 Sidebar:switch_window_focus()               *avante-sidebar:switch_window_focus*
@@ -1272,7 +1328,9 @@ Sidebar:toggle_code_window()                 *avante-sidebar:toggle_code_window*
 
 Sidebar:initialize()                                 *avante-sidebar:initialize*
      Initialize the sidebar instance.
-     @return avante.Sidebar The Sidebar instance.
+
+    Returns: ~
+        (avante.Sidebar)  Sidebar instance.
 
 
 Sidebar:is_focused_on_result()             *avante-sidebar:is_focused_on_result*
@@ -1309,6 +1367,7 @@ Sidebar:update_content({content}, {opts?})       *avante-sidebar:update_content*
     Parameters: ~
         {content}  (string)                                                                   concatenated content of the buffer
         {opts?}    ({focus?:boolean,scroll?:boolean,backspace?:integer,callback?:fun():nil})  whether to focus the result view
+                                                                                              @return avante.Sidebar?
 
 
 Sidebar:get_layout()                                 *avante-sidebar:get_layout*
@@ -1563,6 +1622,9 @@ Sidebar:render({opts})                                   *avante-sidebar:render*
     Parameters: ~
         {opts}  (AskOptions)
 
+    Returns: ~
+        (avante.Sidebar)
+
 
                             *avante-sidebar:get_selected_files_container_height*
 Sidebar:get_selected_files_container_height()
@@ -1663,6 +1725,9 @@ MentionsSource:new({get_mentions})                       *avante-completion:new*
     Parameters: ~
         {get_mentions}  (fun():AvanteMention[])
 
+    Returns: ~
+        (mentions_source)
+
 
 MentionsSource:is_available()                   *avante-completion:is_available*
 
@@ -1678,10 +1743,14 @@ MentionsSource:get_trigger_characters()
 MentionsSource:get_keyword_pattern()     *avante-completion:get_keyword_pattern*
 
 
-MentionsSource:complete({params})                   *avante-completion:complete*
+MentionsSource:complete({params}, {callback})       *avante-completion:complete*
 
     Parameters: ~
-        {params}  (cmp.SourceCompletionApiParams)
+        {params}    (cmp.SourceCompletionApiParams)
+        {callback}  (fun(response:lsp.CompletionResponse|nil))
+
+    Returns: ~
+        (nil)
 
 
                                                      *avante-completion:execute*
@@ -1858,6 +1927,9 @@ M.add_resource({uri})                          *avante-rag-service.add_resource*
     Parameters: ~
         {uri}  (string)  CAREFUL: it is trailing slash sensitive (e.g. "file:///toto/")
 
+    Returns: ~
+        (nil)
+
 
 M.remove_resource()                         *avante-rag-service.remove_resource*
 
@@ -1964,6 +2036,9 @@ M.get_content_lines({content}, {decoration}, {truncate})
         {content}     (any)
         {decoration}  (string|nil)
         {truncate}    (boolean|nil)
+
+    Returns: ~
+        (avante.ui.Line[])
 
 
                                   *avante-messages-render.get_tool_display_name*
@@ -2145,6 +2220,9 @@ M.get_tools({user_input}, {history_messages})    *avante-custom-tools.get_tools*
 M.get_tool_names()                          *avante-custom-tools.get_tool_names*
     @brief Get all active tools' names
 
+    Returns: ~
+        (string[])
+
 
 M._tools                                                              *M._tools*
 
@@ -2160,13 +2238,17 @@ avante.ProcessToolUseOpts                            *avante.ProcessToolUseOpts*
         {set_tool_use_store?}  (fun(tool_id:string,key:string,value:any):nil)
         {on_complete?}         (fun(result:string|nil,error:string|nil):nil)
         {is_cancelled?}        (fun():boolean)
+        {streaming?}           (boolean)
+        {tool_use_id?}         (string)
 
 
-M.process_tool_use({tools}, {tool_use})   *avante-custom-tools.process_tool_use*
+                                          *avante-custom-tools.process_tool_use*
+M.process_tool_use({tools}, {tool_use}, {opts})
 
     Parameters: ~
         {tools}     (AvanteLLMTool[])
         {tool_use}  (AvanteLLMToolUse)
+        {opts}      (avante.ProcessToolUseOpts)
 
     Returns: ~
         (string|nil)  result
@@ -2386,7 +2468,7 @@ M.get_system_info()                               *avante-utils.get_system_info*
 M.shell_run()                                           *avante-utils.shell_run*
 
     Returns: ~
-        (vim.SystemCompleted)
+        ({stdout:string,code:integer})
 
 
                                                   *avante-utils.shell_run_async*
@@ -2428,6 +2510,9 @@ M.toggle_wrap({toggle})                               *avante-utils.toggle_wrap*
     Parameters: ~
         {toggle}  (ToggleBind)
 
+    Returns: ~
+        (ToggleBind.wrap)
+
 
 M.safe_keymap_set({mode}, {lhs}, {rhs}, {opts?})  *avante-utils.safe_keymap_set*
 
@@ -2446,8 +2531,14 @@ M.trim({str}, {opts?})                                       *avante-utils.trim*
         {str}    (string)
         {opts?}  ({suffix?:string,prefix?:string})
 
+    Returns: ~
+        (string)
+
 
 M.in_visual_mode()                                 *avante-utils.in_visual_mode*
+
+    Returns: ~
+        (boolean)
 
 
 M.get_visual_selection_and_range() *avante-utils.get_visual_selection_and_range*
@@ -2501,6 +2592,9 @@ M.notify({msg}, {opts?})                                   *avante-utils.notify*
     Parameters: ~
         {msg}    (string|string[])
         {opts?}  (LazyNotifyOpts)
+
+    Returns: ~
+        (nil)
 
 
 M.error({msg}, {opts?})                                     *avante-utils.error*
@@ -2604,7 +2698,10 @@ M.url_join({...})                                        *avante-utils.url_join*
         (string)  URL
 
 
-M.is_type()                                               *avante-utils.is_type*
+M.is_type({v})                                            *avante-utils.is_type*
+
+    Parameters: ~
+        {v}  (any)
 
     Returns: ~
         (boolean)
@@ -2866,7 +2963,10 @@ M.icon({string_with_icon}, {utf8_fallback})                  *avante-utils.icon*
         (string)
 
 
-M.deep_extend_with_metatable()         *avante-utils.deep_extend_with_metatable*
+M.deep_extend_with_metatable({...})    *avante-utils.deep_extend_with_metatable*
+
+    Parameters: ~
+        {...}  (table)
 
     Returns: ~
         (table)
@@ -2954,6 +3054,9 @@ M.is_edit_tool_use({tool_use})                   *avante-utils.is_edit_tool_use*
     Parameters: ~
         {tool_use}  (AvanteLLMToolUse)
 
+    Returns: ~
+        (boolean)
+
 
 M.count_lines({str})                                  *avante-utils.count_lines*
     Counts number of strings in text, accounting for possibility of a trailing newline
@@ -3017,12 +3120,20 @@ M.get({url}, {opts?})                                    *avante-utils-curl.get*
         {url}    (string)
         {opts?}  (table)   plenary.curl options
 
+    Returns: ~
+        (any)    result
+        (fun())  cleanup
+
 
 M.post({url}, {opts?})                                  *avante-utils-curl.post*
 
     Parameters: ~
         {url}    (string)
         {opts?}  (table)   plenary.curl options
+
+    Returns: ~
+        (any)    result
+        (fun())  cleanup
 
 
 ==============================================================================
@@ -3119,15 +3230,57 @@ avante.acp.LoadSessionOpts                          *avante.acp.LoadSessionOpts*
         {additional_directories?}  (string[])
 
 
+avante.acp.PromptResult                                *avante.acp.PromptResult*
+
+    Fields: ~
+        {stopReason}  ()
+
+
+avante.acp.OperationCallback                      *avante.acp.OperationCallback*
+
+    Type: ~
+        fun(result:table|nil,err:avante.acp.ACPError|nil)
+
+
+avante.acp.SessionCallback                          *avante.acp.SessionCallback*
+
+    Type: ~
+        fun(session_id:string|nil,err:avante.acp.ACPError|nil)
+
+
+avante.acp.ErrorCallback                              *avante.acp.ErrorCallback*
+
+    Type: ~
+        fun(err:avante.acp.ACPError|nil)
+
+
+avante.acp.ListSessionsCallback                *avante.acp.ListSessionsCallback*
+
+    Type: ~
+        fun(sessions:avante.acp.SessionInfo[],err:avante.acp.ACPError|nil)
+
+
+avante.acp.ConfigCallback                            *avante.acp.ConfigCallback*
+
+    Type: ~
+        fun(options:avante.acp.ConfigOption[]|nil,err:avante.acp.ACPError|nil)
+
+
+avante.acp.PromptCallback                            *avante.acp.PromptCallback*
+
+    Type: ~
+        fun(result:avante.acp.PromptResult|nil,err:avante.acp.ACPError|nil)
+
+
 ACPHandlers                                                        *ACPHandlers*
 
     Fields: ~
         {on_session_update?}      (fun(update:table))
         {on_config_change?}       (fun())
-        {on_request_permission?}  (fun(tool_call:table,options:table[],callback:fun(option_id:string|nil)))
+        {on_request_permission?}  (fun(tool_call:avante.acp.ToolCall,options:avante.acp.PermissionOption[],callback:fun(option_id:string|nil)))
         {on_read_file?}           (fun(path:string,line:integer|nil,limit:integer|nil,callback:fun(content:string),error_callback:fun(message:string,kind?:string)))
         {on_write_file?}          (fun(path:string,content:string,callback:fun(error_message?:string)))
-        {on_error?}               (fun(error:table))
+        {on_error?}               (fun(error:avante.acp.ACPError))
         {on_state_change?}        (fun(state:string))
 
 
@@ -3153,10 +3306,26 @@ ACPClient:new({config})                                         *avante-acp:new*
         (avante.acp.ACPClient)
 
 
-ACPClient.is_same_process_config()           *avante-acp.is_same_process_config*
+                                             *avante-acp.is_same_process_config*
+ACPClient.is_same_process_config({left?}, {right?})
+
+    Parameters: ~
+        {left?}   (AvanteACPProvider)
+        {right?}  (AvanteACPProvider)
+
+    Returns: ~
+        (boolean)
 
 
-ACPClient._slice_lines()                               *avante-acp._slice_lines*
+ACPClient._slice_lines({lines}, {line?}, {limit?})     *avante-acp._slice_lines*
+
+    Parameters: ~
+        {lines}   (string[])
+        {line?}   (integer)
+        {limit?}  (integer)
+
+    Returns: ~
+        (string[])
 
 
 ACPClient:_start_polling()                           *avante-acp:_start_polling*
@@ -3188,19 +3357,50 @@ ACPClient:stop({callback?})                                    *avante-acp:stop*
 ACPClient:force_stop()                                   *avante-acp:force_stop*
 
 
-ACPClient:create_session()                           *avante-acp:create_session*
+                                                     *avante-acp:create_session*
+ACPClient:create_session({cwd}, {mcp_servers}, {callback}, {additional_directories?})
+
+    Parameters: ~
+        {cwd}                      (string)
+        {mcp_servers}              (avante.acp.McpServer[]|nil)
+        {callback}                 (avante.acp.SessionCallback)
+        {additional_directories?}  (string[])
 
 
-ACPClient:load_session()                               *avante-acp:load_session*
+                                                       *avante-acp:load_session*
+ACPClient:load_session({session_id}, {cwd}, {mcp_servers}, {callback}, {opts?})
+
+    Parameters: ~
+        {session_id}   (string)
+        {cwd}          (string)
+        {mcp_servers}  (avante.acp.McpServer[]|nil)
+        {callback}     (avante.acp.OperationCallback)
+        {opts?}        (avante.acp.LoadSessionOpts)
 
 
-ACPClient:resume_session()                           *avante-acp:resume_session*
+                                                     *avante-acp:resume_session*
+ACPClient:resume_session({session_id}, {cwd}, {mcp_servers}, {callback}, {additional_directories?})
+
+    Parameters: ~
+        {session_id}               (string)
+        {cwd}                      (string)
+        {mcp_servers}              (avante.acp.McpServer[]|nil)
+        {callback}                 (avante.acp.OperationCallback)
+        {additional_directories?}  (string[])
 
 
-ACPClient:close_session()                             *avante-acp:close_session*
+ACPClient:close_session({session_id}, {callback?})    *avante-acp:close_session*
+
+    Parameters: ~
+        {session_id}  (string)
+        {callback?}   (avante.acp.ErrorCallback)
 
 
-ACPClient:delete_session()                           *avante-acp:delete_session*
+ACPClient:delete_session({session_id}, {callback?})  *avante-acp:delete_session*
+
+    Parameters: ~
+        {session_id}  (string)
+        {callback?}   (avante.acp.ErrorCallback)
 
 
 ACPClient:supports_load_session()             *avante-acp:supports_load_session*
@@ -3217,16 +3417,36 @@ ACPClient:supports_list_sessions()           *avante-acp:supports_list_sessions*
         (boolean)
 
 
-ACPClient:list_all_sessions()                     *avante-acp:list_all_sessions*
+ACPClient:list_all_sessions({cwd}, {callback})    *avante-acp:list_all_sessions*
+
+    Parameters: ~
+        {cwd}       (string)
+        {callback}  (avante.acp.ListSessionsCallback)
 
 
-ACPClient:set_session_option()                   *avante-acp:set_session_option*
+                                                 *avante-acp:set_session_option*
+ACPClient:set_session_option({session_id}, {config_id}, {value}, {callback?})
+
+    Parameters: ~
+        {session_id}  (string)
+        {config_id}   (string)
+        {value}       (string|boolean)
+        {callback?}   (avante.acp.ConfigCallback)
 
 
-ACPClient:send_prompt()                                 *avante-acp:send_prompt*
+                                                        *avante-acp:send_prompt*
+ACPClient:send_prompt({session_id}, {prompt}, {callback})
+
+    Parameters: ~
+        {session_id}  (string)
+        {prompt}      (table[])
+        {callback}    (avante.acp.PromptCallback)
 
 
-ACPClient:cancel_session()                           *avante-acp:cancel_session*
+ACPClient:cancel_session({session_id})               *avante-acp:cancel_session*
+
+    Parameters: ~
+        {session_id}  (string)
 
 
 ACPClient:is_ready()                                       *avante-acp:is_ready*
@@ -3293,22 +3513,22 @@ M.parse_config({opts})                           *avante-providers.parse_config*
 
 
                                      *avante-providers.resolve_use_response_api*
-M.resolve_use_response_api({provider_conf}, {ctx})
+M.resolve_use_response_api({provider_conf}, {ctx?})
 
     Parameters: ~
-        {provider_conf}  (table|nil)
-        {ctx}            (any)
+        {provider_conf}  (AvanteDefaultBaseProvider|nil)
+        {ctx?}           (AvantePromptOptions)
 
     Returns: ~
         (boolean)
 
 
                                             *avante-providers.resolve_api_route*
-M.resolve_api_route({provider_conf}, {ctx}, {protocol?})
+M.resolve_api_route({provider_conf}, {ctx?}, {protocol?})
 
     Parameters: ~
         {provider_conf}  (AvanteDefaultBaseProvider|nil)
-        {ctx}            (any)
+        {ctx?}           (AvantePromptOptions)
         {protocol?}      (AvanteNativeLLMProtocol)        @return "chat" | "responses" | nil
 
 
@@ -3317,8 +3537,14 @@ M.get_config({provider_name})                      *avante-providers.get_config*
     Parameters: ~
         {provider_name}  (avante.ProviderName)
 
+    Returns: ~
+        (AvanteSupportedProvider)
+
 
 M.get_memory_summary_provider()   *avante-providers.get_memory_summary_provider*
+
+    Returns: ~
+        (AvanteProviderFunctor|AvanteBedrockProviderFunctor)
 
 
 ==============================================================================
@@ -3405,6 +3631,9 @@ M:list_models({timeout?})                  *avante-providers-ollama:list_models*
 
     Parameters: ~
         {timeout?}  (integer)
+
+    Returns: ~
+        (AvanteProviderModelList)
 
 
 M.check_endpoint_alive()          *avante-providers-ollama.check_endpoint_alive*
@@ -3513,7 +3742,7 @@ avante.Path                                                        *avante.Path*
 P.list_projects()                                    *avante-path.list_projects*
 
     Returns: ~
-        (table[])  of projects with their information
+        ({name:string,root:string,history_count:integer,directory:string}[])
 
 
 AvanteTemplates                                                *AvanteTemplates*

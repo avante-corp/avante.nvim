@@ -44,9 +44,11 @@ function M.setup(model, warning)
   end
 end
 
+---@return boolean
 function M.available() return M._init_tokenizers_lib(current_model) ~= nil end
 
 ---@param prompt string
+---@return integer[]?
 function M.encode(prompt)
   if not M.available() then return nil end
   if not prompt or prompt == "" then return nil end
@@ -62,6 +64,7 @@ function M.encode(prompt)
 end
 
 ---@param prompt string
+---@return integer
 function M.count(prompt)
   if not M.available() then return math.ceil(#prompt * 0.5) end
 

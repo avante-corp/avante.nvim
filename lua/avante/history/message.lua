@@ -27,6 +27,7 @@ M.__index = M
 function M:new(role, content, opts)
   ---@type AvanteLLMMessage
   local message = { role = role, content = type(content) == "string" and content or { content } }
+  ---@type avante.HistoryMessage
   local obj = {
     message = message,
     uuid = Utils.uuid(),
@@ -36,6 +37,7 @@ function M:new(role, content, opts)
     visible = true,
   }
   obj = vim.tbl_extend("force", obj, opts or {})
+  ---@cast obj avante.HistoryMessage
   return setmetatable(obj, M)
 end
 

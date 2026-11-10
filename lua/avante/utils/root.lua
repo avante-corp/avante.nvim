@@ -80,6 +80,7 @@ M.detectors = {}
 function M.detectors.cwd() return { vim.uv.cwd() } end
 
 ---@param buf number
+---@return string[]
 function M.detectors.lsp(buf)
   local bufpath = M.bufpath(buf)
   if not bufpath then return {} end
@@ -98,7 +99,9 @@ function M.detectors.lsp(buf)
   end, roots)
 end
 
+---@param buf number
 ---@param patterns string[]|string
+---@return string[]
 function M.detectors.pattern(buf, patterns)
   local patterns_ = type(patterns) == "string" and { patterns } or patterns
   ---@cast patterns_ string[]
@@ -157,6 +160,7 @@ function M.resolve(spec)
 end
 
 ---@param opts? { buf?: number, spec?: AvanteRootSpec[], all?: boolean }
+---@return AvanteRoot[]
 function M.detect(opts)
   opts = opts or {}
   opts.spec = opts.spec or type(vim.g.root_spec) == "table" and vim.g.root_spec or M.spec

@@ -369,6 +369,7 @@ end
 
 ---Add resource to database
 ---@param uri string CAREFUL: it is trailing slash sensitive (e.g. "file:///toto/")
+---@return nil
 function M.add_resource(uri)
   uri = M.to_container_uri(uri)
   local resource_name = uri:match("([^/]+)/$")

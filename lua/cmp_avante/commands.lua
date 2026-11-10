@@ -4,6 +4,7 @@ local api = vim.api
 local CommandsSource = {}
 CommandsSource.__index = CommandsSource
 
+---@return CommandsSource
 function CommandsSource:new()
   local instance = setmetatable({}, CommandsSource)
 
@@ -19,6 +20,8 @@ function CommandsSource:get_trigger_characters() return { "/" } end
 function CommandsSource:get_keyword_pattern() return [[\%(@\|#\|/\)\k*]] end
 
 ---@param params cmp.SourceCompletionApiParams
+---@param callback fun(response: lsp.CompletionResponse|nil)
+---@return nil
 function CommandsSource:complete(params, callback)
   ---@type string?
   local trigger_character

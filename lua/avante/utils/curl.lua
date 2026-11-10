@@ -108,10 +108,14 @@ end
 
 ---@param url string
 ---@param opts? table plenary.curl options
+---@return any result
+---@return fun() cleanup
 function M.get(url, opts) return request("get", url, opts) end
 
 ---@param url string
 ---@param opts? table plenary.curl options
+---@return any result
+---@return fun() cleanup
 function M.post(url, opts) return request("post", url, opts) end
 
 return M

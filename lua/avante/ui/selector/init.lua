@@ -14,7 +14,7 @@ local Utils = require("avante.utils")
 ---@field id string
 ---@field title string
 
----@class avante.ui.Selector
+---@class avante.ui.SelectorOpts
 ---@field provider avante.SelectorProvider
 ---@field title string Prompt of the selector
 ---@field default_query string | nil Initial query entered in the selector
@@ -23,14 +23,16 @@ local Utils = require("avante.utils")
 ---@field selected_item_ids string[] | nil
 ---@field provider_opts table | nil provider-specific (fzf-lua/snacks) options forwarded to the provider
 ---@field on_select fun(item_ids: string[] | nil)
----@field get_preview_content fun(item_id: string): (string, string) | nil
----@field on_delete_item fun(item_id: string): (nil) | nil
----@field on_open fun(): (nil) | nil
+---@field get_preview_content? fun(item_id: string): string?, string?
+---@field on_delete_item? fun(item_id: string)
+---@field on_open? fun()
 
+---@class avante.ui.Selector: avante.ui.SelectorOpts
 local Selector = {}
 Selector.__index = Selector
 
----@param opts avante.ui.Selector
+---@param opts avante.ui.SelectorOpts
+---@return avante.ui.Selector
 function Selector:new(opts)
   local o = {}
   setmetatable(o, Selector)

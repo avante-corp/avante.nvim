@@ -107,6 +107,7 @@ end
 
 ---@param cwd                           string
 ---@param to                            string
+---@return string
 function M.resolve(cwd, to) return M.is_absolute(to) and M.normalize(to) or M.normalize(cwd .. SEP .. to) end
 
 ---@param filepath                      string

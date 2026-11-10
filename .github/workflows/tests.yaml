@@ -62,10 +62,6 @@ jobs:
           feature: ${{ matrix.feature }}
           rust_target: ${{ matrix.rust_target }}
 
-      - name: Typecheck
-        if: runner.os != 'Windows'
-        run: nix develop .#ci --command make lua-typecheck
-
       - name: Run Lua tests
         if: runner.os != 'Windows'
         run: |

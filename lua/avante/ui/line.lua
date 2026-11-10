@@ -6,6 +6,7 @@ local M = {}
 M.__index = M
 
 ---@param sections avante.ui.LineSection[]
+---@return avante.ui.Line
 function M:new(sections)
   local this = setmetatable({}, M)
   this.sections = sections

@@ -88,6 +88,7 @@ end
 --- initialize the environment variable for current neovim session.
 --- This will only run once and spawn a UI for users to input the envvar.
 ---@param opts {refresh: boolean, provider: AvanteProviderFunctor | AvanteBedrockProviderFunctor}
+---@return nil
 ---@private
 function E.setup(opts)
   opts.provider.setup()
@@ -167,6 +168,7 @@ end
 E.REQUEST_LOGIN_PATTERN = "AvanteRequestLogin"
 
 ---@param provider AvanteDefaultBaseProvider
+---@return boolean
 function E.require_api_key(provider)
   local protocol = provider._protocol or provider._name
   if protocol == "copilot" then return false end
@@ -180,6 +182,7 @@ M.env = E
 M = setmetatable(M, {
   ---@param t avante.Providers
   ---@param k avante.ProviderName
+  ---@return AvanteProviderFunctor | AvanteBedrockProviderFunctor
   __index = function(t, k)
     if Config.providers[k] == nil then error("Failed to find provider: " .. k, 2) end
 
@@ -321,8 +324,8 @@ function M.parse_config(opts)
   return provider_opts, request_body
 end
 
----@param provider_conf table | nil
----@param ctx any
+---@param provider_conf AvanteDefaultBaseProvider | nil
+---@param ctx? AvantePromptOptions
 ---@return boolean
 function M.resolve_use_response_api(provider_conf, ctx)
   if not provider_conf then return false end
@@ -338,7 +341,7 @@ function M.resolve_use_response_api(provider_conf, ctx)
 end
 
 ---@param provider_conf AvanteDefaultBaseProvider | nil
----@param ctx any
+---@param ctx? AvantePromptOptions
 ---@param protocol? AvanteNativeLLMProtocol
 ---@return "chat" | "responses" | nil
 function M.resolve_api_route(provider_conf, ctx, protocol)
@@ -349,12 +352,14 @@ function M.resolve_api_route(provider_conf, ctx, protocol)
 end
 
 ---@param provider_name avante.ProviderName
+---@return AvanteSupportedProvider
 function M.get_config(provider_name)
   provider_name = provider_name or Config.provider
   local cur = Config.get_provider_config(provider_name)
   return type(cur) == "function" and cur() or cur
 end
 
+---@return AvanteProviderFunctor | AvanteBedrockProviderFunctor
 function M.get_memory_summary_provider()
   local provider_name = Config.memory_summary_provider
   if provider_name == nil then provider_name = Config.provider end

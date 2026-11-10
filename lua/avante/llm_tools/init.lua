@@ -513,7 +513,10 @@ function M.python(input, opts)
         return
       end
 
-      local function handle_result(result) ---@param result vim.SystemCompleted
+      ---@param result vim.SystemCompleted
+      ---@return string? output
+      ---@return string? error
+      local function handle_result(result)
         if result.code ~= 0 then return nil, "Error: " .. (result.stderr or "Unknown error") end
 
         Utils.debug("output", result.stdout)
@@ -560,19 +563,24 @@ function M.get_tools(user_input, history_messages)
   local unfiltered_tools = vim.list_extend(vim.list_extend({}, M._tools), custom_tools)
   return vim
     .iter(unfiltered_tools)
-    :filter(function(tool) ---@param tool AvanteLLMTool
-      -- Always disable tools that are explicitly disabled
-      if vim.tbl_contains(Config.disabled_tools, tool.name) then return false end
-      if tool.enabled == nil then
-        return true
-      else
-        return tool.enabled({ user_input = user_input, history_messages = history_messages })
+    :filter(
+      ---@param tool AvanteLLMTool
+      ---@return boolean
+      function(tool)
+        -- Always disable tools that are explicitly disabled
+        if vim.tbl_contains(Config.disabled_tools, tool.name) then return false end
+        if tool.enabled == nil then
+          return true
+        else
+          return tool.enabled({ user_input = user_input, history_messages = history_messages })
+        end
       end
-    end)
+    )
     :totable()
 end
 
 ---@brief Get all active tools' names
+---@return string[]
 function M.get_tool_names()
   local custom_tools = Config.custom_tools
   if type(custom_tools) == "function" then custom_tools = custom_tools() end
@@ -1171,9 +1179,12 @@ M.run_python = M.python
 ---@field set_tool_use_store? fun(tool_id: string, key: string, value: any): nil
 ---@field on_complete? fun(result: string | nil, error: string | nil): nil
 ---@field is_cancelled? fun(): boolean
+---@field streaming? boolean
+---@field tool_use_id? string
 
 ---@param tools AvanteLLMTool[]
 ---@param tool_use AvanteLLMToolUse
+---@param opts avante.ProcessToolUseOpts
 ---@return string | nil result
 ---@return string | nil error
 function M.process_tool_use(tools, tool_use, opts)
@@ -1205,7 +1216,11 @@ function M.process_tool_use(tools, tool_use, opts)
     func = M.str_replace_based_edit_tool
   else
     ---@type AvanteLLMTool?
-    local tool = vim.iter(tools):find(function(tool) return tool.name == tool_use.name end) ---@param tool AvanteLLMTool
+    local tool = vim.iter(tools):find(
+      ---@param tool AvanteLLMTool
+      ---@return boolean
+      function(tool) return tool.name == tool_use.name end
+    )
     if tool == nil then return nil, "This tool is not provided: " .. vim.inspect(tool_use.name) end
     func = tool.func or M[tool.name]
   end
@@ -1237,6 +1252,8 @@ function M.process_tool_use(tools, tool_use, opts)
 
   ---@param result string | nil | boolean
   ---@param err string | nil
+  ---@return string? result
+  ---@return string? error
   local function handle_result(result, err)
     -- Stop the cancellation timer if it exists
     if cancel_timer and not cancel_timer:is_closing() then

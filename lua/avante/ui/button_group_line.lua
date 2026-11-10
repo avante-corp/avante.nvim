@@ -122,7 +122,8 @@ local function cleanup_dispatch_if_empty(bufnr)
 end
 
 ---@param button_options { id: string, icon: string|nil, name: string, hl?: string }[]
----@param opts? { on_click: fun(id: string), start_col?: integer, group_label?: string }
+---@param opts? { on_click?: fun(id: string), start_col?: integer, group_label?: string }
+---@return avante.ui.ButtonGroupLine
 function ButtonGroupLine:new(button_options, opts)
   opts = opts or {}
   local o = setmetatable({}, ButtonGroupLine)

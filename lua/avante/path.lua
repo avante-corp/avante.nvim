@@ -33,6 +33,8 @@ local History = {}
 
 ---Returns the folder that contains past prompts
 ---@see avante.Config.History
+---@param bufnr? integer
+---@param project_root? string
 ---@return Path
 function History.get_history_dir(bufnr, project_root)
   local dirname = generate_project_dirname_in_storage(bufnr, project_root)
@@ -52,6 +54,7 @@ function History.get_history_dir(bufnr, project_root)
 end
 
 ---Lists all conversations with the latest first, ordered by timestamp
+---@param bufnr integer
 ---@return avante.ChatHistory[]
 function History.list(bufnr)
   local history_dir = History.get_history_dir(bufnr)
@@ -83,6 +86,7 @@ end
 -- Get a chat history file name given a buffer
 ---@param bufnr integer
 ---@param new boolean
+---@param project_root? string
 ---@return Path
 function History.get_latest_filepath(bufnr, new, project_root)
   local history_dir = History.get_history_dir(bufnr, project_root)
@@ -136,6 +140,8 @@ function History.save_latest_filename(bufnr, filename, project_root)
 end
 
 ---@param bufnr integer
+---@param project_root? string
+---@return avante.ChatHistory
 function History.new(bufnr, project_root)
   local filepath = History.get_latest_filepath(bufnr, true, project_root)
   ---@type avante.ChatHistory
@@ -176,6 +182,7 @@ end
 -- Loads the chat history for the given buffer.
 ---@param bufnr integer
 ---@param filename string?
+---@param project_root? string
 ---@return avante.ChatHistory
 function History.load(bufnr, filename, project_root)
   local history_filepath = filename and History.get_filepath(bufnr, filename, project_root)
@@ -186,6 +193,7 @@ end
 -- Writes chat contents without selecting the chat.
 ---@param bufnr integer
 ---@param history avante.ChatHistory
+---@param project_root? string
 function History.write(bufnr, history, project_root)
   local history_filepath = History.get_filepath(bufnr, history.filename, project_root)
   history_filepath:write(vim.json.encode(history), "w")
@@ -194,6 +202,7 @@ end
 -- Saves and selects the chat history for the given buffer.
 ---@param bufnr integer
 ---@param history avante.ChatHistory
+---@param project_root? string
 function History.save(bufnr, history, project_root)
   History.write(bufnr, history, project_root)
   History.save_latest_filename(bufnr, history.filename, project_root)
@@ -230,7 +239,7 @@ end
 
 P.history = History
 
----@return table[] List of projects with their information
+---@return { name: string, root: string, history_count: integer, directory: string }[]
 function P.list_projects()
   local projects_dir = Path:new(Config.history.storage_path):joinpath("projects")
   if not projects_dir:exists() then return {} end
@@ -439,6 +448,7 @@ end
 ---Render jinja template
 ---@param path string
 ---@param opts AvanteTemplateOptions
+---@return string
 function Prompt.render_file(path, opts)
   Utils.debug("Rendering prompt for " .. path)
   return _templates_lib.render(path, opts)

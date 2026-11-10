@@ -4,6 +4,7 @@ local api = vim.api
 local ShortcutsSource = {}
 ShortcutsSource.__index = ShortcutsSource
 
+---@return ShortcutsSource
 function ShortcutsSource:new()
   local instance = setmetatable({}, ShortcutsSource)
   return instance
@@ -18,6 +19,8 @@ function ShortcutsSource:get_trigger_characters() return { "#" } end
 function ShortcutsSource:get_keyword_pattern() return [[\%(@\|#\|/\)\k*]] end
 
 ---@param params cmp.SourceCompletionApiParams
+---@param callback fun(response: lsp.CompletionResponse|nil)
+---@return nil
 function ShortcutsSource:complete(params, callback)
   ---@type string?
   local trigger_character

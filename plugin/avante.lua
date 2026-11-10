@@ -24,6 +24,7 @@ if Config.support_paste_image() then
   vim.paste = (function(overridden)
     ---@param lines string[]
     ---@param phase -1|1|2|3
+    ---@return boolean?
     return function(lines, phase)
       local Clipboard = require("avante.clipboard")
       -- NOTE: require("img-clip.util").verbose = false does NOT silence warnings
@@ -64,11 +65,13 @@ local function ask_complete(prefix, _, _)
   vim.list_extend(
     candidates,
     ---@param x string
+    ---@return string
     vim.tbl_map(function(x) return "position=" .. x end, { "left", "right", "top", "bottom" })
   )
   vim.list_extend(
     candidates,
-    ---@param x string
+    ---@param x { root: string }
+    ---@return string
     vim.tbl_map(function(x) return "project_root=" .. x.root end, P.list_projects())
   )
   return vim.tbl_filter(function(candidate) return vim.startswith(candidate, prefix) end, candidates)

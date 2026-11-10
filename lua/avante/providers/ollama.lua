@@ -67,7 +67,9 @@ local function query_models(opts, timeout)
 end
 
 ---@param timeout? integer
+---@return AvanteProviderModelList
 function M:list_models(timeout)
+  ---@cast self AvanteProviderFunctor
   if self._model_list_cache then return self._model_list_cache end
   local result, err = query_models(self, timeout)
   if not result then

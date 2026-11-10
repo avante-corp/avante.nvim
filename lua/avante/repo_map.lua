@@ -3,7 +3,7 @@
 --- Generate a summary of your codebase via an avante rust library.
 --- Builds upon treesitter to list nodes.
 --- Run 'AvanteShowRepoMap' to see the result. You can also reference
---- @codebase in the input container.
+--- Use @codebase in the input container.
 ---]]
 ---@see AvanteShowRepoMap
 local Popup = require("nui.popup")

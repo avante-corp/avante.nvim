@@ -25,35 +25,35 @@ local M = {}
 
 ---@alias ConflictSide "ours"|"theirs"|"all_theirs"|"both"|"cursor"|"base"|"none"
 
---- @class AvanteConflictHighlights
---- @field current string
---- @field incoming string
+---@class AvanteConflictHighlights
+---@field current string
+---@field incoming string
 
 ---@class RangeMark
 ---@field label integer
 ---@field content string
 
---- @class PositionMarks
---- @field current RangeMark
---- @field incoming RangeMark
+---@class PositionMarks
+---@field current RangeMark
+---@field incoming RangeMark
 
---- @class Range
---- @field range_start integer
---- @field range_end integer
---- @field content_start integer
---- @field content_end integer
+---@class Range
+---@field range_start integer
+---@field range_end integer
+---@field content_start integer
+---@field content_end integer
 
---- @class ConflictPosition
---- @field incoming Range
---- @field middle Range
---- @field current Range
---- @field marks PositionMarks
+---@class ConflictPosition
+---@field incoming Range
+---@field middle Range
+---@field current Range
+---@field marks PositionMarks
 
---- @class ConflictBufferCache
---- @field lines table<integer, boolean> map of conflicted line numbers
---- @field positions ConflictPosition[]
---- @field tick integer
---- @field bufnr integer
+---@class ConflictBufferCache
+---@field lines table<integer, boolean> map of conflicted line numbers
+---@field positions ConflictPosition[]
+---@field tick integer
+---@field bufnr integer
 
 -----------------------------------------------------------------------------//
 -- Constants
@@ -92,7 +92,7 @@ local conflict_end = "^>>>>>>>"
 
 -----------------------------------------------------------------------------//
 
---- @return table<string, ConflictBufferCache>
+---@return table<string, ConflictBufferCache>
 local function create_visited_buffers()
   return setmetatable({}, {
     __index = function(t, k)
@@ -355,6 +355,7 @@ end
 ---@param bufnr integer given buffer id
 function H.setup_buffer_mappings(bufnr)
   ---@param desc string
+  ---@return vim.keymap.set.Opts
   local function opts(desc) return { silent = true, buffer = bufnr, desc = "avante(conflict): " .. desc } end
 
   vim.keymap.set({ "n", "v" }, Config.mappings.diff.ours, function() M.choose("ours") end, opts("choose ours"))
@@ -556,6 +557,7 @@ function M.choose(side)
   end
 end
 
+---@param bufnr integer
 ---@param side ConflictSide
 ---@param position ConflictPosition
 ---@param enable_autojump boolean
