@@ -50,6 +50,10 @@ function M.switch_provider(provider_name, save_choice)
   end
 end
 
+---Whether the current provider uses ACP.
+---@return boolean
+function M.is_acp_provider() return (Config.acp_providers or {})[Config.provider] ~= nil end
+
 ---@param path string
 ---@return string
 local function to_windows_path(path)
@@ -312,7 +316,7 @@ function M.select_acp_session(session_id) require("avante.acp_session_selector")
 function M.select_history(session_id)
   local generating, sidebar = is_generating()
   if generating then return end
-  local is_acp = (Config.acp_providers or {})[Config.provider] ~= nil
+  local is_acp = M.is_acp_provider()
   if is_acp and (not session_id or session_id == "") then
     M.select_acp_session(session_id)
     return

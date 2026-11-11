@@ -104,9 +104,8 @@ local callbacks = {
     if cb then cb(question) end
   end,
   model = function(_, _, cb)
-    local Config = require("avante.config")
     local api = require("avante.api")
-    if Config.acp_providers[Config.provider] then
+    if api.is_acp_provider() then
       api.select_acp_model()
     else
       api.select_model()

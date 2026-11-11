@@ -680,6 +680,13 @@ M.switch_provider({provider_name}, {save_choice?})  *avante-api.switch_provider*
         {save_choice?}   (boolean)              Persist the provider as the startup choice
 
 
+M.is_acp_provider()                                 *avante-api.is_acp_provider*
+    Whether the current provider uses ACP.
+
+    Returns: ~
+        (boolean)
+
+
 M.build({opts?})                                              *avante-api.build*
     Command to install the necessary rust libraries
     Defaults to download the libraries but passing `source=true` will force a local build via cargo

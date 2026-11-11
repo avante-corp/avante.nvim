@@ -265,7 +265,7 @@ M = setmetatable(M, {
 function M.setup()
   vim.g.avante_login = false
 
-  if Config.acp_providers[Config.provider] then return end
+  if require("avante.api").is_acp_provider() then return end
 
   ---@type AvanteProviderFunctor | AvanteBedrockProviderFunctor
   local provider = M[Config.provider]
@@ -298,7 +298,7 @@ function M.refresh(provider_name)
   local provider_changed = Config.provider ~= provider_name
   require("avante.config").override({ provider = provider_name })
 
-  if not Config.acp_providers[provider_name] then
+  if not require("avante.api").is_acp_provider() then
     ---@type AvanteProviderFunctor | AvanteBedrockProviderFunctor
     local p = M[Config.provider]
     E.setup({ provider = p, refresh = true })
