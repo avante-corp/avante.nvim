@@ -34,18 +34,13 @@ function Tokens.calculate_tokens(content)
   if Tokenizer.available() then return Tokenizer.count(text) end
 
   local tokens = 0
-  local current_token = ""
-  for char in text:gmatch(".") do
-    if char == " " or char == "\n" then
-      if current_token ~= "" then
-        tokens = tokens + 1
-        current_token = ""
-      end
-    else
-      current_token = current_token .. char
-    end
+  local position = 1
+  while true do
+    local first, last = text:find("[^ \n]+", position)
+    if not first then break end
+    tokens = tokens + 1
+    position = last + 1
   end
-  if current_token ~= "" then tokens = tokens + 1 end
   return tokens
 end
 
