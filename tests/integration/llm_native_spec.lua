@@ -486,10 +486,10 @@ describe("LLM native integration", function()
     assert.is_true(vim.wait(10000, function() return stopped ~= nil end, 10), "native request timed out")
     assert.same("tool_use", stopped.reason)
 
-    local Path = require("avante.path")
+    local HistoryStorage = require("avante.history.storage")
     Config.history.storage_path = test_cwd .. "/history"
-    Path.history.save(0, history, test_cwd)
-    local loaded = Path.history.load(0, history.filename, test_cwd)
+    HistoryStorage.save(0, history, test_cwd)
+    local loaded = HistoryStorage.load(0, history.filename, test_cwd)
     assert.same(history.title, loaded.title, "saving a null argument must not lose the conversation")
     assert.same(2, #loaded.messages)
     assert.same(expected, loaded.messages[2].message.content[1].input)

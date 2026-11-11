@@ -4,7 +4,7 @@ local Api = require("avante.api")
 local Avante = require("avante")
 local Config = require("avante.config")
 local HistorySelector = require("avante.history_selector")
-local Path = require("avante.path")
+local HistoryStorage = require("avante.history.storage")
 local PromptInput = require("avante.ui.prompt_input")
 local Sidebar = require("avante.sidebar")
 local Utils = require("avante.utils")
@@ -55,7 +55,7 @@ describe("api history", function()
         opened_buf = bufnr
         on_history_select = cb
       end),
-      stub(Path.history, "save_latest_filename"),
+      stub(HistoryStorage, "save_latest_filename"),
       stub(Utils, "warn"),
     }
   end)
@@ -74,7 +74,7 @@ describe("api history", function()
     Config.provider = "test-acp"
     Config.acp_providers = { ["test-acp"] = { command = "agent" } }
     HistorySelector.open:revert()
-    stubs[#stubs + 1] = stub(Path.history, "list").returns(histories)
+    stubs[#stubs + 1] = stub(HistoryStorage, "list").returns(histories)
     local select_session = stub(Api, "select_acp_session")
     stubs[#stubs + 1] = select_session
     return select_session
@@ -113,7 +113,7 @@ describe("api history", function()
 
     Api.select_history("selected")
 
-    assert.stub(Path.history.save_latest_filename).was_called_with(code_buf, "archive/selected.json")
+    assert.stub(HistoryStorage.save_latest_filename).was_called_with(code_buf, "archive/selected.json")
     assert.stub(select_session).was_not_called()
   end)
 
@@ -131,7 +131,7 @@ describe("api history", function()
 
     on_history_select("other.json")
 
-    assert.stub(Path.history.save_latest_filename).was_not_called()
+    assert.stub(HistoryStorage.save_latest_filename).was_not_called()
   end)
 
   it("does not create a new chat while a request is generating", function()

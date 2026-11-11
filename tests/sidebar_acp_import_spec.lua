@@ -1,6 +1,6 @@
 local stub = require("luassert.stub")
 local Config = require("avante.config")
-local Path = require("avante.path")
+local HistoryStorage = require("avante.history.storage")
 local Utils = require("avante.utils")
 local Sidebar = require("avante.sidebar")
 
@@ -44,17 +44,17 @@ describe("Sidebar ACP import", function()
     -- Chats on disk, by filename, for discard_acp_import_chat to check
     stored = {}
     stubs = {
-      stub(Path.history, "save").invokes(function(_, history) saved = history end),
-      stub(Path.history, "delete").invokes(function(bufnr, filename, project_root)
+      stub(HistoryStorage, "save").invokes(function(_, history) saved = history end),
+      stub(HistoryStorage, "delete").invokes(function(bufnr, filename, project_root)
         deleted_bufnr, deleted_root = bufnr, project_root
         table.insert(deleted, filename)
       end),
-      stub(Path.history, "get_filepath").returns({ exists = function() return true end }),
-      stub(Path.history, "new").invokes(
+      stub(HistoryStorage, "get_filepath").returns({ exists = function() return true end }),
+      stub(HistoryStorage, "new").invokes(
         function() return { filename = "new.json", messages = {}, entries = {}, todos = {} } end
       ),
-      stub(Path.history, "save_latest_filename").invokes(function(_, filename) latest = filename end),
-      stub(Path.history, "load").invokes(function(_, filename) return stored[filename] end),
+      stub(HistoryStorage, "save_latest_filename").invokes(function(_, filename) latest = filename end),
+      stub(HistoryStorage, "load").invokes(function(_, filename) return stored[filename] end),
       stub(Utils, "error"),
       stub(Utils, "warn"),
     }

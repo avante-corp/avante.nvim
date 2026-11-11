@@ -6,7 +6,7 @@ local Config = require("avante.config")
 local History = require("avante.history")
 local Llm = require("avante.llm")
 local LLMTools = require("avante.llm_tools")
-local Path = require("avante.path")
+local HistoryStorage = require("avante.history.storage")
 local Sidebar = require("avante.sidebar")
 local Utils = require("avante.utils")
 
@@ -133,7 +133,7 @@ describe("Sidebar active request lifecycle", function()
     stream_opts.on_stop({ reason = "complete" })
 
     assert.equals(history, sidebar.chat_history)
-    local saved = Path.history.load(code_buf, history.filename, sidebar.chat_history_project_root)
+    local saved = HistoryStorage.load(code_buf, history.filename, sidebar.chat_history_project_root)
     assert.same(
       { "initial question", "important followup", "answer" },
       vim.tbl_map(function(message) return message.message.content end, saved.messages)
@@ -231,8 +231,8 @@ describe("Sidebar active request lifecycle", function()
     cleared_history.memory = { content = "old memory" }
     cleared_history.todos = { { id = "old todo" } }
     cleared_history.tokens_usage = { prompt_tokens = 10, completion_tokens = 5 }
-    Path.history.save(code_buf, cleared_history, root)
-    local filepath = Path.history.get_filepath(code_buf, filename, root)
+    HistoryStorage.save(code_buf, cleared_history, root)
+    local filepath = HistoryStorage.get_filepath(code_buf, filename, root)
 
     sidebar:clear_history()
 
@@ -242,7 +242,7 @@ describe("Sidebar active request lifecycle", function()
     assert.is_nil(sidebar.chat_history.memory)
     assert.is_nil(sidebar.chat_history.tokens_usage)
     assert.is_false(filepath:exists())
-    Path.history.save(code_buf, cleared_history, root)
+    HistoryStorage.save(code_buf, cleared_history, root)
     assert.is_false(filepath:exists())
     vim.wait(1200)
     assert.is_false(filepath:exists())

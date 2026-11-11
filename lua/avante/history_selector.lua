@@ -1,6 +1,6 @@
 local History = require("avante.history")
 local Utils = require("avante.utils")
-local Path = require("avante.path")
+local HistoryStorage = require("avante.history.storage")
 local Config = require("avante.config")
 local Selector = require("avante.ui.selector")
 
@@ -27,7 +27,7 @@ end
 function M.open(bufnr, cb, session_id, on_no_match)
   local selector_items = {}
 
-  local histories = Path.history.list(bufnr)
+  local histories = HistoryStorage.list(bufnr)
 
   if session_id and session_id ~= "" then
     for _, history in ipairs(histories) do
@@ -85,7 +85,7 @@ function M.open(bufnr, cb, session_id, on_no_match)
       cb(item_ids[1])
     end,
     get_preview_content = function(item_id)
-      local history = Path.history.load(vim.api.nvim_get_current_buf(), item_id)
+      local history = HistoryStorage.load(vim.api.nvim_get_current_buf(), item_id)
       local Sidebar = require("avante.sidebar")
       local content = Sidebar.render_history_content(history)
       return content, "markdown"
@@ -95,7 +95,7 @@ function M.open(bufnr, cb, session_id, on_no_match)
         Utils.warn("No item ID provided for deletion.")
         return
       end
-      Path.history.delete(bufnr, item_id_to_delete) -- bufnr from M.open's scope
+      HistoryStorage.delete(bufnr, item_id_to_delete) -- bufnr from M.open's scope
     end,
     on_open = function() M.open(bufnr, cb, session_id) end,
   })

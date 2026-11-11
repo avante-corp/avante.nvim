@@ -76,7 +76,7 @@ local event = require("nui.utils.autocmd").event
 
 local PPath = require("plenary.path")
 local Providers = require("avante.providers")
-local Path = require("avante.path")
+local HistoryStorage = require("avante.history.storage")
 local Config = require("avante.config")
 local Llm = require("avante.llm")
 local Utils = require("avante.utils")
@@ -2382,7 +2382,7 @@ end
 
 function Sidebar:reset_chat_history()
   self:stop_acp_client()
-  self.chat_history = Path.history.new(self.code.bufnr, self.chat_history_project_root)
+  self.chat_history = HistoryStorage.new(self.code.bufnr, self.chat_history_project_root)
   self.current_state = nil
   self.token_count = nil
   self.expanded_message_uuids = {}
@@ -2493,9 +2493,9 @@ function Sidebar:clear_history(args, cb)
     if stream_cancelled then Llm.cancel_inflight_request() end
     local function clear_local_history()
       chat_history._discarded = true
-      local history_filepath = Path.history.get_filepath(code_bufnr, chat_history.filename, history_project_root)
+      local history_filepath = HistoryStorage.get_filepath(code_bufnr, chat_history.filename, history_project_root)
       if history_filepath:exists() then
-        Path.history.delete(code_bufnr, chat_history.filename, history_project_root)
+        HistoryStorage.delete(code_bufnr, chat_history.filename, history_project_root)
       end
       if self.chat_history == chat_history then
         self:reset_chat_history()
@@ -2618,7 +2618,7 @@ function Sidebar:compact_history_messages(args, cb)
   Llm.summarize_memory(history_memory and history_memory.content, messages, function(memory, failure)
     if memory and chat_history.memory == history_memory then
       chat_history.memory = memory
-      Path.history.write(code_bufnr, chat_history, history_project_root)
+      HistoryStorage.write(code_bufnr, chat_history, history_project_root)
     end
     if self.chat_history ~= chat_history or self.code.bufnr ~= code_bufnr or self.current_state ~= "compacting" then
       return
@@ -2641,9 +2641,9 @@ function Sidebar:new_chat(args, cb)
     Utils.warn("Cannot switch chats during generation")
     return false
   end
-  local history = Path.history.new(self.code.bufnr)
+  local history = HistoryStorage.new(self.code.bufnr)
   -- Only point at the new file; it is written once the chat has something to save
-  Path.history.save_latest_filename(self.code.bufnr, history.filename)
+  HistoryStorage.save_latest_filename(self.code.bufnr, history.filename)
   self:reload_chat_history()
   self.current_state = nil
   self.expanded_message_uuids = {}
@@ -2727,7 +2727,7 @@ function Sidebar:finish_acp_import(import, session_id, messages)
 
   chat_history.acp_session_import_pending = nil
   if #messages == 0 then
-    Path.history.save(self.code.bufnr, chat_history)
+    HistoryStorage.save(self.code.bufnr, chat_history)
     if not import.created then
       Utils.warn("The agent returned no conversation for this session; kept the chat as it was")
     end
@@ -2744,7 +2744,7 @@ function Sidebar:finish_acp_import(import, session_id, messages)
   chat_history.todos = {}
   chat_history.memory = nil
   chat_history.tokens_usage = nil
-  Path.history.save(self.code.bufnr, chat_history)
+  HistoryStorage.save(self.code.bufnr, chat_history)
 
   if not self:is_open() then return end
   self._history_cache_invalidated = true
@@ -2769,7 +2769,7 @@ function Sidebar:fail_acp_import(import, err)
   then
     chat_history.acp_session_id = nil
     chat_history.acp_session_import_pending = nil
-    Path.history.save(self.code.bufnr, chat_history)
+    HistoryStorage.save(self.code.bufnr, chat_history)
     self:stop_acp_client()
     if self:is_open() then self:handle_submit("") end
     return
@@ -2781,7 +2781,7 @@ function Sidebar:fail_acp_import(import, err)
   local showing_import = self.chat_history ~= nil and self.chat_history.filename == import.filename
   self:discard_acp_import_chat(import)
   if not showing_import then return end
-  if import.previous_filename then Path.history.save_latest_filename(self.code.bufnr, import.previous_filename) end
+  if import.previous_filename then HistoryStorage.save_latest_filename(self.code.bufnr, import.previous_filename) end
   if self:is_open() then self:switch_to_history_and_reconnect() end
 end
 
@@ -2789,14 +2789,14 @@ end
 ---@param import avante.PendingAcpImport
 function Sidebar:discard_acp_import_chat(import)
   if not import.created then return end
-  local ok, history = pcall(Path.history.load, self.code.bufnr, import.filename)
+  local ok, history = pcall(HistoryStorage.load, self.code.bufnr, import.filename)
   if ok and history and #History.get_history_messages(history) == 0 then
-    Path.history.delete(self.code.bufnr, import.filename)
+    HistoryStorage.delete(self.code.bufnr, import.filename)
   end
 end
 
 local debounced_save_history = Utils.debounce(
-  function(bufnr, history, project_root) Path.history.write(bufnr, history, project_root) end,
+  function(bufnr, history, project_root) HistoryStorage.write(bufnr, history, project_root) end,
   1000
 )
 
@@ -2813,7 +2813,7 @@ function Sidebar:delete_history_messages(uuids)
   for _, msg in ipairs(history_messages) do
     if vim.list_contains(uuids, msg.uuid) then msg.is_deleted = true end
   end
-  Path.history.save(self.code.bufnr, self.chat_history)
+  HistoryStorage.save(self.code.bufnr, self.chat_history)
 end
 
 ---@param todos avante.TODO[]
@@ -2825,7 +2825,7 @@ function Sidebar:update_todos(todos, history, bufnr, project_root)
   history = history or self.chat_history
   if history == nil then return end
   history.todos = todos
-  Path.history.save(bufnr or self.code.bufnr, history, project_root)
+  HistoryStorage.save(bufnr or self.code.bufnr, history, project_root)
   if history == self.chat_history then self:create_todos_container() end
 end
 
@@ -3051,7 +3051,7 @@ function Sidebar:reload_chat_history(filename, project_root)
       and self.chat_history_project_root == project_root
     )
   then
-    self.chat_history = Path.history.load(self.code.bufnr, filename, project_root)
+    self.chat_history = HistoryStorage.load(self.code.bufnr, filename, project_root)
     local history = self.chat_history
     local contexts = history and history.turn_contexts or {}
     local context = contexts[#contexts]
@@ -3347,7 +3347,7 @@ function Sidebar:handle_submit(request)
     if not is_request_history_visible() then return false end
     if self.chat_history ~= chat_history then
       self.token_count = nil
-      self.chat_history = Path.history.load(code_bufnr, chat_history.filename, history_project_root)
+      self.chat_history = HistoryStorage.load(code_bufnr, chat_history.filename, history_project_root)
       self.chat_history_project_root = history_project_root
       self._history_cache_invalidated = true
     end
@@ -3436,7 +3436,7 @@ function Sidebar:handle_submit(request)
           just_for_display = true,
         }),
       }, { history = chat_history, bufnr = code_bufnr, project_root = history_project_root })
-      Path.history.save(code_bufnr, chat_history, history_project_root)
+      HistoryStorage.save(code_bufnr, chat_history, history_project_root)
       if sync_request_history() then
         on_state_change("failed")
         self:update_content("")
@@ -3481,7 +3481,7 @@ function Sidebar:handle_submit(request)
       })
     end
 
-    Path.history.save(code_bufnr, chat_history, history_project_root)
+    HistoryStorage.save(code_bufnr, chat_history, history_project_root)
     local showing_request_history = sync_request_history()
 
     if not showing_request_history then
@@ -3542,7 +3542,7 @@ function Sidebar:handle_submit(request)
         if not is_current_request() or turn_context_saved then return end
         context.user_message_uuid = user_message and user_message.uuid
         History.record_turn(chat_history, context, snapshot)
-        Path.history.write(code_bufnr, chat_history, history_project_root)
+        HistoryStorage.write(code_bufnr, chat_history, history_project_root)
         turn_context_saved = true
       end,
       acp_client = self.acp_client,
@@ -3562,7 +3562,7 @@ function Sidebar:handle_submit(request)
       on_save_acp_session_id = function(session_id)
         if not is_current_request() then return end
         chat_history.acp_session_id = session_id
-        Path.history.save(code_bufnr, chat_history, history_project_root)
+        HistoryStorage.save(code_bufnr, chat_history, history_project_root)
       end,
       on_acp_session_replay = acp_import
         and function(session_id, messages)
@@ -3624,7 +3624,7 @@ function Sidebar:handle_submit(request)
           if request_state and request_state.finished then return end
           if memory then
             chat_history.memory = memory
-            Path.history.save(code_bufnr, chat_history, history_project_root)
+            HistoryStorage.save(code_bufnr, chat_history, history_project_root)
             stream_options.memory = memory.content
           end
           stream_options.history_messages = stream_options.get_history_messages()
