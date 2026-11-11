@@ -2380,6 +2380,8 @@ function Sidebar:update_content_with_history()
   self:update_content("")
 end
 
+---Reset chat history and stop the ACP client.
+---The next ACP request starts a fresh agent process.
 function Sidebar:reset_chat_history()
   self:stop_acp_client()
   self.chat_history = HistoryStorage.new(self.code.bufnr, self.chat_history_project_root)
