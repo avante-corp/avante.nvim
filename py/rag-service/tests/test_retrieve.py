@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import service
 from fastapi import FastAPI
-from httpx import ASGITransport, AsyncClient, Request
+from httpx2 import ASGITransport, AsyncClient, Request
 from openai import APITimeoutError
 
 
