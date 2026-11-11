@@ -157,7 +157,7 @@ function M.resume(bufnr, session)
 end
 
 ---List the current ACP provider's sessions for this project and resume the selected one
----@param requested_session_id? string
+---@param requested_session_id? avante.acp.SessionId
 function M.open(requested_session_id)
   local provider = Config.provider
   ---@type AvanteACPProvider?

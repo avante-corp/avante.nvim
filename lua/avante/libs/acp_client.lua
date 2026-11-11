@@ -84,8 +84,12 @@
 ---@field message string
 ---@field data? any
 
+---Unique session identifier assigned by the ACP agent. Its format is agent-specific.
+---See https://agentclientprotocol.com/protocol/v1/session-setup#session-id.
+---@alias avante.acp.SessionId string
+
 ---@class avante.acp.SessionInfo
----@field sessionId string
+---@field sessionId avante.acp.SessionId
 ---@field cwd string
 ---@field title? string
 ---@field updatedAt? string
