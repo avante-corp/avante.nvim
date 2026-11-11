@@ -306,7 +306,7 @@ function M.select_acp_mode() require("avante.acp_config_selector").open_mode() e
 
 ---List the current ACP agent's sessions for this project, including ones started outside avante
 ---(e.g. in the agent's CLI), and resume the selected one in the sidebar
----@param session_id? string
+---@param session_id? avante.acp.SessionId
 function M.select_acp_session(session_id) require("avante.acp_session_selector").open(session_id) end
 
 function M.select_history(session_id)

@@ -767,7 +767,7 @@ M.select_acp_session({session_id?})              *avante-api.select_acp_session*
     (e.g. in the agent's CLI), and resume the selected one in the sidebar
 
     Parameters: ~
-        {session_id?}  (string)
+        {session_id?}  (avante.acp.SessionId)
 
 
 M.select_history()                                   *avante-api.select_history*
@@ -3395,10 +3395,18 @@ avante.acp.ACPError                                        *avante.acp.ACPError*
         {kind}  ()
 
 
+avante.acp.SessionId                                      *avante.acp.SessionId*
+    Unique session identifier assigned by the ACP agent. Its format is agent-specific.
+    See https://agentclientprotocol.com/protocol/v1/session-setup#session-id.
+
+    Type: ~
+        string
+
+
 avante.acp.SessionInfo                                  *avante.acp.SessionInfo*
 
     Fields: ~
-        {sessionId}   (string)
+        {sessionId}   (avante.acp.SessionId)
         {cwd}         (string)
         {title?}      (string)
         {updatedAt?}  (string)
