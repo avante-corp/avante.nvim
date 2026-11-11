@@ -42,7 +42,6 @@ function M.init()
 end
 
 function M.log_prompt(request)
-  if (Config.acp_providers or {})[Config.provider] then return end
   if request == "" then return end
   local log_dir = Config.prompt_logger.log_dir
   local log_file = vim.fs.joinpath(log_dir, "avante_prompts.log")

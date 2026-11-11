@@ -88,6 +88,29 @@ local Render = require("avante.history.render")
 local Line = require("avante.ui.line")
 local LRUCache = require("avante.utils.lru_cache")
 
+local function setup_prompt_logger(input)
+  if not Utils.is_valid_container(input) then return end
+  local is_acp = (Config.acp_providers or {})[Config.provider] ~= nil
+  if not is_acp then PromptLogger.init() end
+  local history_keymaps = {
+    [-1] = Config.prompt_logger.next_prompt,
+    [1] = Config.prompt_logger.prev_prompt,
+  }
+  for delta, keymaps in pairs(history_keymaps) do
+    for mode, key in pairs({ n = keymaps.normal, i = keymaps.insert }) do
+      if key then
+        if not is_acp then
+          input:map(mode, key, PromptLogger.on_log_retrieve(delta))
+        elseif input._prompt_logger_enabled then
+          -- Only remove history mappings previously installed on this input.
+          pcall(input.unmap, input, mode, key)
+        end
+      end
+    end
+  end
+  input._prompt_logger_enabled = not is_acp
+end
+
 local RESULT_BUF_NAME = "AVANTE_RESULT"
 local VIEW_BUFFER_UPDATED_PATTERN = "AvanteViewBufferUpdated"
 local CODEBLOCK_KEYBINDING_NAMESPACE = api.nvim_create_namespace("AVANTE_CODEBLOCK_KEYBINDING")
@@ -2369,6 +2392,8 @@ function Sidebar:reset_chat_history()
   self:render_result_header()
   self:update_content("")
   self:create_todos_container()
+  -- Provider switches reuse the input container, so refresh its history mappings.
+  setup_prompt_logger(self.containers and self.containers.input)
 end
 
 ---@param position? integer
@@ -3206,7 +3231,8 @@ end
 
 ---@param request string
 function Sidebar:handle_submit(request)
-  if Config.prompt_logger.enabled then PromptLogger.log_prompt(request) end
+  local is_acp = (Config.acp_providers or {})[Config.provider] ~= nil
+  if Config.prompt_logger.enabled and not is_acp then PromptLogger.log_prompt(request) end
 
   if self.is_generating then
     if request ~= "" then self:add_history_messages({ History.Message:new("user", request) }) end
@@ -3665,7 +3691,6 @@ function Sidebar:create_input_container()
   local function on_submit() self:submit_input() end
 
   self.containers.input:mount()
-  PromptLogger.init()
 
   self.place_sign_at_first_line(self.containers.input.bufnr)
 
@@ -3679,18 +3704,7 @@ function Sidebar:create_input_container()
   self:setup_window_navigation(self.containers.input)
   self.containers.input:map("n", Config.mappings.submit.normal, on_submit)
   self.containers.input:map("i", Config.mappings.submit.insert, on_submit)
-  if Config.prompt_logger.next_prompt.normal then
-    self.containers.input:map("n", Config.prompt_logger.next_prompt.normal, PromptLogger.on_log_retrieve(-1))
-  end
-  if Config.prompt_logger.next_prompt.insert then
-    self.containers.input:map("i", Config.prompt_logger.next_prompt.insert, PromptLogger.on_log_retrieve(-1))
-  end
-  if Config.prompt_logger.prev_prompt.normal then
-    self.containers.input:map("n", Config.prompt_logger.prev_prompt.normal, PromptLogger.on_log_retrieve(1))
-  end
-  if Config.prompt_logger.prev_prompt.insert then
-    self.containers.input:map("i", Config.prompt_logger.prev_prompt.insert, PromptLogger.on_log_retrieve(1))
-  end
+  setup_prompt_logger(self.containers.input)
 
   if Config.mappings.sidebar.close_from_input ~= nil then
     if Config.mappings.sidebar.close_from_input.normal ~= nil then
