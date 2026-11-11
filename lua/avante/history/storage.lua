@@ -1,6 +1,7 @@
 local Utils = require("avante.utils")
 local Path = require("plenary.path")
 local Config = require("avante.config")
+local Api = require("avante.api")
 
 ---@param bufnr integer | nil
 ---@param project_root? string
@@ -50,8 +51,7 @@ end
 ---@param is_acp_metadata boolean
 ---@return boolean
 local function history_matches_current_provider(history, is_acp_metadata)
-  local current_is_acp = (Config.acp_providers or {})[Config.provider] ~= nil
-  if current_is_acp then return is_acp_metadata and history.acp_provider == Config.provider end
+  if Api.is_acp_provider() then return is_acp_metadata and history.acp_provider == Config.provider end
   return not is_acp_metadata
 end
 
@@ -177,6 +177,7 @@ end
 ---@return avante.ChatHistory
 function M.new(bufnr, project_root)
   local filepath = M.get_latest_filepath(bufnr, true, project_root)
+  local is_acp = Api.is_acp_provider()
   ---@type avante.ChatHistory
   local history = {
     title = "untitled",
@@ -185,9 +186,8 @@ function M.new(bufnr, project_root)
     messages = {},
     todos = {},
     filename = filepath_to_filename(filepath),
-    acp_provider = Config.acp_providers[Config.provider] and Config.provider or nil,
-    acp_session_cwd = Config.acp_providers[Config.provider] and (project_root or Utils.root.get({ buf = bufnr }))
-      or nil,
+    acp_provider = is_acp and Config.provider or nil,
+    acp_session_cwd = is_acp and (project_root or Utils.root.get({ buf = bufnr })) or nil,
   }
   return history
 end

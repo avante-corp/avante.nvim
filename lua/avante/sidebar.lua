@@ -76,6 +76,7 @@ local event = require("nui.utils.autocmd").event
 
 local PPath = require("plenary.path")
 local Providers = require("avante.providers")
+local Api = require("avante.api")
 local HistoryStorage = require("avante.history.storage")
 local Config = require("avante.config")
 local Llm = require("avante.llm")
@@ -90,7 +91,7 @@ local LRUCache = require("avante.utils.lru_cache")
 
 local function setup_prompt_logger(input)
   if not Utils.is_valid_container(input) then return end
-  local is_acp = (Config.acp_providers or {})[Config.provider] ~= nil
+  local is_acp = Api.is_acp_provider()
   if not is_acp then PromptLogger.init() end
   local history_keymaps = {
     [-1] = Config.prompt_logger.next_prompt,
@@ -202,7 +203,7 @@ local function set_user_message_metadata(sidebar, message, timestamp)
   if not message.is_user_submission then return end
   message.provider = Config.provider
   if timestamp then message.timestamp = timestamp end
-  if Config.acp_providers[Config.provider] then
+  if Api.is_acp_provider() then
     for _, opt in ipairs(get_acp_config_options(sidebar.acp_client, Config.provider)) do
       local current_value = opt.currentValue
       if opt.category == "model" and type(current_value) == "string" then message.model = current_value end
@@ -359,9 +360,7 @@ function Sidebar:open(opts)
     vim.g.avante_login = true
   end
 
-  ---@type AvanteACPProvider?
-  local acp_provider = Config.acp_providers[Config.provider]
-  if acp_provider and not opts.new_chat and (not opts.question or opts.question == "") then
+  if Api.is_acp_provider() and not opts.new_chat and (not opts.question or opts.question == "") then
     self:resume_pending_acp_import()
     self:handle_submit("")
   end
@@ -1198,7 +1197,7 @@ function Sidebar:render_header(winid, bufnr, header_text, hl, reverse_hl, opts)
   ---@type string?
   local model_name = nil
   if opts.include_model and Config.windows.sidebar_header.include_model then
-    if Config.acp_providers[Config.provider] then
+    if Api.is_acp_provider() then
       local parts = { Config.provider }
       for _, opt in ipairs(get_acp_config_options(self.acp_client, Config.provider)) do
         if opt.category == "model" then table.insert(parts, opt.currentValue) end
@@ -2706,7 +2705,7 @@ function Sidebar:switch_to_history_and_reconnect()
   self:update_content_with_history()
   self:create_todos_container()
   self:initialize_token_count()
-  if Config.acp_providers[Config.provider] then
+  if Api.is_acp_provider() then
     self:resume_pending_acp_import()
     self:handle_submit("")
   end
@@ -3117,7 +3116,7 @@ function Sidebar:get_history_messages_for_api(opts)
         :totable()
     end
 
-    if not Config.acp_providers[Config.provider] then
+    if not Api.is_acp_provider() then
       local provider = Providers[Config.provider]
       local route = opts.resolved_api_route or Providers.resolve_api_route(provider, nil)
       ---@type integer?
@@ -3140,7 +3139,7 @@ function Sidebar:get_generate_prompts_options(request, cb)
     -- Keep cache routing stable across turns without exposing local paths.
     session_ctx.session_id = fn.sha256(session_ctx.project_root .. "/" .. self.chat_history.filename)
   end
-  if not Config.acp_providers[Config.provider] then
+  if not Api.is_acp_provider() then
     session_ctx.resolved_api_route = Providers.resolve_api_route(Providers[Config.provider], nil)
   end
   local filetype = api.nvim_get_option_value("filetype", { buf = self.code.bufnr })
@@ -3233,7 +3232,7 @@ end
 
 ---@param request string
 function Sidebar:handle_submit(request)
-  local is_acp = (Config.acp_providers or {})[Config.provider] ~= nil
+  local is_acp = Api.is_acp_provider()
   if Config.prompt_logger.enabled and not is_acp then PromptLogger.log_prompt(request) end
 
   if self.is_generating then

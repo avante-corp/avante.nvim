@@ -1,4 +1,5 @@
 local Config = require("avante.config")
+local Api = require("avante.api")
 local Utils = require("avante.utils")
 local ACPClient = require("avante.libs.acp_client")
 
@@ -8,7 +9,7 @@ local M = {}
 ---@param category string "model" | "mode"
 ---@param prompt_label string
 function M.open(category, prompt_label)
-  if not Config.acp_providers[Config.provider] then
+  if not Api.is_acp_provider() then
     Utils.warn("Current provider is not an ACP provider")
     return
   end

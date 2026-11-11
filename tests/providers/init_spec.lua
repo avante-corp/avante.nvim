@@ -2,12 +2,15 @@ describe("providers", function()
   local Config
   local previous_avante
   local previous_avante_module
+  local previous_api
 
   before_each(function()
     previous_avante = vim.g.avante
     previous_avante_module = package.loaded["avante"]
+    previous_api = package.loaded["avante.api"]
     package.loaded["avante.config"] = nil
     package.loaded["avante.providers"] = nil
+    package.loaded["avante.api"] = nil
 
     Config = require("avante.config")
     Config.get_last_used_model = function() end
@@ -37,6 +40,7 @@ describe("providers", function()
   after_each(function()
     vim.g.avante = previous_avante
     package.loaded["avante"] = previous_avante_module
+    package.loaded["avante.api"] = previous_api
     package.loaded["avante.config"] = nil
     package.loaded["avante.providers"] = nil
   end)

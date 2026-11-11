@@ -9,6 +9,7 @@ local Utils = require("avante.utils")
 local FileUtils = require("avante.utils.file")
 local Prompts = require("avante.utils.prompts")
 local Config = require("avante.config")
+local Api = require("avante.api")
 local Path = require("avante.path")
 local Providers = require("avante.providers")
 local LLMToolHelpers = require("avante.llm_tools.helpers")
@@ -316,9 +317,7 @@ function M.generate_prompts(opts)
   if opts.prompt_opts and opts.prompt_opts.tools then tools = vim.list_extend(tools, opts.prompt_opts.tools) end
 
   local is_acp_provider = false
-  if not opts.provider then
-    is_acp_provider = opts.acp_context ~= nil or Config.acp_providers[Config.provider] ~= nil
-  end
+  if not opts.provider then is_acp_provider = opts.acp_context ~= nil or Api.is_acp_provider() end
   local model_name = "unknown"
   local context_window = nil
   ---@type "chat"|"responses"|nil
@@ -535,7 +534,7 @@ end
 ---@param opts AvanteGeneratePromptsOptions
 ---@return integer
 function M.calculate_tokens(opts)
-  if Config.acp_providers[Config.provider] then return 0 end
+  if Api.is_acp_provider() then return 0 end
   local prompt_opts = M.generate_prompts(opts)
   local tokens = Utils.tokens.calculate_tokens(prompt_opts.system_prompt)
   for _, message in ipairs(prompt_opts.messages) do
@@ -1249,7 +1248,7 @@ end
 ---@param opts AvanteLLMStreamOptions
 ---@return table?
 function M._stream(opts)
-  if opts.acp_context or Config.acp_providers[Config.provider] then return M._stream_acp(opts) end
+  if opts.acp_context or Api.is_acp_provider() then return M._stream_acp(opts) end
 
   local provider = opts.provider or Providers[Config.provider]
   opts.session_ctx = opts.session_ctx or {}
