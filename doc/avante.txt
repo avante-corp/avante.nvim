@@ -1078,11 +1078,11 @@ avante.PendingAcpImport                                *avante.PendingAcpImport*
 
     Fields: ~
         {session_id}          (string)
-        {filename}            (string)   The chat the session is imported into
-        {created}             (boolean)  Whether the chat was created for this import
-        {automatic?}          (boolean)  Whether the import was restored automatically from saved metadata
-        {previous_filename?}  (string)   Chat to return to if a newly created chat's session can't be loaded
-        {timestamp?}          (string)   Last activity time reported by session/list
+        {filename}            (string)                The chat the session is imported into
+        {created}             (boolean)               Whether the chat was created for this import
+        {resume_trigger}      ("automatic"|"manual")  Whether the import was restored from saved metadata or selected by the user
+        {previous_filename?}  (string)                Chat to return to if a newly created chat's session can't be loaded
+        {timestamp?}          (string)                Last activity time reported by session/list
 
 
 avante.CodeState                                              *avante.CodeState*

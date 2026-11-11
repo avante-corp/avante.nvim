@@ -86,7 +86,7 @@ describe("Sidebar ACP import", function()
     end)
 
     it("invalidates a pending import before the stopped client can deliver callbacks", function()
-      local import = { session_id = "s1", filename = "old.json", created = true }
+      local import = { session_id = "s1", filename = "old.json", created = true, resume_trigger = "manual" }
       local chat = { acp_session_id = "s1", filename = "old.json", acp_session_import_pending = true, messages = {} }
       local sidebar = fake_sidebar({ import = import, chat_history = chat })
       local pending_at_stop
@@ -209,7 +209,7 @@ describe("Sidebar ACP import", function()
         session_id = "s1",
         filename = "3.json",
         created = false,
-        automatic = true,
+        resume_trigger = "automatic",
         timestamp = "2026-07-01 20:00:00",
       }, sidebar.pending_acp_import)
     end)
@@ -227,7 +227,7 @@ describe("Sidebar ACP import", function()
     end)
 
     it("does not replace an explicit session import", function()
-      local import = { session_id = "s2", filename = "4.json", created = true }
+      local import = { session_id = "s2", filename = "4.json", created = true, resume_trigger = "manual" }
       local sidebar = fake_sidebar({
         chat_history = {
           acp_session_id = "s1",
@@ -250,7 +250,7 @@ describe("Sidebar ACP import", function()
     local chat = { filename = "3.json", acp_session_id = "s1", acp_session_import_pending = true, messages = {} }
     local sidebar = fake_sidebar({
       chat_history = chat,
-      import = { session_id = "s1", filename = "3.json", created = false },
+      import = { session_id = "s1", filename = "3.json", created = false, resume_trigger = "manual" },
     })
     local submitted_import
     sidebar.handle_submit = function() submitted_import = sidebar.pending_acp_import end
@@ -266,7 +266,7 @@ describe("Sidebar ACP import", function()
 
   describe("finish_acp_import", function()
     it("replaces the chat with the replayed conversation", function()
-      local import = { session_id = "s1", filename = "3.json", created = false }
+      local import = { session_id = "s1", filename = "3.json", created = false, resume_trigger = "manual" }
       local chat = {
         acp_session_id = "s1",
         acp_session_import_pending = true,
@@ -300,6 +300,7 @@ describe("Sidebar ACP import", function()
         session_id = "s1",
         filename = "3.json",
         created = false,
+        resume_trigger = "manual",
         timestamp = "2026-07-01 20:00:00",
       }
       local chat = { acp_session_id = "s1", filename = "3.json", messages = {} }
@@ -331,7 +332,7 @@ describe("Sidebar ACP import", function()
     end)
 
     it("keeps an existing chat when the agent replays nothing", function()
-      local import = { session_id = "s1", filename = "3.json", created = false }
+      local import = { session_id = "s1", filename = "3.json", created = false, resume_trigger = "manual" }
       local chat = {
         acp_session_id = "s1",
         acp_session_import_pending = true,
@@ -350,10 +351,16 @@ describe("Sidebar ACP import", function()
 
     it("ignores an import that is no longer the pending one", function()
       local chat = { acp_session_id = "s1", filename = "3.json", messages = { "kept" } }
-      local sidebar =
-        fake_sidebar({ chat_history = chat, import = { session_id = "s2", filename = "4.json", created = false } })
+      local sidebar = fake_sidebar({
+        chat_history = chat,
+        import = { session_id = "s2", filename = "4.json", created = false, resume_trigger = "manual" },
+      })
 
-      sidebar:finish_acp_import({ session_id = "s1", filename = "3.json", created = false }, "s1", { "fresh" })
+      sidebar:finish_acp_import(
+        { session_id = "s1", filename = "3.json", created = false, resume_trigger = "manual" },
+        "s1",
+        { "fresh" }
+      )
 
       assert.same({ "kept" }, chat.messages)
       assert.is_nil(saved)
@@ -361,7 +368,7 @@ describe("Sidebar ACP import", function()
 
     it("drops the client and the empty chat it created when another chat was opened meanwhile", function()
       local client = { stop = stub() }
-      local import = { session_id = "s1", filename = "5.json", created = true }
+      local import = { session_id = "s1", filename = "5.json", created = true, resume_trigger = "manual" }
       stored["5.json"] = { messages = {} }
       local other_chat = { acp_session_id = "other", filename = "2.json", messages = { "kept" } }
       local sidebar = fake_sidebar({ chat_history = other_chat, import = import, client = client })
@@ -375,7 +382,7 @@ describe("Sidebar ACP import", function()
     end)
 
     it("saves without rendering when the sidebar was closed meanwhile", function()
-      local import = { session_id = "s1", filename = "3.json", created = false }
+      local import = { session_id = "s1", filename = "3.json", created = false, resume_trigger = "manual" }
       local chat = { acp_session_id = "s1", filename = "3.json", messages = {} }
       local sidebar = fake_sidebar({ chat_history = chat, import = import, open = false })
 
@@ -388,7 +395,7 @@ describe("Sidebar ACP import", function()
 
   describe("fail_acp_import", function()
     it("starts fresh when an automatically restored session no longer exists", function()
-      local import = { session_id = "s1", filename = "3.json", created = false, automatic = true }
+      local import = { session_id = "s1", filename = "3.json", created = false, resume_trigger = "automatic" }
       local chat = {
         filename = "3.json",
         acp_session_id = "s1",
@@ -407,7 +414,13 @@ describe("Sidebar ACP import", function()
     end)
 
     it("removes a chat created for the import and goes back to the previous one", function()
-      local import = { session_id = "s1", filename = "5.json", created = true, previous_filename = "2.json" }
+      local import = {
+        session_id = "s1",
+        filename = "5.json",
+        created = true,
+        resume_trigger = "manual",
+        previous_filename = "2.json",
+      }
       stored["5.json"] = { messages = {} }
       local client = { stop = stub() }
       local chat = { acp_session_id = "s1", messages = {}, filename = "5.json" }
@@ -423,8 +436,8 @@ describe("Sidebar ACP import", function()
       assert.is_nil(sidebar.pending_acp_import)
     end)
 
-    it("keeps an existing chat and its messages", function()
-      local import = { session_id = "s1", filename = "3.json", created = false }
+    it("reports a missing manually selected session and keeps the existing chat", function()
+      local import = { session_id = "s1", filename = "3.json", created = false, resume_trigger = "manual" }
       local chat = {
         acp_session_id = "s1",
         acp_session_import_pending = true,
@@ -433,7 +446,7 @@ describe("Sidebar ACP import", function()
       }
       local sidebar = fake_sidebar({ chat_history = chat, import = import })
 
-      sidebar:fail_acp_import(import, { message = "Session not found" })
+      sidebar:fail_acp_import(import, { kind = "session_not_found", message = "Session not found" })
 
       assert.stub(Utils.error).was_called(1)
       assert.same({}, deleted)
@@ -444,7 +457,13 @@ describe("Sidebar ACP import", function()
     end)
 
     it("removes the created chat without switching when another chat is showing", function()
-      local import = { session_id = "s1", filename = "5.json", created = true, previous_filename = "2.json" }
+      local import = {
+        session_id = "s1",
+        filename = "5.json",
+        created = true,
+        resume_trigger = "manual",
+        previous_filename = "2.json",
+      }
       stored["5.json"] = { messages = {} }
       local sidebar = fake_sidebar({
         chat_history = { acp_session_id = "other", filename = "2.json", messages = {} },
@@ -459,10 +478,15 @@ describe("Sidebar ACP import", function()
     end)
 
     it("ignores an import that is no longer the pending one", function()
-      local sidebar =
-        fake_sidebar({ chat_history = {}, import = { session_id = "s2", filename = "6.json", created = true } })
+      local sidebar = fake_sidebar({
+        chat_history = {},
+        import = { session_id = "s2", filename = "6.json", created = true, resume_trigger = "manual" },
+      })
 
-      sidebar:fail_acp_import({ session_id = "s1", filename = "5.json", created = true }, { message = "x" })
+      sidebar:fail_acp_import(
+        { session_id = "s1", filename = "5.json", created = true, resume_trigger = "manual" },
+        { message = "x" }
+      )
 
       assert.stub(Utils.error).was_not_called()
       assert.same({}, deleted)
@@ -476,7 +500,12 @@ describe("Sidebar ACP import", function()
       }
       local sidebar = fake_sidebar({})
 
-      sidebar:discard_acp_import_chat({ session_id = "s1", filename = "5.json", created = true })
+      sidebar:discard_acp_import_chat({
+        session_id = "s1",
+        filename = "5.json",
+        created = true,
+        resume_trigger = "manual",
+      })
 
       assert.same({}, deleted)
     end)
@@ -485,7 +514,12 @@ describe("Sidebar ACP import", function()
       stored["3.json"] = { messages = {} }
       local sidebar = fake_sidebar({})
 
-      sidebar:discard_acp_import_chat({ session_id = "s1", filename = "3.json", created = false })
+      sidebar:discard_acp_import_chat({
+        session_id = "s1",
+        filename = "3.json",
+        created = false,
+        resume_trigger = "manual",
+      })
 
       assert.same({}, deleted)
     end)

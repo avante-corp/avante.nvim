@@ -235,7 +235,7 @@ describe("Sidebar ACP request lifecycle", function()
     local client = ACPClient:new({ command = "agent", handlers = {} })
     client.connection_state = "ready"
     client.native = { load_session = function() return { operationId = 1 } end, stop = function() end }
-    local import = { session_id = "s1", filename = "old.json", created = false }
+    local import = { session_id = "s1", filename = "old.json", created = false, resume_trigger = "manual" }
     local sidebar, _, callbacks = submit({ request = "", import = import, client = client })
     Llm._load_acp_session_and_continue(callbacks, client, "s1")
     local new_chat = switch_chat(sidebar)
@@ -254,7 +254,7 @@ describe("Sidebar ACP request lifecycle", function()
   for _, outcome in ipairs({ "replay", "error" }) do
     it("ignores an import " .. outcome .. " callback after the chat changes", function()
       replace(Utils, "error")
-      local import = { session_id = "s1", filename = "old.json", created = false }
+      local import = { session_id = "s1", filename = "old.json", created = false, resume_trigger = "manual" }
       local sidebar, _, callbacks = submit({ request = "", import = import })
       local new_chat = { filename = "new.json", acp_session_id = "s2", messages = {} }
       sidebar.chat_history = new_chat

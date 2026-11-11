@@ -209,6 +209,7 @@ describe("acp_session_selector", function()
         session_id = "s1",
         filename = "8.json",
         created = true,
+        resume_trigger = "manual",
         previous_filename = "7.json",
         timestamp = imported_at,
       }, sidebar.pending_acp_import)
@@ -225,7 +226,10 @@ describe("acp_session_selector", function()
       assert.is_true(saved.acp_session_import_pending)
       assert.equals("New title", saved.title)
       assert.same({ "kept" }, saved.messages)
-      assert.same({ session_id = "s1", filename = "3.json", created = false }, sidebar.pending_acp_import)
+      assert.same(
+        { session_id = "s1", filename = "3.json", created = false, resume_trigger = "manual" },
+        sidebar.pending_acp_import
+      )
     end)
 
     it("keeps the chat's title when the session has none", function()
@@ -269,7 +273,7 @@ describe("acp_session_selector", function()
     end)
 
     it("discards an earlier import that hasn't finished", function()
-      local earlier = { session_id = "s0", filename = "6.json", created = true }
+      local earlier = { session_id = "s0", filename = "6.json", created = true, resume_trigger = "manual" }
       sidebar = fake_sidebar({ open = true, pending = earlier })
 
       AcpSessionSelector.resume(1, { sessionId = "s1", cwd = "/p" })

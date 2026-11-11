@@ -157,7 +157,7 @@ Sidebar.__index = Sidebar
 ---@field session_id string
 ---@field filename string The chat the session is imported into
 ---@field created boolean Whether the chat was created for this import
----@field automatic? boolean Whether the import was restored automatically from saved metadata
+---@field resume_trigger 'automatic'|'manual' Whether the import was restored from saved metadata or selected by the user
 ---@field previous_filename? string Chat to return to if a newly created chat's session can't be loaded
 ---@field timestamp? string Last activity time reported by session/list
 
@@ -2665,7 +2665,7 @@ function Sidebar:resume_pending_acp_import()
     session_id = history.acp_session_id,
     filename = history.filename,
     created = false,
-    automatic = true,
+    resume_trigger = "automatic",
     timestamp = history.timestamp,
   }
 end
@@ -2736,7 +2736,7 @@ function Sidebar:fail_acp_import(import, err)
   local chat_history = self.chat_history
   local missing_session = type(err) == "table" and (err.kind == "not_found" or err.kind == "session_not_found")
   if
-    import.automatic
+    import.resume_trigger == "automatic"
     and missing_session
     and chat_history
     and chat_history.filename == import.filename

@@ -145,6 +145,7 @@ function M.resume(bufnr, session)
     session_id = session.sessionId,
     filename = history.filename,
     created = created,
+    resume_trigger = "manual",
     previous_filename = created and previous_filename or nil,
     timestamp = updated_at and history.timestamp or nil,
   }
