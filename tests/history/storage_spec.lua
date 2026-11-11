@@ -1,7 +1,7 @@
 local Config = require("avante.config")
-local Path = require("avante.path")
+local HistoryStorage = require("avante.history.storage")
 
-describe("History paths", function()
+describe("History storage", function()
   local storage_path
 
   before_each(function()
@@ -22,8 +22,8 @@ describe("History paths", function()
     local history = { filename = "0.json", title = "untitled", messages = {}, entries = {}, todos = {} }
     vim.api.nvim_buf_delete(bufnr, { force = true })
 
-    assert.has_no.errors(function() Path.history.save(bufnr, history, project_root) end)
-    local loaded = Path.history.load(bufnr, history.filename, project_root)
+    assert.has_no.errors(function() HistoryStorage.save(bufnr, history, project_root) end)
+    local loaded = HistoryStorage.load(bufnr, history.filename, project_root)
     assert.equals(history.filename, loaded.filename)
     assert.same(history.messages, loaded.messages)
 
@@ -37,30 +37,30 @@ describe("History paths", function()
     Config.acp_providers = { ["test-acp"] = {} }
 
     local ok, err = pcall(function()
-      local history = Path.history.new(0, project_root)
+      local history = HistoryStorage.new(0, project_root)
       history.acp_session_id = "session-1"
-      Path.history.save(0, history, project_root)
+      HistoryStorage.save(0, history, project_root)
 
       assert.same({
         acp_provider = "test-acp",
         acp_session_id = "session-1",
         acp_session_cwd = project_root,
-      }, vim.json.decode(Path.history.get_filepath(0, history.filename, project_root):read()))
-      assert.equals("session-1", Path.history.load(0, history.filename, project_root).acp_session_id)
+      }, vim.json.decode(HistoryStorage.get_filepath(0, history.filename, project_root):read()))
+      assert.equals("session-1", HistoryStorage.load(0, history.filename, project_root).acp_session_id)
 
-      local histories = Path.history.list(0, project_root)
+      local histories = HistoryStorage.list(0, project_root)
       assert.equals(1, #histories)
       assert.equals(history.filename, histories[1].filename)
       assert.equals("session-1", histories[1].acp_session_id)
 
-      local current = Path.history.new(0, project_root)
+      local current = HistoryStorage.new(0, project_root)
       current.acp_session_id = "current-session"
-      Path.history.save(0, current, project_root)
+      HistoryStorage.save(0, current, project_root)
 
       current.acp_session_id = nil
-      Path.history.save(0, current, project_root)
+      HistoryStorage.save(0, current, project_root)
 
-      local metadata = vim.json.decode(Path.history.get_metadata_filepath(0, project_root):read())
+      local metadata = vim.json.decode(HistoryStorage.get_metadata_filepath(0, project_root):read())
       assert.is_nil(metadata.latest_filename)
     end)
 
@@ -83,10 +83,10 @@ describe("History paths", function()
         entries = {},
         todos = {},
       }
-      Path.history.save(0, history, project_root)
+      HistoryStorage.save(0, history, project_root)
 
-      assert.same({}, Path.history.list(0, project_root))
-      assert.same(history.messages, Path.history.load(0, nil, project_root).messages)
+      assert.same({}, HistoryStorage.list(0, project_root))
+      assert.same(history.messages, HistoryStorage.load(0, nil, project_root).messages)
     end)
 
     Config.provider, Config.acp_providers = provider, acp_providers
@@ -95,14 +95,14 @@ describe("History paths", function()
 
   it("does not restore an old history when metadata has no latest filename", function()
     local project_root = Config.history.storage_path .. "/unselected-project"
-    Path.history.write(0, {
+    HistoryStorage.write(0, {
       filename = "0.json",
       title = "old history",
       messages = { { message = { role = "user", content = "do not restore" } } },
       entries = {},
       todos = {},
     }, project_root)
-    Path.history.write(0, {
+    HistoryStorage.write(0, {
       filename = "1.json",
       title = "newer old history",
       messages = { { message = { role = "user", content = "do not restore either" } } },
@@ -110,8 +110,8 @@ describe("History paths", function()
       todos = {},
     }, project_root)
 
-    assert.is_nil(Path.history.get_latest_filename(0, false, project_root))
-    local restored = Path.history.load(0, nil, project_root)
+    assert.is_nil(HistoryStorage.get_latest_filename(0, false, project_root))
+    local restored = HistoryStorage.load(0, nil, project_root)
     assert.same({}, restored.messages)
     assert.equals("2.json", restored.filename)
   end)
@@ -123,14 +123,14 @@ describe("History paths", function()
     Config.acp_providers = { ["test-acp"] = {} }
 
     local ok, err = pcall(function()
-      Path.history.save(0, {
+      HistoryStorage.save(0, {
         filename = "0.json",
         acp_provider = "removed-acp",
         acp_session_id = "foreign-session",
         messages = {},
       }, project_root)
 
-      local restored = Path.history.load(0, nil, project_root)
+      local restored = HistoryStorage.load(0, nil, project_root)
       assert.equals("test-acp", restored.acp_provider)
       assert.is_nil(restored.acp_session_id)
     end)
@@ -142,7 +142,7 @@ describe("History paths", function()
   it("reuses prompt snapshots across turns and preserves changed rules after saving", function()
     local History = require("avante.history")
     local root = Config.history.storage_path .. "/project"
-    local history = Path.history.new(0, root)
+    local history = HistoryStorage.new(0, root)
     local snapshot = { system_prompt = "Final system instructions", instructions = "Project rules" }
     local first = { turn_id = "turn-1", model = "model-1", reasoning_effort = "high", project_root = root }
     local second = { turn_id = "turn-2", model = "model-2", reasoning_effort = "low", project_root = root }
@@ -153,8 +153,8 @@ describe("History paths", function()
 
     local changed = { system_prompt = snapshot.system_prompt, instructions = "Changed project rules" }
     History.record_turn(history, { turn_id = "turn-3" }, changed)
-    Path.history.save(0, history, root)
-    local loaded = Path.history.load(0, history.filename, root)
+    HistoryStorage.save(0, history, root)
+    local loaded = HistoryStorage.load(0, history.filename, root)
 
     assert.same(history.turn_contexts, loaded.turn_contexts)
     assert.equals(2, vim.tbl_count(loaded.prompt_snapshots))
@@ -173,14 +173,14 @@ describe("History paths", function()
     local sidebar = setmetatable({ code = { bufnr = bufnr }, chat_history = old }, { __index = Sidebar })
 
     sidebar:save_history(old, bufnr, project_root)
-    Path.history.save(bufnr, current, project_root)
+    HistoryStorage.save(bufnr, current, project_root)
     sidebar.chat_history = current
     vim.api.nvim_buf_delete(bufnr, { force = true })
 
     assert.is_true(
-      vim.wait(2000, function() return Path.history.get_filepath(bufnr, old.filename, project_root):exists() end, 10)
+      vim.wait(2000, function() return HistoryStorage.get_filepath(bufnr, old.filename, project_root):exists() end, 10)
     )
-    assert.same(old.messages, Path.history.load(bufnr, old.filename, project_root).messages)
-    assert.same(current.filename, Path.history.get_latest_filename(bufnr, false, project_root))
+    assert.same(old.messages, HistoryStorage.load(bufnr, old.filename, project_root).messages)
+    assert.same(current.filename, HistoryStorage.get_latest_filename(bufnr, false, project_root))
   end)
 end)

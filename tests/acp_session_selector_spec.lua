@@ -1,5 +1,5 @@
 local stub = require("luassert.stub")
-local Path = require("avante.path")
+local HistoryStorage = require("avante.history.storage")
 local Utils = require("avante.utils")
 local AcpSessionSelector = require("avante.acp_session_selector")
 
@@ -36,10 +36,10 @@ describe("ACP session selector request ownership", function()
     Avante.sidebars[original_tab] = owner
     stubs = {
       stub(Utils.root, "get").returns("/tmp"),
-      stub(Path.history, "list").returns({}),
-      stub(Path.history, "get_latest_filename").returns("original.json"),
-      stub(Path.history, "new").invokes(function() return { filename = "import.json", messages = {} } end),
-      stub(Path.history, "save").invokes(function() saves = saves + 1 end),
+      stub(HistoryStorage, "list").returns({}),
+      stub(HistoryStorage, "get_latest_filename").returns("original.json"),
+      stub(HistoryStorage, "new").invokes(function() return { filename = "import.json", messages = {} } end),
+      stub(HistoryStorage, "save").invokes(function() saves = saves + 1 end),
       stub(Selector, "new").invokes(function(_, opts)
         picker = opts
         return { open = function() end }
@@ -173,12 +173,12 @@ describe("acp_session_selector", function()
       stubs = {
         stub(Avante, "get").invokes(function() return sidebar end),
         stub(Avante, "open_sidebar"),
-        stub(Path.history, "list").invokes(function() return histories end),
-        stub(Path.history, "get_latest_filename").returns("7.json"),
-        stub(Path.history, "new").invokes(
+        stub(HistoryStorage, "list").invokes(function() return histories end),
+        stub(HistoryStorage, "get_latest_filename").returns("7.json"),
+        stub(HistoryStorage, "new").invokes(
           function() return { title = "untitled", messages = {}, filename = "8.json" } end
         ),
-        stub(Path.history, "save").invokes(function(_, history) saved = history end),
+        stub(HistoryStorage, "save").invokes(function(_, history) saved = history end),
         stub(Utils, "warn"),
         stub(vim.api, "nvim_buf_call").invokes(function(_, fn) fn() end),
       }
@@ -315,7 +315,7 @@ describe("acp_session_selector", function()
     local function open_with(opts, histories, query)
       fake = fake_client(opts)
       stubs[#stubs + 1] = stub(ACPClient, "new").returns(fake)
-      stubs[#stubs + 1] = stub(Path.history, "list").returns(histories or {})
+      stubs[#stubs + 1] = stub(HistoryStorage, "list").returns(histories or {})
       AcpSessionSelector.open(query)
     end
 
@@ -448,7 +448,7 @@ describe("acp_session_selector", function()
 
       stubs[#stubs + 1] = stub(require("avante"), "get").returns(sidebar_with(nil))
       stubs[#stubs + 1] = stub(ACPClient, "new").returns(fake_client({ capabilities = LISTING }))
-      stubs[#stubs + 1] = stub(Path.history, "list").returns({})
+      stubs[#stubs + 1] = stub(HistoryStorage, "list").returns({})
       AcpSessionSelector.open()
       assert.stub(ACPClient.new).was_not_called()
 

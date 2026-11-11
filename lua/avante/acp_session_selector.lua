@@ -1,6 +1,6 @@
 local ACPClient = require("avante.libs.acp_client")
 local Config = require("avante.config")
-local Path = require("avante.path")
+local HistoryStorage = require("avante.history.storage")
 local Selector = require("avante.ui.selector")
 local Utils = require("avante.utils")
 
@@ -95,7 +95,7 @@ end
 local function histories_by_session_id(bufnr)
   ---@type table<string, avante.ChatHistory>
   local histories = {}
-  for _, history in ipairs(Path.history.list(bufnr)) do
+  for _, history in ipairs(HistoryStorage.list(bufnr)) do
     local session_id = history.acp_session_id
     if session_id and session_id ~= "" then histories[session_id] = history end
   end
@@ -116,9 +116,9 @@ function M.resume(bufnr, session)
 
   local history = histories_by_session_id(bufnr)[session.sessionId]
   local created = history == nil
-  local previous_filename = Path.history.get_latest_filename(bufnr, false)
+  local previous_filename = HistoryStorage.get_latest_filename(bufnr, false)
   if not history then
-    history = Path.history.new(bufnr)
+    history = HistoryStorage.new(bufnr)
     history.acp_session_id = session.sessionId
   end
   history.acp_session_import_pending = true
@@ -128,7 +128,7 @@ function M.resume(bufnr, session)
   if updated_at then
     history.timestamp = os.date("%Y-%m-%d %H:%M:%S", updated_at) --[[@as string]]
   end
-  Path.history.save(bufnr, history)
+  HistoryStorage.save(bufnr, history)
 
   if not sidebar then
     Avante._init(vim.api.nvim_get_current_tabpage())

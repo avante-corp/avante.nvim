@@ -3,7 +3,7 @@ local stub = require("luassert.stub")
 local Config = require("avante.config")
 local HistoryMessage = require("avante.history.message")
 local Llm = require("avante.llm")
-local Path = require("avante.path")
+local HistoryStorage = require("avante.history.storage")
 local Sidebar = require("avante.sidebar")
 local Utils = require("avante.utils")
 
@@ -21,8 +21,8 @@ describe("Sidebar request history", function()
     saved_provider = Config.provider
     bufnr = vim.api.nvim_create_buf(false, true)
     stubs = {
-      stub(Path.history, "save"),
-      stub(Path.history, "write"),
+      stub(HistoryStorage, "save"),
+      stub(HistoryStorage, "write"),
       stub(Utils, "warn"),
     }
   end)
@@ -113,7 +113,7 @@ describe("Sidebar request history", function()
       chat_history = original,
       chat_history_project_root = "/original-project",
     }, { __index = Sidebar })
-    stubs[#stubs + 1] = stub(Path.history, "load").returns(other)
+    stubs[#stubs + 1] = stub(HistoryStorage, "load").returns(other)
 
     sidebar:reload_chat_history(other.filename, "/other-project")
 
@@ -130,7 +130,7 @@ describe("Sidebar request history", function()
       chat_history = original,
       chat_history_project_root = "/original-project",
     }, { __index = Sidebar })
-    stubs[#stubs + 1] = stub(Path.history, "load").returns(updated)
+    stubs[#stubs + 1] = stub(HistoryStorage, "load").returns(updated)
 
     sidebar:reload_chat_history(original.filename, "/original-project")
 
@@ -147,7 +147,7 @@ describe("Sidebar request history", function()
     }
     local restored
     stubs[#stubs + 1] = stub(Config, "override").invokes(function(opts) restored = opts end)
-    stubs[#stubs + 1] = stub(Path.history, "load").returns(history)
+    stubs[#stubs + 1] = stub(HistoryStorage, "load").returns(history)
     local sidebar = setmetatable({ code = { bufnr = bufnr }, update_content = function() end }, { __index = Sidebar })
     stubs[#stubs + 1] = stub(sidebar, "render_result_header").invokes(
       function() assert.equals("saved-model", restored.providers.openai.model) end
@@ -176,7 +176,7 @@ describe("Sidebar request history", function()
     local history = { filename = "restored.json", acp_provider = "other-acp", messages = {} }
     local restored
     stubs[#stubs + 1] = stub(Config, "override").invokes(function(opts) restored = opts end)
-    stubs[#stubs + 1] = stub(Path.history, "load").returns(history)
+    stubs[#stubs + 1] = stub(HistoryStorage, "load").returns(history)
     local sidebar = setmetatable({ code = { bufnr = bufnr } }, { __index = Sidebar })
 
     sidebar:reload_chat_history(history.filename, "/project")
@@ -360,8 +360,8 @@ describe("Sidebar request history", function()
     stream_opts.on_request({ turn_id = "original-request" }, { system_prompt = "original instructions" })
     assert.equals(1, #original.turn_contexts)
     assert.is_nil(current.turn_contexts)
-    assert.stub(Path.history.write).was_called()
-    assert.stub(Path.history.save).was_not_called()
+    assert.stub(HistoryStorage.write).was_called()
+    assert.stub(HistoryStorage.save).was_not_called()
     stream_opts.on_stop({ reason = "complete" })
 
     assert.is_false(sidebar.is_generating)
@@ -390,12 +390,12 @@ describe("Sidebar request history", function()
       end,
     }, { __index = Sidebar })
     stubs[#stubs + 1] = stub(Llm, "stream").invokes(function(opts) stream_opts = opts end)
-    Path.history.save:revert()
-    stubs[1] = stub(Path.history, "save").invokes(function(_, history, root)
+    HistoryStorage.save:revert()
+    stubs[1] = stub(HistoryStorage, "save").invokes(function(_, history, root)
       saved_history = vim.deepcopy(history)
       saved_root = root
     end)
-    stubs[#stubs + 1] = stub(Path.history, "load").invokes(function() return vim.deepcopy(saved_history) end)
+    stubs[#stubs + 1] = stub(HistoryStorage, "load").invokes(function() return vim.deepcopy(saved_history) end)
 
     sidebar:handle_submit("hello")
     vim.api.nvim_buf_delete(bufnr, { force = true })

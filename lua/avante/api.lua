@@ -325,8 +325,8 @@ function M.select_history(session_id)
       -- Switch the latest history before opening the sidebar, otherwise
       -- Sidebar:open() preconnects the ACP agent with the previous chat's
       -- session id instead of the selected one.
-      local Path = require("avante.path")
-      Path.history.save_latest_filename(buf, filename)
+      local HistoryStorage = require("avante.history.storage")
+      HistoryStorage.save_latest_filename(buf, filename)
       local Avante = require("avante")
       local was_open = Avante.is_sidebar_open()
       if not was_open then Avante.open_sidebar({}) end

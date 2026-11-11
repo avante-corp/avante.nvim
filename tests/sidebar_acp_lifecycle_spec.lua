@@ -3,7 +3,7 @@ local ACPClient = require("avante.libs.acp_client")
 local Config = require("avante.config")
 local History = require("avante.history")
 local Llm = require("avante.llm")
-local Path = require("avante.path")
+local HistoryStorage = require("avante.history.storage")
 local Sidebar = require("avante.sidebar")
 local Utils = require("avante.utils")
 
@@ -27,7 +27,7 @@ describe("Sidebar ACP request lifecycle", function()
     Config.prompt_logger = { enabled = false }
     replace(vim.keymap, "set")
     replace(vim.keymap, "del")
-    replace(Path.history, "save")
+    replace(HistoryStorage, "save")
   end)
 
   after_each(function()
@@ -131,7 +131,7 @@ describe("Sidebar ACP request lifecycle", function()
     end
     sidebar.get_result_container_width = function() return 30 end
     sidebar.get_result_container_height = function() return 10 end
-    replace(Path.history, "load", function() return vim.deepcopy(history) end)
+    replace(HistoryStorage, "load", function() return vim.deepcopy(history) end)
     table.insert(cleanups, function()
       sidebar.code.winid = nil
       if sidebar.augroup then vim.api.nvim_del_augroup_by_id(sidebar.augroup) end
@@ -276,7 +276,7 @@ describe("Sidebar ACP request lifecycle", function()
   it("does not expose the new chat to an old request's readers", function()
     local sidebar, _, callbacks = submit()
     local new_chat = switch_chat(sidebar)
-    replace(Path.history, "load", function() return new_chat end)
+    replace(HistoryStorage, "load", function() return new_chat end)
 
     local messages = callbacks.get_history_messages() or {}
     local usage = callbacks.get_tokens_usage()

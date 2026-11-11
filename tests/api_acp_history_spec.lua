@@ -1,5 +1,5 @@
 local stub = require("luassert.stub")
-local Path = require("avante.path")
+local HistoryStorage = require("avante.history.storage")
 
 describe("api.select_history ACP lifecycle", function()
   local previous_avante, previous_selector, previous_api
@@ -10,7 +10,7 @@ describe("api.select_history ACP lifecycle", function()
     previous_selector = package.loaded["avante.history_selector"]
     previous_api = package.loaded["avante.api"]
     package.loaded["avante.api"] = nil
-    save_latest_stub = stub(Path.history, "save_latest_filename")
+    save_latest_stub = stub(HistoryStorage, "save_latest_filename")
   end)
 
   after_each(function()

@@ -92,7 +92,7 @@ describe("ACP native integration", function()
 
   it("restores a saved session from metadata", function()
     local Config = require("avante.config")
-    local Path = require("avante.path")
+    local HistoryStorage = require("avante.history.storage")
     local Llm = require("avante.llm")
     local client, ws = new_client()
     local provider, providers, history_config, ask_opts =
@@ -103,10 +103,10 @@ describe("ACP native integration", function()
     Config.ask_opts = { project_root = ws.root }
     local restored
     local ok, err = pcall(function()
-      local history = Path.history.load(0)
+      local history = HistoryStorage.load(0)
       history.acp_session_id = "s1"
       history.acp_session_cwd = ws.root
-      Path.history.save(0, history)
+      HistoryStorage.save(0, history)
 
       local files = vim.fn.glob(Config.history.storage_path .. "/projects/*/history/[0-9]*.json", false, true)
       assert.equals(1, #files)
@@ -116,7 +116,7 @@ describe("ACP native integration", function()
         acp_session_cwd = ws.root,
       }, vim.json.decode(table.concat(vim.fn.readfile(files[1]), "\n")))
 
-      history = Path.history.load(0)
+      history = HistoryStorage.load(0)
       assert.equals("s1", history.acp_session_id)
       assert.is_true(history.acp_session_import_pending)
       operation("automatic history restoration", function(done)
