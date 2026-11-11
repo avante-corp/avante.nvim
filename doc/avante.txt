@@ -1458,6 +1458,8 @@ Sidebar:update_content_with_history()
 
 
 Sidebar:reset_chat_history()                 *avante-sidebar:reset_chat_history*
+    Reset chat history and stop the ACP client.
+    The next ACP request starts a fresh agent process.
 
 
                                  *avante-sidebar:get_content_between_separators*
