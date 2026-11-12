@@ -19,9 +19,6 @@ M.param = {
       type = "string",
     },
   },
-  usage = {
-    path = "The path to the file in the current project scope",
-  },
 }
 
 ---@type AvanteLLMToolReturn[]
@@ -43,7 +40,7 @@ M.returns = {
 function M.func(input, opts)
   local on_log = opts.on_log
   local on_complete = opts.on_complete
-  if not input.path then return false, "pathf are required" end
+  if not input.path then return false, "path is required" end
   if on_log then on_log("path: " .. input.path) end
   local abs_path = Helpers.get_abs_path(input.path)
   if not Helpers.has_permission_to_access(abs_path) then return false, "No permission to access path: " .. abs_path end

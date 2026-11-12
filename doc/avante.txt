@@ -2183,9 +2183,12 @@ You can disable tools like this:
                                                          *avante-tools-builtins*
  Built-in tool names include:
 >
-   rag_search, python, git_diff, git_commit, glob, search_keyword,
-   read_file_toplevel_symbols, read_file, create_file, move_path, copy_path,
-   delete_path, create_dir, bash, web_search_tavily, fetch
+   dispatch_agent, glob, rag_search, run_python, git_diff, git_commit, ls, grep,
+   delete_tool_use_messages, read_todos, write_todos, read_file_toplevel_symbols,
+   str_replace, view, write_to_file, insert, undo_edit, read_global_file,
+   write_global_file, move_path, copy_path, delete_path, create_dir, think,
+   get_diagnostics, bash, attempt_completion, edit_file, web_search_tavily, fetch,
+   read_definitions
 <
 
 
@@ -3139,6 +3142,18 @@ M.is_top_adjacent({win_a}, {win_b})               *avante-utils.is_top_adjacent*
 
 
 M.should_hidden_border()                     *avante-utils.should_hidden_border*
+
+
+avante.JSONSchema                                            *avante.JSONSchema*
+
+    Fields: ~
+        {type}          (string)
+        {description?}  (string)
+        {properties?}   (table<string,avante.JSONSchema>)
+        {required?}     (string[])
+        {items?}        (avante.JSONSchema)
+        {enum?}         (string[])
+        {default?}      (string|integer|boolean|table)
 
 
                              *avante-utils.llm_tool_param_fields_to_json_schema*

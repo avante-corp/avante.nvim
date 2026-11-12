@@ -1604,6 +1604,15 @@ function M.should_hidden_border(win_a, win_b)
   return M.is_left_adjacent(win_a, win_b) or M.is_top_adjacent(win_a, win_b)
 end
 
+---@class avante.JSONSchema
+---@field type string
+---@field description? string
+---@field properties? table<string, avante.JSONSchema>
+---@field required? string[]
+---@field items? avante.JSONSchema
+---@field enum? string[]
+---@field default? string|integer|boolean|table
+
 ---@param fields AvanteLLMToolParamField[]
 ---@return table<string, avante.JSONSchema> properties
 ---@return string[] required
@@ -1637,6 +1646,7 @@ function M.llm_tool_param_fields_to_json_schema(fields)
       }
       if field.choices then properties[field.name].enum = field.choices end
     end
+    if field.default ~= nil then properties[field.name].default = field.default end
     if not field.optional then table.insert(required, field.name) end
   end
   if vim.tbl_isempty(properties) then properties = vim.empty_dict() end

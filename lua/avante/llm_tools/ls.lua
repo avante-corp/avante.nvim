@@ -24,10 +24,6 @@ M.param = {
       type = "integer",
     },
   },
-  usage = {
-    path = "Relative path to the project directory",
-    max_depth = "Maximum depth of the directory",
-  },
 }
 
 ---@type AvanteLLMToolReturn[]

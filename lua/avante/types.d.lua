@@ -449,7 +449,6 @@ vim.g.avante_login = vim.g.avante_login
 ---@class AvanteLLMToolParam
 ---@field type 'table'
 ---@field fields AvanteLLMToolParamField[]
----@field usage? table
 
 ---@class AvanteLLMToolParamField
 ---@field name string
@@ -460,14 +459,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field items? AvanteLLMToolParamField
 ---@field choices? string[]
 ---@field optional? boolean
-
----@class avante.JSONSchema
----@field type string
----@field description? string
----@field properties? table<string, avante.JSONSchema>
----@field required? string[]
----@field items? avante.JSONSchema
----@field enum? string[]
+---@field default? string|integer|boolean|table
 
 ---@class AvanteLLMToolReturn
 ---@field name string
