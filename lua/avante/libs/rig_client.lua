@@ -205,10 +205,10 @@ end
 ---@param checking? boolean
 ---@return avante.llm.NativeRequestInput
 function M._build_request(provider, prompt_opts, session_ctx, checking)
-  local protocol = assert(provider._protocol or provider._name, "Provider protocol is not set")
+  local protocol = assert(provider._protocol, "Provider protocol is not set")
   local provider_conf, additional_params = Providers.parse_config(provider)
   local chatgpt = protocol == "openai" and provider_conf.auth_type == "subscription"
-  local name = provider._name or protocol
+  local name = assert(provider._name, "Provider name is not set")
   local credential = not checking and provider_credential(provider, protocol) or nil
   local route = nil
   if protocol == "openai" or protocol == "azure" or protocol == "copilot" then
@@ -281,7 +281,7 @@ function M._build_request(provider, prompt_opts, session_ctx, checking)
   local input = {
     provider = {
       name = name,
-      dialect = rawget(provider_conf, "dialect"),
+      dialect = rawget(provider, "_dialect"),
       protocol = protocol,
       model = model,
       deployment = deployment,

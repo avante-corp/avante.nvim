@@ -180,7 +180,6 @@ describe("Rig client adapter", function()
     local calls = 0
     configure_provider("openai", {
       api_key_name = "cmd:echo token",
-      dialect = "openai",
       use_response_api = function()
         calls = calls + 1
         return true
@@ -195,11 +194,10 @@ describe("Rig client adapter", function()
     assert.same(1, calls)
   end)
 
-  it("passes an inherited protocol with an explicit Rig dialect", function()
+  it("passes an inherited protocol and its internal Rig dialect", function()
     configure_provider("private_gateway", {
-      __inherited_from = "openai",
+      __inherited_from = "mistral",
       api_key_name = "cmd:echo token",
-      dialect = "mistral",
       extra_request_body = { reasoning_context = "carry" },
     })
     local request = RigClient._build_request(Providers.private_gateway, {
