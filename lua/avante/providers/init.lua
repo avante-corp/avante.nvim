@@ -180,6 +180,59 @@ end
 
 M.env = E
 
+---@param provider_name avante.ProviderName
+---@param inheritance_chain? string[]
+---@param inheritance_indexes? table<string, integer>
+---@return AvanteDefaultBaseProvider provider_config
+---@return AvanteNativeLLMProtocol protocol
+local function resolve_provider_config(provider_name, inheritance_chain, inheritance_indexes)
+  inheritance_chain = inheritance_chain or {}
+  inheritance_indexes = inheritance_indexes or {}
+
+  local cycle_start = inheritance_indexes[provider_name]
+  if cycle_start then
+    local cycle = vim.list_slice(inheritance_chain, cycle_start)
+    table.insert(cycle, provider_name)
+    error("Circular provider inheritance: " .. table.concat(cycle, " -> "), 2)
+  end
+
+  table.insert(inheritance_chain, provider_name)
+  inheritance_indexes[provider_name] = #inheritance_chain
+
+  local provider_config = M.get_config(provider_name)
+  local inherited_from = provider_config.__inherited_from
+  local protocol
+
+  if inherited_from ~= nil then
+    local base_provider_config
+    base_provider_config, protocol = resolve_provider_config(inherited_from, inheritance_chain, inheritance_indexes)
+    local auth_type = provider_config.auth_type
+    provider_config = Utils.deep_extend_with_metatable("force", base_provider_config, provider_config)
+    -- OpenAI-compatible providers must opt in to ChatGPT subscriptions independently.
+    if protocol == "openai" and base_provider_config.auth_type == "subscription" then
+      provider_config.auth_type = auth_type
+    end
+  else
+    local ok, module = pcall(require, "avante.providers." .. provider_name)
+    if not ok then
+      error(
+        string.format(
+          'The configuration of provider "%s" must set `__inherited_from`; custom `parse_curl_args` functions are no longer used. See: https://github.com/avante-corp/avante.nvim/wiki/Custom-providers',
+          provider_name
+        ),
+        2
+      )
+    end
+    provider_config = Utils.deep_extend_with_metatable("force", module, provider_config)
+    protocol = provider_name
+  end
+
+  inheritance_indexes[provider_name] = nil
+  table.remove(inheritance_chain)
+
+  return provider_config, protocol
+end
+
 M = setmetatable(M, {
   ---@param t table<string, AvanteProviderFunctor>
   ---@param k avante.ProviderName
@@ -187,33 +240,8 @@ M = setmetatable(M, {
   __index = function(t, k)
     if Config.providers[k] == nil then error("Failed to find provider: " .. k, 2) end
 
-    local provider_config = M.get_config(k)
+    local provider_config, protocol = resolve_provider_config(k)
 
-    if provider_config.__inherited_from ~= nil then
-      local base_provider_config = M.get_config(provider_config.__inherited_from)
-      local ok, module = pcall(require, "avante.providers." .. provider_config.__inherited_from)
-      if not ok then error("Failed to load provider: " .. provider_config.__inherited_from, 2) end
-      local auth_type = provider_config.auth_type
-      provider_config = Utils.deep_extend_with_metatable("force", module, base_provider_config, provider_config)
-      -- OpenAI-compatible providers must opt in to ChatGPT subscriptions independently.
-      if provider_config.__inherited_from == "openai" and base_provider_config.auth_type == "subscription" then
-        provider_config.auth_type = auth_type
-      end
-    else
-      local ok, module = pcall(require, "avante.providers." .. k)
-      if ok then
-        provider_config = Utils.deep_extend_with_metatable("force", module, provider_config)
-      else
-        error(
-          string.format(
-            'The configuration of provider "%s" must set `__inherited_from`; custom `parse_curl_args` functions are no longer used. See: https://github.com/avante-corp/avante.nvim/wiki/Custom-providers',
-            k
-          )
-        )
-      end
-    end
-
-    local protocol = rawget(provider_config, "__inherited_from") or k
     if not supported_protocols[protocol] then
       error(string.format('Provider "%s" uses unsupported protocol "%s"', k, protocol), 2)
     end

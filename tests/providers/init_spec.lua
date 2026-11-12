@@ -28,6 +28,24 @@ describe("providers", function()
           api_key_name = "",
           model = "claude-test",
         },
+        test_openai_parent = {
+          __inherited_from = "test_openai",
+          endpoint = "https://parent.example.test/v1",
+          api_key_name = "PARENT_API_KEY",
+          model = "parent-model",
+          extra_request_body = {
+            parent_option = true,
+            overridden_option = "parent",
+          },
+        },
+        test_openai_child = {
+          __inherited_from = "test_openai_parent",
+          model = "child-model",
+          extra_request_body = {
+            child_option = true,
+            overridden_option = "child",
+          },
+        },
       },
       windows = {
         sidebar_header = {
@@ -100,6 +118,30 @@ describe("providers", function()
     assert.is_function(provider.parse_api_key)
   end)
 
+  it("resolves cascading provider inheritance", function()
+    local provider = require("avante.providers").test_openai_child
+
+    assert.same("openai", provider._protocol)
+    assert.same("test_openai_child", provider._name)
+    assert.same("https://parent.example.test/v1", provider.endpoint)
+    assert.same("child-model", provider.model)
+    assert.same("openai", provider.dialect)
+    assert.is_true(provider.extra_request_body.parent_option)
+    assert.is_true(provider.extra_request_body.child_option)
+    assert.same("child", provider.extra_request_body.overridden_option)
+  end)
+
+  it("rejects circular provider inheritance", function()
+    Config.providers.cycle_a = { __inherited_from = "cycle_b" }
+    Config.providers.cycle_b = { __inherited_from = "cycle_c" }
+    Config.providers.cycle_c = { __inherited_from = "cycle_a" }
+
+    local ok, err = pcall(function() return require("avante.providers").cycle_a end)
+
+    assert.is_false(ok)
+    assert.matches("Circular provider inheritance: cycle_a -> cycle_b -> cycle_c -> cycle_a", err, nil, true)
+  end)
+
   it("sets up Claude subscriptions without prompting for an API key", function()
     Config.override({
       provider = "test_claude",
@@ -155,6 +197,8 @@ describe("providers", function()
     local Providers = require("avante.providers")
     assert.same("api_key", Providers.deepseek.auth_type)
     assert.is_true(Providers.env.require_api_key(Providers.deepseek))
+    assert.same("api_key", Providers.test_openai_child.auth_type)
+    assert.is_true(Providers.env.require_api_key(Providers.test_openai_child))
   end)
 
   it("inherits and overrides OpenAI-compatible dialects", function()
