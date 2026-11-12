@@ -1402,7 +1402,7 @@ describe("LLM native integration", function()
     assert.matches('"content":"hello"', get_request(), nil, true)
   end)
 
-  it("replays DeepSeek reasoning, tool calls, and results on the second request", function()
+  it("replays DeepSeek reasoning, tool calls, and results through an inheritance chain", function()
     local endpoint, get_request = fake_openai({
       table.concat({
         'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1,"model":"deepseek-flash","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"plan"},"finish_reason":null}]}\n\n',
@@ -1420,17 +1420,16 @@ describe("LLM native integration", function()
     local tool_calls = 0
     local stopped
     Config.mode = "legacy"
-    configure_provider("deepseek", {
-      __inherited_from = "openai",
-      dialect = "deepseek",
+    configure_provider("inherited_deepseek", {
+      __inherited_from = "deepseek",
       endpoint = endpoint,
       model = "deepseek-flash",
       use_response_api = false,
       api_key_name = "cmd:echo test-key",
     })
-    local provider = Providers.deepseek
+    configure_provider("nested_deepseek", { __inherited_from = "inherited_deepseek" })
     local request = Llm._stream({
-      provider = provider,
+      provider = Providers.nested_deepseek,
       prompt_opts = {
         system_prompt = "Be concise.",
         messages = { { role = "user", content = "hello" } },

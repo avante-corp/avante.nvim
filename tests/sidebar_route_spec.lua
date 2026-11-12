@@ -29,7 +29,6 @@ describe("Sidebar API route", function()
     Config.providers[provider_name] = {
       __inherited_from = "openai",
       api_key_name = "",
-      dialect = "openai",
       endpoint = "https://api.openai.com/v1",
       model = "gpt-test",
       context_window = 1000,
