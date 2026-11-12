@@ -89,8 +89,10 @@ describe("providers", function()
 
     assert.same("test_openai", provider._name)
     assert.same("openai", provider._protocol)
+    assert.same("openai", provider._dialect)
     assert.is_nil(parsed._name)
     assert.is_nil(parsed._protocol)
+    assert.is_nil(parsed._dialect)
   end)
 
   it("derives the protocol from inherited providers", function()
@@ -100,73 +102,181 @@ describe("providers", function()
     assert.is_function(provider.parse_api_key)
   end)
 
-  it("sets up Claude subscriptions without prompting for an API key", function()
+  for _, case in ipairs({
+    { name = "test_claude", auth_type = "subscription" },
+    { name = "test_openai", auth_type = "subscription" },
+    { name = "copilot" },
+  }) do
+    it("sets up " .. case.name .. " without reading an API key", function()
+      Config.override({
+        provider = case.name,
+        providers = {
+          [case.name] = {
+            api_key_name = "UNUSED_API_KEY",
+            auth_type = case.auth_type,
+            parse_api_key = function() error("subscription must not read API keys") end,
+          },
+        },
+      })
+      local Providers = require("avante.providers")
+      Providers.setup()
+      local provider = Providers[case.name]
+      assert.same("subscription", provider.auth_type)
+      assert.is_false(Providers.env.require_api_key(provider))
+      assert.is_true(provider.is_env_set())
+      assert.is_true(vim.g.avante_login)
+    end)
+  end
+
+  it("uses the base configuration's selected implementation", function()
     Config.override({
-      provider = "test_claude",
       providers = {
-        test_claude = {
-          api_key_name = "ANTHROPIC_API_KEY",
-          auth_type = "subscription",
-          parse_api_key = function() error("subscription must not read API keys") end,
+        qwen = { __inherited_from = "claude" },
+        deepseek = { __inherited_from = "qwen", model = "claude-test" },
+        private_provider = { __inherited_from = "deepseek" },
+      },
+    })
+    local provider = require("avante.providers").private_provider
+    assert.same("claude", provider._protocol)
+    assert.is_nil(provider._dialect)
+    assert.is_function(provider.get_rate_limit_sleep_time)
+  end)
+
+  it("keeps built-in dialects and provider defaults while inheriting OpenAI", function()
+    local Providers = require("avante.providers")
+    for _, name in ipairs({ "deepseek", "openrouter", "moonshot", "xai", "zai", "mistral" }) do
+      local provider = Providers[name]
+      assert.same("openai", Config.providers[name].__inherited_from, name)
+      assert.same(name, provider._dialect, name)
+      assert.same(16384, provider.extra_request_body.max_completion_tokens, name)
+      assert.same(name == "moonshot" and "high" or "medium", provider.extra_request_body.reasoning_effort, name)
+      assert.same((name == "deepseek" or name == "moonshot") and 1048576 or 128000, provider.context_window, name)
+      assert.same(name == "xai" or name == "zai", provider.support_previous_response_id, name)
+    end
+    assert.same(4096, Providers.mistral.extra_request_body.max_tokens)
+  end)
+
+  it("propagates OpenAI configuration through dialect providers with child overrides", function()
+    Config.override({
+      providers = {
+        openai = {
+          context_window = 1,
+          use_response_api = false,
+          support_previous_response_id = false,
+          extra_request_body = { max_completion_tokens = 1, reasoning_effort = "low" },
         },
       },
     })
     local Providers = require("avante.providers")
-    Providers.setup()
-    assert.is_false(Providers.env.require_api_key(Providers.test_claude))
-    assert.is_true(Providers.test_claude.is_env_set())
-    assert.is_true(vim.g.avante_login)
+    for _, name in ipairs({ "deepseek", "openrouter", "moonshot", "xai", "zai", "mistral" }) do
+      local provider = Providers[name]
+      assert.same(1, provider.extra_request_body.max_completion_tokens, name)
+      assert.same(name == "moonshot" and "high" or "low", provider.extra_request_body.reasoning_effort, name)
+      assert.same((name == "deepseek" or name == "moonshot") and 1048576 or 1, provider.context_window, name)
+      assert.same(name == "deepseek", provider.use_response_api, name)
+      assert.is_false(provider.support_previous_response_id, name)
+      assert.same(name, provider._dialect, name)
+    end
   end)
 
-  it("sets up ChatGPT subscriptions without prompting for an API key", function()
+  it("inherits the implementation of every built-in provider", function()
+    local Providers = require("avante.providers")
+    for _, config in pairs(Config.providers) do
+      assert.is_nil(config.dialect)
+    end
+    for name in pairs(Config._defaults.providers) do
+      local custom_name = "custom_" .. name
+      Config.providers[custom_name] = { __inherited_from = name }
+      local child = Providers[custom_name]
+      assert.same(Providers[name]._protocol, child._protocol, name)
+      assert.same(Providers[name]._dialect, child._dialect, name)
+      assert.same(Config.providers[name].model, child.model, name)
+    end
+  end)
+
+  it("resolves custom inheritance chains with child overrides and independent configurations", function()
     Config.override({
       providers = {
-        test_openai = {
-          api_key_name = "OPENAI_API_KEY",
-          auth_type = "subscription",
-          parse_api_key = function() error("subscription must not read API keys") end,
+        deepseek = { extra_request_body = { temperature = 0.1, max_tokens = 16384 } },
+        private_deepseek = {
+          __inherited_from = "deepseek",
+          endpoint = "https://example.test/v1",
+          model = "private-model",
+          extra_request_body = { temperature = 0.2, max_tokens = 8192 },
+        },
+        nested = {
+          __inherited_from = "private_deepseek",
+          model = "nested-model",
+          extra_request_body = { temperature = 0.7 },
         },
       },
     })
     local Providers = require("avante.providers")
-    Providers.setup()
-    assert.is_false(Providers.env.require_api_key(Providers.test_openai))
-    assert.is_true(Providers.test_openai.is_env_set())
+    local parent = Providers.private_deepseek
+    assert.same("private-model", parent.model)
+    parent.extra_request_body.max_tokens = 1
+    local child = Providers.nested
+
+    assert.same("nested", child._name)
+    assert.same("private_deepseek", child.__inherited_from)
+    assert.same("deepseek", parent.__inherited_from)
+    assert.same("openai", child._protocol)
+    assert.same("deepseek", child._dialect)
+    assert.same("https://example.test/v1", child.endpoint)
+    assert.same("DEEPSEEK_API_KEY", child.api_key_name)
+    assert.same("nested-model", child.model)
+    assert.same({
+      temperature = 0.7,
+      max_tokens = 8192,
+      max_completion_tokens = 16384,
+      reasoning_effort = "medium",
+    }, child.extra_request_body)
+    assert.same("responses", Providers.resolve_api_route(child))
+    assert.is_false(child.support_previous_response_id)
+    assert.is_function(child.list_models)
+    child.extra_request_body.max_tokens = 1
+    child.extra_request_body.temperature = 1
+    assert.same(0.2, parent.extra_request_body.temperature)
+    assert.same(0.2, Config.providers.private_deepseek.extra_request_body.temperature)
+    assert.same(16384, Config.providers.deepseek.extra_request_body.max_tokens)
+    assert.same(16384, Providers.deepseek.extra_request_body.max_tokens)
   end)
 
-  it("sets up Copilot without external plugins or API keys", function()
+  it("requires explicit ChatGPT subscription authentication at each inheritance level", function()
     Config.override({
-      provider = "copilot",
       providers = {
-        copilot = {
-          api_key_name = "IGNORED_API_KEY",
-          parse_api_key = function() error("Copilot authentication belongs in Rust") end,
-        },
+        openai = { auth_type = "subscription" },
+        deepseek = { auth_type = "subscription" },
+        nested = { __inherited_from = "deepseek" },
+        opted_in = { __inherited_from = "nested", auth_type = "subscription" },
+        leaf = { __inherited_from = "opted_in" },
       },
     })
     local Providers = require("avante.providers")
-    Providers.setup()
-    assert.is_false(Providers.env.require_api_key(Providers.copilot))
-    assert.is_true(Providers.copilot.is_env_set())
+    assert.same("api_key", Providers.openrouter.auth_type)
+    assert.is_true(Providers.env.require_api_key(Providers.openrouter))
+    assert.same("subscription", Providers.deepseek.auth_type)
+    assert.same("api_key", Providers.nested.auth_type)
+    assert.same("subscription", Providers.opted_in.auth_type)
+    assert.same("api_key", Providers.leaf.auth_type)
+    assert.is_true(Providers.env.require_api_key(Providers.leaf))
   end)
 
-  it("does not inherit ChatGPT subscription authentication into API providers", function()
-    Config.override({ providers = { openai = { auth_type = "subscription" } } })
+  it("rejects missing parents and inheritance cycles without caching failed providers", function()
     local Providers = require("avante.providers")
-    assert.same("api_key", Providers.deepseek.auth_type)
-    assert.is_true(Providers.env.require_api_key(Providers.deepseek))
-  end)
-
-  it("inherits and overrides OpenAI-compatible dialects", function()
-    local Providers = require("avante.providers")
-
-    assert.same("openai", Providers.test_openai.dialect)
-    assert.same("deepseek", Providers.deepseek.dialect)
-    assert.same("openrouter", Providers.openrouter.dialect)
-    assert.same("moonshot", Providers.moonshot.dialect)
-    assert.same("xai", Providers.xai.dialect)
-    assert.same("zai", Providers.glm.dialect)
-    assert.same("mistral", Providers.mistral.dialect)
+    Config.providers.child = { __inherited_from = "parent" }
+    for _, case in ipairs({
+      { parent = "missing_provider", message = "Failed to find provider: missing_provider" },
+      { parent = "parent", message = "Circular provider inheritance: parent" },
+      { parent = "child", message = "Circular provider inheritance: child" },
+    }) do
+      Config.providers.parent = { __inherited_from = case.parent }
+      assert.error_matches(function() return Providers.child end, case.message, nil, true)
+      assert.is_nil(rawget(Providers, "child"))
+      assert.is_nil(rawget(Providers, "parent"))
+    end
+    Config.providers.parent = { __inherited_from = "openai" }
+    assert.same("openai", Providers.child._protocol)
   end)
 
   it("uses provider-specific routes without reusing DeepSeek response IDs", function()
@@ -193,16 +303,14 @@ describe("providers", function()
     end
   end)
 
-  it("rejects legacy custom request builders with a migration error", function()
-    Config.providers.legacy = {
+  it("rejects custom providers without a parent", function()
+    Config.providers.custom = {
       endpoint = "https://example.test/v1",
       model = "test-model",
-      parse_curl_args = function() end,
     }
 
-    local ok, err = pcall(function() return require("avante.providers").legacy end)
+    local ok, err = pcall(function() return require("avante.providers").custom end)
     assert.is_false(ok)
     assert.matches("__inherited_from", err, nil, true)
-    assert.matches("parse_curl_args", err, nil, true)
   end)
 end)

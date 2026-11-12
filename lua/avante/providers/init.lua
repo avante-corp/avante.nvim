@@ -16,6 +16,60 @@
 --- - `mistral`
 --- - ...
 --- Please refer to the provider's help section under the tag avante-providers-NAME
+---
+--- Custom providers ~
+---
+--- Custom providers inherit another provider's configuration and implementation:
+--->lua
+---   require("avante").setup({
+---     provider = "openai_high",
+---     providers = {
+---       openai_medium = {
+---         __inherited_from = "openai",
+---         extra_request_body = { reasoning_effort = "medium" },
+---       },
+---
+---       openai_high = {
+---         __inherited_from = "openai_medium",
+---         model = "gpt-6.1-sol",
+---         extra_request_body = { reasoning_effort = "high" },
+---       },
+---
+---       chatgpt_high = {
+---         __inherited_from = "openai_high",
+---         auth_type = "subscription",
+---       },
+---     },
+---   })
+---<
+---
+--- Set `OPENAI_API_KEY` in your environment.
+---
+--- Both API-key providers inherit the OpenAI endpoint, API key name and dialect,
+--- using the OpenAI protocol. `openai_high` sets reasoning effort to `high`
+--- while retaining the other request fields.
+---
+--- Inheritance rules:
+---
+--- - Child fields override the parent's fields; request-body tables are
+---   deep-merged.
+--- - Inheritance chains are resolved recursively and must end at a built-in
+---   provider. Missing parents and circular inheritance raise errors.
+--- - Each provider's `__inherited_from` keeps its direct parent's name.
+---
+--- OpenAI-compatible providers inherit shared defaults from `providers.openai`.
+--- Built-in provider names retain their dialect throughout custom inheritance
+--- chains; provider-specific fields override the shared defaults.
+---
+--- Authentication:
+---
+--- ChatGPT subscriptions require an explicit `auth_type = "subscription"` on
+--- each child provider. Set `provider = "chatgpt_high"` in the configuration above to
+--- use the subscription configuration.
+---
+--- Run `:Avante chatgpt login` before the first subscription request.
+--- The subscription provider does not require an OpenAI API key.
+--- See |avante-providers-openai| for subscription setup.
 ---@brief ]]
 
 local api = vim.api
@@ -36,16 +90,25 @@ local Utils = require("avante.utils")
 ---@field openai AvanteProviderFunctor
 local M = {}
 
-local supported_protocols = {
-  openai = true,
-  claude = true,
-  azure = true,
-  gemini = true,
-  vertex = true,
-  cohere = true,
-  ollama = true,
-  bedrock = true,
-  copilot = true,
+local provider_protocols = {
+  openai = "openai",
+  claude = "claude",
+  azure = "azure",
+  gemini = "gemini",
+  vertex = "vertex",
+  cohere = "cohere",
+  ollama = "ollama",
+  bedrock = "bedrock",
+  copilot = "copilot",
+}
+
+local openai_dialects = {
+  deepseek = true,
+  openrouter = true,
+  moonshot = true,
+  xai = true,
+  zai = true,
+  mistral = true,
 }
 
 ---@class EnvironmentHandler
@@ -171,7 +234,7 @@ E.REQUEST_LOGIN_PATTERN = "AvanteRequestLogin"
 ---@param provider AvanteDefaultBaseProvider
 ---@return boolean
 function E.require_api_key(provider)
-  local protocol = provider._protocol or provider._name
+  local protocol = provider._protocol
   if protocol == "copilot" then return false end
   if protocol == "claude" and provider.auth_type == "subscription" then return false end
   if protocol == "openai" and provider.auth_type == "subscription" then return false end
@@ -180,43 +243,50 @@ end
 
 M.env = E
 
+---@param name string
+---@param visiting table<string, boolean>
+---@return AvanteSupportedProvider config
+---@return AvanteNativeLLMProtocol protocol
+---@return string dialect
+local function resolve_config(name, visiting)
+  if visiting[name] then error("Circular provider inheritance: " .. name, 2) end
+  visiting[name] = true
+  local config = M.get_config(name)
+  local parent = config.__inherited_from
+  ---@type AvanteNativeLLMProtocol, string
+  local protocol, dialect
+  if parent then
+    local base
+    base, protocol, dialect = resolve_config(parent, visiting)
+    local auth_type = config.auth_type
+    config = vim.tbl_deep_extend("force", base, config)
+    -- OpenAI-compatible providers must opt in to ChatGPT subscriptions independently.
+    if protocol == "openai" and base.auth_type == "subscription" then config.auth_type = auth_type end
+  else
+    dialect = name
+    protocol = provider_protocols[name]
+    if not protocol then
+      error(
+        string.format(
+          'The configuration of provider "%s" must set `__inherited_from`. See: https://github.com/avante-corp/avante.nvim/wiki/Custom-providers',
+          name
+        )
+      )
+    end
+  end
+  if protocol == "openai" and openai_dialects[name] then dialect = name end
+  return config, protocol, dialect
+end
+
 M = setmetatable(M, {
   ---@param t table<string, AvanteProviderFunctor>
   ---@param k avante.ProviderName
   ---@return AvanteProviderFunctor | AvanteBedrockProviderFunctor
   __index = function(t, k)
-    if Config.providers[k] == nil then error("Failed to find provider: " .. k, 2) end
-
-    local provider_config = M.get_config(k)
-
-    if provider_config.__inherited_from ~= nil then
-      local base_provider_config = M.get_config(provider_config.__inherited_from)
-      local ok, module = pcall(require, "avante.providers." .. provider_config.__inherited_from)
-      if not ok then error("Failed to load provider: " .. provider_config.__inherited_from, 2) end
-      local auth_type = provider_config.auth_type
-      provider_config = Utils.deep_extend_with_metatable("force", module, base_provider_config, provider_config)
-      -- OpenAI-compatible providers must opt in to ChatGPT subscriptions independently.
-      if provider_config.__inherited_from == "openai" and base_provider_config.auth_type == "subscription" then
-        provider_config.auth_type = auth_type
-      end
-    else
-      local ok, module = pcall(require, "avante.providers." .. k)
-      if ok then
-        provider_config = Utils.deep_extend_with_metatable("force", module, provider_config)
-      else
-        error(
-          string.format(
-            'The configuration of provider "%s" must set `__inherited_from`; custom `parse_curl_args` functions are no longer used. See: https://github.com/avante-corp/avante.nvim/wiki/Custom-providers',
-            k
-          )
-        )
-      end
-    end
-
-    local protocol = rawget(provider_config, "__inherited_from") or k
-    if not supported_protocols[protocol] then
-      error(string.format('Provider "%s" uses unsupported protocol "%s"', k, protocol), 2)
-    end
+    local provider_config, protocol, dialect = resolve_config(k, {})
+    ---@type AvanteDefaultBaseProvider
+    local module = require("avante.providers." .. protocol)
+    provider_config = vim.tbl_deep_extend("force", module, provider_config)
     local auth_type = provider_config.auth_type or (protocol == "copilot" and "subscription" or "api_key")
     if
       (auth_type ~= "api_key" and auth_type ~= "subscription")
@@ -228,6 +298,7 @@ M = setmetatable(M, {
     provider_config.auth_type = auth_type
     provider_config._name = k
     provider_config._protocol = protocol
+    provider_config._dialect = protocol == "openai" and dialect or nil
     ---@cast provider_config AvanteProviderFunctor
     t[k] = provider_config
 
@@ -323,7 +394,9 @@ function M.parse_config(opts)
   ---@type table<string, any>
   local config = opts
   for key, value in pairs(config) do
-    if key ~= "extra_request_body" and key ~= "_name" and key ~= "_protocol" then provider_opts[key] = value end
+    if key ~= "extra_request_body" and key ~= "_name" and key ~= "_protocol" and key ~= "_dialect" then
+      provider_opts[key] = value
+    end
   end
 
   ---@type table<string, any>
@@ -355,18 +428,14 @@ end
 ---@return "chat" | "responses" | nil
 function M.resolve_api_route(provider_conf, ctx, protocol)
   if not provider_conf then return nil end
-  protocol = protocol or provider_conf._protocol or provider_conf._name
+  protocol = protocol or provider_conf._protocol
   if protocol ~= "openai" and protocol ~= "azure" and protocol ~= "copilot" then return nil end
   return M.resolve_use_response_api(provider_conf, ctx) and "responses" or "chat"
 end
 
 ---@param provider_name avante.ProviderName
 ---@return AvanteSupportedProvider
-function M.get_config(provider_name)
-  provider_name = provider_name or Config.provider
-  local cur = Config.get_provider_config(provider_name)
-  return type(cur) == "function" and cur() or cur
-end
+function M.get_config(provider_name) return Config.get_provider_config(provider_name or Config.provider) end
 
 ---@return AvanteProviderFunctor | AvanteBedrockProviderFunctor
 function M.get_memory_summary_provider()
