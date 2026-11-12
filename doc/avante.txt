@@ -3083,15 +3083,6 @@ M.icon({string_with_icon}, {utf8_fallback})                  *avante-utils.icon*
         (string)
 
 
-M.deep_extend_with_metatable({...})    *avante-utils.deep_extend_with_metatable*
-
-    Parameters: ~
-        {...}  (table)
-
-    Returns: ~
-        (table)
-
-
 M.utc_now()                                               *avante-utils.utc_now*
 
 
@@ -3673,6 +3664,60 @@ Model providers                                               *avante-providers*
  - `mistral`
  - ...
  Please refer to the provider's help section under the tag avante-providers-NAME
+
+ Custom providers ~
+
+ Custom providers inherit another provider's configuration and implementation:
+>lua
+   require("avante").setup({
+     provider = "openai_high",
+     providers = {
+       openai_medium = {
+         __inherited_from = "openai",
+         extra_request_body = { reasoning_effort = "medium" },
+       },
+
+       openai_high = {
+         __inherited_from = "openai_medium",
+         model = "gpt-6.1-sol",
+         extra_request_body = { reasoning_effort = "high" },
+       },
+
+       chatgpt_high = {
+         __inherited_from = "openai_high",
+         auth_type = "subscription",
+       },
+     },
+   })
+<
+
+ Set `OPENAI_API_KEY` in your environment.
+
+ Both API-key providers inherit the OpenAI endpoint, API key name and dialect,
+ using the OpenAI protocol. `openai_high` sets reasoning effort to `high`
+ while retaining the other request fields.
+
+ Inheritance rules:
+
+ - Child fields override the parent's fields; request-body tables are
+   deep-merged.
+ - Inheritance chains are resolved recursively and must end at a built-in
+   provider. Missing parents and circular inheritance raise errors.
+ - Each provider's `__inherited_from` keeps its direct parent's name.
+
+ OpenAI-compatible providers inherit shared defaults from `providers.openai`.
+ Built-in provider names retain their dialect throughout custom inheritance
+ chains; provider-specific fields override the shared defaults.
+
+ Authentication:
+
+ ChatGPT subscriptions require an explicit `auth_type = "subscription"` on
+ each child provider. Set `provider = "chatgpt_high"` in the configuration above to
+ use the subscription configuration.
+
+ Run `:Avante chatgpt login` before the first subscription request.
+ The subscription provider does not require an OpenAI API key.
+ See |avante-providers-openai| for subscription setup.
 
 avante.Providers                                              *avante.Providers*
 

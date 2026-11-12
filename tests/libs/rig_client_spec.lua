@@ -130,7 +130,7 @@ describe("Rig client adapter", function()
     local calls = 0
     local request = RigClient._build_request(
       provider("openai", "openai", {
-        dialect = "openai",
+        _dialect = "openai",
         use_response_api = function()
           calls = calls + 1
           return true
@@ -143,10 +143,10 @@ describe("Rig client adapter", function()
     assert.same(1, calls)
   end)
 
-  it("passes an inherited protocol with an explicit Rig dialect", function()
+  it("passes an inherited protocol and its internal Rig dialect", function()
     local request = RigClient._build_request(
       provider("private_gateway", "openai", {
-        dialect = "mistral",
+        _dialect = "mistral",
         extra_request_body = { reasoning_context = "carry" },
       }),
       {
