@@ -1,5 +1,68 @@
 # Changelog
 
+## [0.6.0](https://github.com/avante-corp/avante.nvim/compare/v0.5.0...v0.6.0) (2026-11-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **acp:** persist and restore sessions from agent directly
+
+### Features
+
+* add markdown ft to Avante container ([74216b0](https://github.com/avante-corp/avante.nvim/commit/74216b091263bd9bb4d9d0c9b74094ba21d83891))
+* add opt-in token usage display ([0c68f6e](https://github.com/avante-corp/avante.nvim/commit/0c68f6e71e6b19875a581f90a2cd07359a569026))
+* **api:** expose and reuse is_acp_provider ([4d18d58](https://github.com/avante-corp/avante.nvim/commit/4d18d589a759634f1d44a3b7cda6551f5d800052))
+* **Avante:** set ft=Avante options in its own file ([9fd188c](https://github.com/avante-corp/avante.nvim/commit/9fd188c5a037cf338b270387151702f0538c6bf1))
+* change prompt input to leverage markdown folds ([9794016](https://github.com/avante-corp/avante.nvim/commit/979401670dbdc638768b20302295946b07e981ca))
+* **claude:** support Pro and Max subscriptions via Rig Cloak ([019bf0d](https://github.com/avante-corp/avante.nvim/commit/019bf0dd2872e513c58cbb3cc2adb3b9708f8e7c))
+* config.windows.wrap is removed ([501b426](https://github.com/avante-corp/avante.nvim/commit/501b426c327c9986d9141afbbeed6a3a789d336b))
+* **contrib/avante:** support -h/--help ([8fb43d6](https://github.com/avante-corp/avante.nvim/commit/8fb43d62df73bb1a69f4d2799d75a6eac54c0c1d))
+* **copilot:** refactor subscription authentication with Rig ([d87fe12](https://github.com/avante-corp/avante.nvim/commit/d87fe12a45daf3e26669c9220311c68a826e85a1))
+* dont override foldcolumn config for "Avante" type ([786f1c8](https://github.com/avante-corp/avante.nvim/commit/786f1c858df3e2f19395ad3c7f30a2443328568f))
+* **history:** persist LLM request settings for each turn ([45a8727](https://github.com/avante-corp/avante.nvim/commit/45a872744344dedbf36b0050c6d90f9bf0a6a890))
+* **history:** restore latest turn settings when loading sessions ([233c8cd](https://github.com/avante-corp/avante.nvim/commit/233c8cd7020ec2f1e1863ce08f5f3346345bfc5f))
+* **history:** save system prompt and project rule snapshots ([822c0b4](https://github.com/avante-corp/avante.nvim/commit/822c0b48347d5ba8f55d075edaf7633562536240))
+* **openai:** support ChatGPT subscriptions via Rig OAuth ([137e662](https://github.com/avante-corp/avante.nvim/commit/137e662e2b388f4e44a443b0c70528fbe230f3d2))
+* **resume:** now accepts a session id ([9307cb9](https://github.com/avante-corp/avante.nvim/commit/9307cb9846d421649d9c8ff27f921ce1aa53324a))
+* **Selector:** add default_query to Selector abstraction ([676bf02](https://github.com/avante-corp/avante.nvim/commit/676bf021f02efe9bae3c28023536f72b771d7183))
+* **web_search:** add Keenable engine (works without an API key) ([36c160c](https://github.com/avante-corp/avante.nvim/commit/36c160cc239638110239636c2569c6aca8c5d50b))
+* **web_search:** add Outcrawl search engine ([a9b9c79](https://github.com/avante-corp/avante.nvim/commit/a9b9c79ed62a74ab24e5c0db788c9a128107a475))
+* **web_search:** add Sofya search engine ([3615ff1](https://github.com/avante-corp/avante.nvim/commit/3615ff1a1a8d3640d126bb8f22ed4da0b70103a5))
+* **web_search:** add SpecStream search engine ([487563d](https://github.com/avante-corp/avante.nvim/commit/487563d751570f7bbb6ff3683183772d51a0eab4))
+
+
+### Bug Fixes
+
+* **acp:** disable prompt logging and history keymaps ([407285f](https://github.com/avante-corp/avante.nvim/commit/407285f5b12a748a11334f58a8b6e1b47f61a494))
+* **acp:** store tool results as user messages ([ac46b7e](https://github.com/avante-corp/avante.nvim/commit/ac46b7e2130318a0f7ca18ac624f88dceecd3cb9))
+* **Avante:** fillchars and winbar are set later ([7094c3d](https://github.com/avante-corp/avante.nvim/commit/7094c3d7eb7d667572149f52179444fa71fc6ab8))
+* **AvanteInput:** restore hidden line numbers by default ([7a321df](https://github.com/avante-corp/avante.nvim/commit/7a321dfced8fe086eb6325caf3d0084022534629))
+* **ci:** align build toolchains and dependency paths ([188b793](https://github.com/avante-corp/avante.nvim/commit/188b793c264285ee147c74db14a9f78a22ca7b8f))
+* **ci:** don't prerelease ([6f14be1](https://github.com/avante-corp/avante.nvim/commit/6f14be178140e98ea84e0899f86127d2613690fe))
+* **ci:** fix macOS architecture and Lua runtime ([bbddb5a](https://github.com/avante-corp/avante.nvim/commit/bbddb5aaac78cf6dee7b4ca313c75ecea69a131b))
+* **copilot:** explain how to resolve missing session tokens ([adf172c](https://github.com/avante-corp/avante.nvim/commit/adf172c2f93df08f0de00151c87ef23209f356c3))
+* discard cleared chat sessions ([99fb428](https://github.com/avante-corp/avante.nvim/commit/99fb4286810b4528636a9e87a3f3128dab340ec7))
+* **history:** refresh file contents after the latest edit ([10f31fe](https://github.com/avante-corp/avante.nvim/commit/10f31fe72a80f5e29789076b5c8bbd256bc63dc6))
+* **llm_tools:** handle optional scope and command errors in git_diff ([c4b22e9](https://github.com/avante-corp/avante.nvim/commit/c4b22e95ce6fe3b76cef1bd7bc196a8f36543be3))
+* **llm:** preserve aborted and cancelled stop semantics ([5a59b2f](https://github.com/avante-corp/avante.nvim/commit/5a59b2f39992d2757682f9adc9558784eba1cbb9))
+* **llm:** retain completed text when a stream is interrupted ([81189eb](https://github.com/avante-corp/avante.nvim/commit/81189ebc69c6806cca40364f25151fcd6d96a098))
+* **openai:** enable previous response IDs by default ([2a188e7](https://github.com/avante-corp/avante.nvim/commit/2a188e7d00031dafcd4d834b7c560f54b58754d3))
+* **openai:** keep ChatGPT session IDs stable across turns ([902312a](https://github.com/avante-corp/avante.nvim/commit/902312a1574b9e8273b4a5421a0633c9a0722511))
+* **openai:** reuse authentication state across requests ([049d744](https://github.com/avante-corp/avante.nvim/commit/049d744806cfd4b4fe0105e0432fcc67a026b318))
+* **sidebar:** fix slow closing regression caused by repeated highlighting initialization ([d84c167](https://github.com/avante-corp/avante.nvim/commit/d84c167947e53db77c61831567dd2871b04f666d))
+* **web_search:** read the SpecStream reply from its data envelope ([a079707](https://github.com/avante-corp/avante.nvim/commit/a0797079bac302e396c0656882ffa0fb6dc00838))
+* **web_search:** truncate Keenable snippet by characters; drop Keenable test ([bae8362](https://github.com/avante-corp/avante.nvim/commit/bae8362765a17df1865cab53d4d85a11a0019da4))
+
+
+### Performance Improvements
+
+* **tokens:** count fallback words -- 99.97% fewer allocated bytes ([8cc5ae8](https://github.com/avante-corp/avante.nvim/commit/8cc5ae87ffb259b032d95dd57dd38196252fb19c))
+
+
+### Code Refactoring
+
+* **acp:** persist and restore sessions from agent directly ([7fed9d1](https://github.com/avante-corp/avante.nvim/commit/7fed9d1538af51fa8fb0fc7a0a21da7287595b1d))
+
 ## [0.5.0](https://github.com/avante-corp/avante.nvim/compare/v0.5.0...v0.5.0) (2026-10-31)
 
 
