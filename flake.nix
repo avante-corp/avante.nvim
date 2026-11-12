@@ -195,6 +195,27 @@
 
             luaRcContent = builtins. readFile ./contrib/init.lua;
           };
+
+          avante-autoclose = pkgs.writeShellApplication {
+            name = "avante-autoclose";
+            runtimeInputs = [];
+            text = ''
+              set -ex
+
+              avante -- "${}"
+
+
+              '';
+
+            # nativeBuildInputs = [
+            #   pkgs.makeWrapper
+            # ];
+            # # close avante on first answer
+            # patchPhase = ''
+            #   wrapPro
+            #
+            #   '';
+          };
         in
         rustPackages // {
           inherit ragService;
