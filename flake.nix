@@ -202,9 +202,7 @@
             text = ''
               set -ex
 
-              avante -- "${}"
-
-
+              avante "$@"
               '';
 
             # nativeBuildInputs = [
@@ -237,6 +235,8 @@
               pkgs.ripgrep
               pkgs.cacert
               pkgs.dockerTools.fakeNss
+
+              (pkgs.writeTextDir "root/.config/nvim/init.lua" (builtins.readFile ./contrib/init.lua))
 
               # inspect-ai tries to inject or access those
               pkgs.gnutar
