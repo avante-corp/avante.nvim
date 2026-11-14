@@ -34,6 +34,7 @@ local has_msystem_env = env.MSYSTEM ~= nil
 -- - Only treat it as "msys2" when MSYSTEM is present.
 -- - If sysname is MINGW*/MSYS* but MSYSTEM is missing, fall back to "windows".
 M.is_msys2 = (is_windowsish and has_msystem_env)
+M.is_win = (is_windowsish and not M.is_msys2)
 
 -- WSL detection (only on Linux)
 M.is_wsl = M.is_linux
@@ -47,16 +48,12 @@ M.is_wsl = M.is_linux
 M.platform = (function()
   if M.is_wsl then return "wsl" end
   if M.is_msys2 then return "msys2" end
-  if is_windowsish then return "windows" end
+  if M.is_win then return "windows" end
   if M.is_macos then return "macos" end
   if M.is_linux then return "linux" end
   return "unknown"
 end)()
 
--- Path/utility helpers
-M.sep = package.config:sub(1, 1) -- '\\' on Windows*, '/' on Unix
-function M.join(...) return table.concat({ ... }, M.sep) end
-function M.homedir() return uv.os_homedir() end
 M.uname = uname
 
 return M

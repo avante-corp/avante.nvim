@@ -62,7 +62,7 @@ function M.func(input, opts)
   local provider = Providers["morph"]
   if not provider then return false, "morph provider not found" end
   if not provider.is_env_set() then return false, "morph provider not set" end
-  local path = Helpers.get_abs_path(input.path)
+  local path = Utils.to_absolute_path(input.path)
   if not Helpers.has_permission_to_access(path) then return false, "No permission to access path: " .. path end
   if vim.fn.isdirectory(path) == 1 then return false, "path is a directory" end
 

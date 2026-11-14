@@ -388,7 +388,6 @@ vim.g.avante_login = vim.g.avante_login
 ---@field get_history_messages? fun(opts?: {all?: boolean}): avante.HistoryMessage[]
 ---@field user_reminder_count? integer
 ---@field attempt_completion_is_called? boolean
----@field view_history? table<string, boolean>
 ---@field prev_streaming_diff_timestamp_map? table<string, number>
 ---@field streaming_diff_lines_count_history? table<string, integer>
 ---@field undo_joined? table<string, boolean>

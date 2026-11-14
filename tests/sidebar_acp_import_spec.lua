@@ -49,7 +49,7 @@ describe("Sidebar ACP import", function()
         deleted_bufnr, deleted_root = bufnr, project_root
         table.insert(deleted, filename)
       end),
-      stub(HistoryStorage, "get_filepath").returns({ exists = function() return true end }),
+      stub(HistoryStorage, "get_filepath").returns(vim.fn.getcwd()),
       stub(HistoryStorage, "new").invokes(
         function() return { filename = "new.json", messages = {}, entries = {}, todos = {} } end
       ),

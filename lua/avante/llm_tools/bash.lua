@@ -219,7 +219,6 @@ M.returns = {
 function M.func(input, opts)
   local is_streaming = opts.streaming or false
   local Helpers = require("avante.llm_tools.helpers")
-  local Path = require("plenary.path")
   local Utils = require("avante.utils")
 
   if is_streaming then
@@ -227,9 +226,9 @@ function M.func(input, opts)
     return
   end
 
-  local abs_path = Helpers.get_abs_path(input.path)
+  local abs_path = Utils.to_absolute_path(input.path)
   if not Helpers.has_permission_to_access(abs_path) then return false, "No permission to access path: " .. abs_path end
-  if not Path:new(abs_path):exists() then return false, "Path not found: " .. abs_path end
+  if not Utils.filesystem.exists(abs_path) then return false, "Path not found: " .. abs_path end
   if not input.command then return false, "Command is required" end
   if opts.on_log then opts.on_log("command: " .. input.command) end
 

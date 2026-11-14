@@ -1,4 +1,3 @@
-local Path = require("plenary.path")
 local Utils = require("avante.utils")
 local Base = require("avante.llm_tools.base")
 local Helpers = require("avante.llm_tools.helpers")
@@ -57,11 +56,11 @@ function M.func(input, opts)
     on_complete(nil, "Ooooops! This file is already in the context! Why you are trying to create it again?")
     return
   end
-  local abs_path = Helpers.get_abs_path(input.path)
+  local abs_path = Utils.to_absolute_path(input.path)
   if not Helpers.has_permission_to_access(abs_path) then return false, "No permission to access path: " .. abs_path end
   local file_text = input.file_text
   if file_text == nil then return false, "file_text not provided" end
-  if Path:new(abs_path):exists() then return false, "File already exists: " .. abs_path end
+  if Utils.filesystem.exists(abs_path) then return false, "File already exists: " .. abs_path end
   local lines = vim.split(file_text, "\n")
   if #lines == 1 and file_text:match("\\n") then
     local text = Utils.trim_escapes(file_text)
@@ -78,7 +77,7 @@ function M.func(input, opts)
       return
     end
     -- save the file
-    Path:new(abs_path):parent():mkdir({ parents = true, exists_ok = true })
+    vim.fn.mkdir(vim.fs.dirname(abs_path), "p")
     local current_winid = vim.api.nvim_get_current_win()
     local winid = Utils.get_winid(bufnr)
     vim.api.nvim_set_current_win(winid)

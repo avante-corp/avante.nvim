@@ -1,5 +1,4 @@
 local Utils = require("avante.utils")
-local Path = require("plenary.path")
 local Config = require("avante.config")
 local Api = require("avante.api")
 
@@ -14,15 +13,13 @@ local function generate_project_dirname_in_storage(bufnr, project_root)
   local path_with_separators = string.gsub(project_root, "/", "__")
   -- Replace other non-alphanumeric characters with single underscores
   local dirname = string.gsub(path_with_separators, "[^A-Za-z0-9._]", "_")
-  return tostring(Path:new("projects"):joinpath(dirname))
+  return vim.fs.joinpath("projects", dirname)
 end
-
-local function filepath_to_filename(filepath) return tostring(filepath):sub(tostring(filepath:parent()):len() + 2) end
 
 local M = {}
 
 ---@param metadata {acp_provider?: string, acp_session_id?: string, acp_session_cwd?: string}
----@param filepath Path
+---@param filepath string
 ---@return avante.ChatHistory|nil
 local function acp_history_from_metadata(metadata, filepath)
   if
@@ -39,7 +36,7 @@ local function acp_history_from_metadata(metadata, filepath)
     entries = {},
     messages = {},
     todos = {},
-    filename = filepath_to_filename(filepath),
+    filename = vim.fs.basename(filepath),
     acp_provider = metadata.acp_provider,
     acp_session_id = metadata.acp_session_id,
     acp_session_cwd = metadata.acp_session_cwd,
@@ -59,20 +56,20 @@ end
 ---@see avante.Config.History
 ---@param bufnr? integer
 ---@param project_root? string
----@return Path
+---@return string
 function M.get_history_dir(bufnr, project_root)
   local dirname = generate_project_dirname_in_storage(bufnr, project_root)
-  local history_dir = Path:new(Config.history.storage_path):joinpath(dirname):joinpath("history")
-  if not history_dir:exists() then
-    history_dir:mkdir({ parents = true })
+  local history_dir = vim.fs.joinpath(Config.history.storage_path, dirname, "history")
+  if not Utils.filesystem.exists(history_dir) then
+    vim.fn.mkdir(history_dir, "p", 448) -- 0700
 
-    local metadata_filepath = history_dir:joinpath("metadata.json")
+    local metadata_filepath = vim.fs.joinpath(history_dir, "metadata.json")
     local metadata = {
       project_root = project_root or Utils.root.get({
         buf = bufnr,
       }),
     }
-    metadata_filepath:write(vim.json.encode(metadata), "w")
+    assert(vim.fn.writefile(vim.json.encode(metadata), metadata_filepath) == 0)
   end
   return history_dir
 end
@@ -84,14 +81,13 @@ end
 function M.list(bufnr, project_root)
   local history_dir = M.get_history_dir(bufnr, project_root)
   ---@type string[]
-  local files = vim.fn.glob(tostring(history_dir:joinpath("*.json")), true, true)
+  local files = vim.fn.glob(vim.fs.joinpath(history_dir, "*.json"), true, true)
   local latest_filename = M.get_latest_filename(bufnr, false, project_root)
   ---@type avante.ChatHistory[]
   local res = {}
   for _, filename in ipairs(files) do
     if not filename:match("metadata.json") then
-      local filepath = Path:new(filename)
-      local history, is_acp_metadata = M.from_file(filepath)
+      local history, is_acp_metadata = M.from_file(filename)
       if history and history_matches_current_provider(history, is_acp_metadata == true) then
         table.insert(res, history)
       end
@@ -116,7 +112,7 @@ end
 ---@param bufnr integer
 ---@param new boolean
 ---@param project_root? string
----@return Path?
+---@return string?
 function M.get_latest_filepath(bufnr, new, project_root)
   local filename = M.get_latest_filename(bufnr, new, project_root)
   if not filename then return nil end
@@ -125,26 +121,26 @@ end
 
 function M.get_filepath(bufnr, filename, project_root)
   local history_dir = M.get_history_dir(bufnr, project_root)
-  return history_dir:joinpath(filename)
+  return vim.fs.joinpath(history_dir, filename)
 end
 
 function M.get_metadata_filepath(bufnr, project_root)
   local history_dir = M.get_history_dir(bufnr, project_root)
-  return history_dir:joinpath("metadata.json")
+  return vim.fs.joinpath(history_dir, "metadata.json")
 end
 
 function M.get_latest_filename(bufnr, new, project_root)
   if not new then
     local metadata_filepath = M.get_metadata_filepath(bufnr, project_root)
-    if not metadata_filepath:exists() then return nil end
-    local metadata_content = metadata_filepath:read()
+    if not Utils.filesystem.exists(metadata_filepath) then return nil end
+    local metadata_content = vim.fn.readblob(metadata_filepath)
     ---@type {latest_filename?: string}
     local metadata = vim.json.decode(metadata_content)
     return metadata.latest_filename ~= "" and metadata.latest_filename or nil
   end
 
   local history_dir = M.get_history_dir(bufnr, project_root)
-  local pattern = tostring(history_dir:joinpath("*.json"))
+  local pattern = vim.fs.joinpath(history_dir, "*.json")
   ---@type string[]
   local files = vim.fn.glob(pattern, true, true)
   local max_id = -1
@@ -159,8 +155,8 @@ end
 function M.save_latest_filename(bufnr, filename, project_root)
   local metadata_filepath = M.get_metadata_filepath(bufnr, project_root)
   local metadata = {}
-  if metadata_filepath:exists() then
-    local metadata_content = metadata_filepath:read()
+  if Utils.filesystem.exists(metadata_filepath) then
+    local metadata_content = vim.fn.readblob(metadata_filepath)
     metadata = vim.json.decode(metadata_content)
   end
   if metadata.project_root == nil then
@@ -169,14 +165,14 @@ function M.save_latest_filename(bufnr, filename, project_root)
     })
   end
   metadata.latest_filename = filename
-  metadata_filepath:write(vim.json.encode(metadata), "w")
+  assert(vim.fn.writefile(vim.json.encode(metadata), metadata_filepath) == 0)
 end
 
 ---@param bufnr integer
 ---@param project_root? string
 ---@return avante.ChatHistory
 function M.new(bufnr, project_root)
-  local filepath = M.get_latest_filepath(bufnr, true, project_root)
+  local filepath = assert(M.get_latest_filepath(bufnr, true, project_root))
   local is_acp = Api.is_acp_provider()
   ---@type avante.ChatHistory
   local history = {
@@ -185,7 +181,7 @@ function M.new(bufnr, project_root)
     entries = {},
     messages = {},
     todos = {},
-    filename = filepath_to_filename(filepath),
+    filename = vim.fs.basename(filepath),
     acp_provider = is_acp and Config.provider or nil,
     acp_session_cwd = is_acp and (project_root or Utils.root.get({ buf = bufnr })) or nil,
   }
@@ -193,12 +189,12 @@ function M.new(bufnr, project_root)
 end
 
 ---Attempts to load chat history from a given file
----@param filepath Path
+---@param filepath string
 ---@return avante.ChatHistory|nil history
 ---@return boolean? is_acp_metadata
 function M.from_file(filepath)
-  if filepath:exists() then
-    local content = filepath:read()
+  if Utils.filesystem.exists(filepath) then
+    local content = vim.fn.readblob(filepath)
     if content ~= nil then
       local decode_ok, history = pcall(vim.json.decode, content)
       if decode_ok and type(history) == "table" then
@@ -214,7 +210,7 @@ function M.from_file(filepath)
         if not vim.islist(history.messages) then history.messages = {} end
         if not vim.islist(history.todos) then history.todos = {} end
         ---@cast history avante.ChatHistory
-        history.filename = filepath_to_filename(filepath)
+        history.filename = vim.fs.basename(filepath)
         return history, false
       end
     end
@@ -247,21 +243,21 @@ function M.write(bufnr, history, project_root)
   if history.acp_provider then
     if not history.acp_session_id or history.acp_session_id == "" then
       local was_latest = history.filename == M.get_latest_filename(bufnr, false, project_root)
-      if history_filepath:exists() then M.delete(bufnr, history.filename, project_root) end
+      if Utils.filesystem.exists(history_filepath) then M.delete(bufnr, history.filename, project_root) end
       if was_latest then M.save_latest_filename(bufnr, nil, project_root) end
       return false
     end
-    history_filepath:write(
+    assert(vim.fn.writefile(
       vim.json.encode({
         acp_provider = history.acp_provider,
         acp_session_id = history.acp_session_id,
         acp_session_cwd = history.acp_session_cwd,
       }),
-      "w"
-    )
+      history_filepath
+    ) == 0)
     return true
   end
-  history_filepath:write(vim.json.encode(history), "w")
+  assert(vim.fn.writefile(vim.json.encode(history), history_filepath) == 0)
   return true
 end
 
@@ -279,9 +275,9 @@ end
 ---@param project_root? string
 function M.delete(bufnr, filename, project_root)
   local history_filepath = M.get_filepath(bufnr, filename, project_root)
-  if history_filepath:exists() then
+  if Utils.filesystem.exists(history_filepath) then
     local was_latest = (filename == M.get_latest_filename(bufnr, false, project_root))
-    vim.fs.rm(tostring(history_filepath))
+    vim.fs.rm(history_filepath)
 
     if was_latest then
       local remaining_histories = M.list(bufnr, project_root) -- This list is sorted by recency
@@ -290,17 +286,17 @@ function M.delete(bufnr, filename, project_root)
       else
         -- No histories left, clear the latest_filename from metadata
         local metadata_filepath = M.get_metadata_filepath(bufnr, project_root)
-        if metadata_filepath:exists() then
-          local metadata_content = metadata_filepath:read()
+        if Utils.filesystem.exists(metadata_filepath) then
+          local metadata_content = vim.fn.readblob(metadata_filepath)
           ---@type {latest_filename?: string, project_root?: string}
           local metadata = vim.json.decode(metadata_content)
           metadata.latest_filename = nil -- Or "", depending on desired behavior for an empty latest
-          metadata_filepath:write(vim.json.encode(metadata), "w")
+          assert(vim.fn.writefile(vim.json.encode(metadata), metadata_filepath) == 0)
         end
       end
     end
   else
-    Utils.warn("History file not found: " .. tostring(history_filepath))
+    Utils.warn("History file not found: " .. history_filepath)
   end
 end
 

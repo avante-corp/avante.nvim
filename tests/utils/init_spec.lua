@@ -1,4 +1,5 @@
 local Utils = require("avante.utils")
+local stub = require("luassert.stub")
 
 describe("Utils", function()
   describe("trim", function()
@@ -113,10 +114,28 @@ describe("Utils", function()
     end)
   end)
 
-  describe("abspath", function()
-    it("should resolve relative paths to absolute paths", function()
-      local cwd = vim.uv.cwd()
-      assert.equals(vim.fs.joinpath(cwd, "lua"), Utils.abspath("lua"))
+  describe("to_absolute_path", function()
+    local project_root
+
+    before_each(
+      function() project_root = stub(Utils, "get_project_root").returns(vim.fs.joinpath(vim.uv.cwd(), "project")) end
+    )
+    after_each(function() project_root:revert() end)
+
+    it(
+      "resolves relative paths against the project root instead of the working directory",
+      function()
+        assert.equals(
+          vim.fs.joinpath(vim.uv.cwd(), "project", "src", "file.lua"),
+          Utils.to_absolute_path("src/file.lua")
+        )
+      end
+    )
+
+    it("preserves absolute paths and terminal URIs", function()
+      local absolute = vim.fs.joinpath(vim.uv.cwd(), "file.lua")
+      assert.equals(absolute, Utils.to_absolute_path(absolute))
+      assert.equals("term://buffer//123", Utils.to_absolute_path("term://buffer//123"))
     end)
   end)
 

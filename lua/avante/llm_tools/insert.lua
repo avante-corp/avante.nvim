@@ -1,4 +1,4 @@
-local Path = require("plenary.path")
+local Utils = require("avante.utils")
 local Base = require("avante.llm_tools.base")
 local Helpers = require("avante.llm_tools.helpers")
 local Highlights = require("avante.highlights")
@@ -64,10 +64,10 @@ function M.func(input, opts)
   if not on_complete then return false, "on_complete not provided" end
 
   if on_log then on_log("path: " .. input.path) end
-  local abs_path = Helpers.get_abs_path(input.path)
+  local abs_path = Utils.to_absolute_path(input.path)
   if not Helpers.has_permission_to_access(abs_path) then return false, "No permission to access path: " .. abs_path end
-  if not Path:new(abs_path):exists() then return false, "File not found: " .. abs_path end
-  if not Path:new(abs_path):is_file() then return false, "Path is not a file: " .. abs_path end
+  if not Utils.filesystem.exists(abs_path) then return false, "File not found: " .. abs_path end
+  if not Utils.filesystem.is_regular_file(abs_path) then return false, "Path is not a file: " .. abs_path end
   if input.insert_line == nil then return false, "insert_line not provided" end
   if input.new_str == nil then return false, "new_str not provided" end
   local ns_id = vim.api.nvim_create_namespace("avante_insert_diff")
@@ -103,7 +103,6 @@ function M.func(input, opts)
     end
     vim.api.nvim_buf_set_lines(bufnr, input.insert_line, input.insert_line, false, new_lines)
     vim.api.nvim_buf_call(bufnr, function() vim.cmd("noautocmd write") end)
-    if session_ctx then Helpers.mark_as_not_viewed(input.path, session_ctx) end
     on_complete(true, nil)
   end, { focus = true }, session_ctx, M.name)
 end

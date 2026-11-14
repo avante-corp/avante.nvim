@@ -95,7 +95,7 @@ function M.detectors.lsp(buf)
     if client.root_dir then roots[#roots + 1] = client.root_dir end
   end
   return vim.tbl_filter(function(path)
-    path = Utils.norm(path)
+    path = Utils.filesystem.normalize(path)
     return path and bufpath:find(path, 1, true) == 1
   end, roots)
 end
@@ -141,12 +141,10 @@ function M.bufpath(buf)
   return M.realpath(buf_name_str)
 end
 
-function M.cwd() return M.realpath(vim.uv.cwd()) or "" end
-
 function M.realpath(path)
   if path == "" or path == nil then return nil end
   path = vim.uv.fs_realpath(path) or path
-  return Utils.norm(path)
+  return Utils.filesystem.normalize(path)
 end
 
 ---@param spec AvanteRootSpec
@@ -219,13 +217,6 @@ function M.get(opts)
   if cwd ~= nil and #ret > #cwd then ret = cwd end
   if opts and opts.normalize then return ret end
   return Utils.is_win() and ret:gsub("/", "\\") or ret
-end
-
-function M.git()
-  local root = M.get()
-  local git_root = vim.fs.find(".git", { path = root, upward = true })[1]
-  local ret = git_root and vim.fn.fnamemodify(git_root, ":h") or root
-  return ret
 end
 
 return M

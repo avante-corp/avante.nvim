@@ -20,8 +20,7 @@ function FileSelector:process_directory(absolute_path)
   local files = Utils.scan_directory({ directory = absolute_path, add_dirs = false })
 
   for _, file in ipairs(files) do
-    local abs_path = Utils.to_absolute_path(file)
-    if not vim.tbl_contains(self.selected_filepaths, abs_path) then table.insert(self.selected_filepaths, abs_path) end
+    if not vim.tbl_contains(self.selected_filepaths, file) then table.insert(self.selected_filepaths, file) end
   end
   self:emit("update")
 end
@@ -36,12 +35,11 @@ function FileSelector:handle_path_selection(selected_paths)
     if vim.fn.isdirectory(absolute_path) == 1 then
       self:process_directory(absolute_path)
     else
-      local abs_path = Utils.to_absolute_path(selected_path)
       if Config.file_selector.provider == "native" then
-        table.insert(self.selected_filepaths, abs_path)
+        table.insert(self.selected_filepaths, absolute_path)
       else
-        if not vim.tbl_contains(self.selected_filepaths, abs_path) then
-          table.insert(self.selected_filepaths, abs_path)
+        if not vim.tbl_contains(self.selected_filepaths, absolute_path) then
+          table.insert(self.selected_filepaths, absolute_path)
         end
       end
     end
@@ -105,15 +103,14 @@ function FileSelector:add_current_buffer()
   local current_buf = vim.api.nvim_get_current_buf()
   local filepath = vim.api.nvim_buf_get_name(current_buf)
   if filepath and filepath ~= "" and not has_scheme(filepath) then
-    local absolute_path = Utils.to_absolute_path(filepath)
     for i, path in ipairs(self.selected_filepaths) do
-      if path == absolute_path then
+      if path == filepath then
         table.remove(self.selected_filepaths, i)
         self:emit("update")
         return true
       end
     end
-    self:add_selected_file(absolute_path)
+    self:add_selected_file(filepath)
     return true
   end
   return false
@@ -190,7 +187,7 @@ function FileSelector:get_filepaths()
   return vim
     .iter(file_info)
     :map(function(info)
-      local rel_path = Utils.make_relative_path(info.path, project_root)
+      local rel_path = Utils.filesystem.relative(project_root, info.path, false)
       if info.is_dir then rel_path = rel_path .. "/" end
       return rel_path
     end)
@@ -323,7 +320,7 @@ function FileSelector:add_quickfix_files()
   local quickfix_files = vim
     .iter(vim.fn.getqflist({ items = 0 }).items)
     :filter(function(item) return item.bufnr ~= 0 end)
-    :map(function(item) return Utils.to_absolute_path(vim.api.nvim_buf_get_name(item.bufnr)) end)
+    :map(function(item) return vim.api.nvim_buf_get_name(item.bufnr) end)
     :totable()
   for _, filepath in ipairs(quickfix_files) do
     self:add_selected_file(filepath)
@@ -338,10 +335,7 @@ function FileSelector:add_buffer_files()
     if vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].buflisted then
       local filepath = vim.api.nvim_buf_get_name(bufnr)
       -- Skip empty paths and special buffers (like terminals)
-      if filepath ~= "" and not has_scheme(filepath) then
-        local absolute_path = Utils.to_absolute_path(filepath)
-        self:add_selected_file(absolute_path)
-      end
+      if filepath ~= "" and not has_scheme(filepath) then self:add_selected_file(filepath) end
     end
   end
 end

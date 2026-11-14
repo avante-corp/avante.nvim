@@ -45,7 +45,7 @@ describe("History storage", function()
         acp_provider = "test-acp",
         acp_session_id = "session-1",
         acp_session_cwd = project_root,
-      }, vim.json.decode(HistoryStorage.get_filepath(0, history.filename, project_root):read()))
+      }, vim.json.decode(vim.fn.readblob(HistoryStorage.get_filepath(0, history.filename, project_root))))
       assert.equals("session-1", HistoryStorage.load(0, history.filename, project_root).acp_session_id)
 
       local histories = HistoryStorage.list(0, project_root)
@@ -60,7 +60,7 @@ describe("History storage", function()
       current.acp_session_id = nil
       HistoryStorage.save(0, current, project_root)
 
-      local metadata = vim.json.decode(HistoryStorage.get_metadata_filepath(0, project_root):read())
+      local metadata = vim.json.decode(vim.fn.readblob(HistoryStorage.get_metadata_filepath(0, project_root)))
       assert.is_nil(metadata.latest_filename)
     end)
 
@@ -178,7 +178,11 @@ describe("History storage", function()
     vim.api.nvim_buf_delete(bufnr, { force = true })
 
     assert.is_true(
-      vim.wait(2000, function() return HistoryStorage.get_filepath(bufnr, old.filename, project_root):exists() end, 10)
+      vim.wait(
+        2000,
+        function() return vim.uv.fs_stat(HistoryStorage.get_filepath(bufnr, old.filename, project_root)) ~= nil end,
+        10
+      )
     )
     assert.same(old.messages, HistoryStorage.load(bufnr, old.filename, project_root).messages)
     assert.same(current.filename, HistoryStorage.get_latest_filename(bufnr, false, project_root))

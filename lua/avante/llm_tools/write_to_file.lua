@@ -62,7 +62,7 @@ M.returns = {
 --- IMPORTANT: Using "the_content" instead of "content" is to avoid LLM streaming generating function parameters in alphabetical order, which would result in generating "path" after "content", making it impossible to achieve a stream diff view.
 ---@type AvanteLLMToolFunc<{ path: string, the_content?: string }>
 function M.func(input, opts)
-  local abs_path = Helpers.get_abs_path(input.path)
+  local abs_path = Utils.to_absolute_path(input.path)
   if not Helpers.has_permission_to_access(abs_path) then return false, "No permission to access path: " .. abs_path end
   if input.the_content == nil then return false, "the_content not provided" end
   if type(input.the_content) ~= "string" then input.the_content = vim.json.encode(input.the_content) end
