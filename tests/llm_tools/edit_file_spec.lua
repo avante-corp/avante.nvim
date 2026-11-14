@@ -53,7 +53,10 @@ describe("Fast Apply", function()
     assert.is_nil(replacement)
     handlers.on_chunk("code")
     handlers.on_stop({ reason = "complete" })
-    assert.same({ path = Helpers.get_abs_path("test.lua"), old_str = "old code", new_str = "new code" }, replacement)
+    assert.same(
+      { path = Utils.filesystem.resolve_project_path("test.lua"), old_str = "old code", new_str = "new code" },
+      replacement
+    )
     assert.is_true(result.ok)
   end)
 
@@ -68,7 +71,7 @@ describe("Fast Apply", function()
     end)
     StrReplace.func:revert()
     stubs[#stubs + 1] = stub(StrReplace, "func", function(args, opts)
-      applied_path = Helpers.get_abs_path(args.path)
+      applied_path = Utils.filesystem.resolve_project_path(args.path)
       opts.on_complete(true)
     end)
 

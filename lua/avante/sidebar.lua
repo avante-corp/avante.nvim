@@ -74,7 +74,6 @@ local fn = vim.fn
 local Split = require("nui.split")
 local event = require("nui.utils.autocmd").event
 
-local PPath = require("plenary.path")
 local Providers = require("avante.providers")
 local Api = require("avante.api")
 local HistoryStorage = require("avante.history.storage")
@@ -1116,8 +1115,7 @@ function Sidebar:apply(current_cursor)
     for filepath, snippets in pairs(selected_snippets_map) do
       if Config.behaviour.minimize_diff then snippets = self:minimize_snippets(filepath, snippets) end
       local bufnr = Utils.open_buffer(filepath)
-      local path_ = PPath:new(Utils.is_win() and filepath:gsub("/", "\\") or filepath)
-      path_:parent():mkdir({ parents = true, exists_ok = true })
+      vim.fn.mkdir(vim.fs.dirname(vim.fs.abspath(filepath)), "p")
       insert_conflict_contents(bufnr, snippets)
       local function process(winid)
         api.nvim_set_current_win(winid)
@@ -1934,7 +1932,7 @@ function Sidebar:initialize()
   if Config.behaviour.auto_add_current_file then
     local buf_path = api.nvim_buf_get_name(self.code.bufnr)
     -- if the filepath is outside of the current working directory then we want the absolute path
-    local filepath = Utils.file.is_in_project(buf_path) and Utils.relative_path(buf_path) or buf_path
+    local filepath = Utils.filesystem.is_in_project(buf_path) and Utils.relative_path(buf_path) or buf_path
     Utils.debug("Sidebar:initialize adding buffer to file selector", buf_path)
 
     local stat = vim.uv.fs_stat(filepath)
@@ -2495,7 +2493,7 @@ function Sidebar:clear_history(args, cb)
     local function clear_local_history()
       chat_history._discarded = true
       local history_filepath = HistoryStorage.get_filepath(code_bufnr, chat_history.filename, history_project_root)
-      if history_filepath:exists() then
+      if Utils.filesystem.exists(history_filepath) then
         HistoryStorage.delete(code_bufnr, chat_history.filename, history_project_root)
       end
       if self.chat_history == chat_history then
@@ -3991,8 +3989,8 @@ function Sidebar:create_selected_files_container()
 
     local project_path = Utils.root.get()
     for i, filepath in ipairs(selected_filepaths_) do
-      local icon, hl = Utils.file.get_file_icon(filepath)
-      local renderpath = PPath:new(filepath):normalize(project_path)
+      local icon, hl = Utils.filesystem.get_file_icon(filepath)
+      local renderpath = Utils.filesystem.normalize_display(filepath, project_path)
       local formatted_line = string.format("%s %s", icon, renderpath)
       table.insert(lines_to_set, formatted_line)
       if hl and hl ~= "" then table.insert(highlights_to_apply, { line_nr = i, icon = icon, hl = hl }) end

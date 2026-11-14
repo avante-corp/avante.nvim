@@ -113,13 +113,6 @@ describe("Utils", function()
     end)
   end)
 
-  describe("abspath", function()
-    it("should resolve relative paths to absolute paths", function()
-      local cwd = vim.uv.cwd()
-      assert.equals(vim.fs.joinpath(cwd, "lua"), Utils.abspath("lua"))
-    end)
-  end)
-
   describe("get_mentions", function()
     it("should return valid mentions", function()
       local mentions = Utils.get_mentions()

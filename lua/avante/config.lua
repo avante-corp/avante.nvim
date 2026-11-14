@@ -937,7 +937,7 @@ function M.save_last_model(model_name, provider_name, save_provider)
   local config_dir = get_config_dir_path()
   local storage_path = get_config_file_path()
 
-  if not Utils.path_exists(config_dir) then vim.fn.mkdir(config_dir, "p") end
+  if not Utils.filesystem.exists(config_dir) then vim.fn.mkdir(config_dir, "p") end
 
   ---@type AvanteACPProvider|AvanteProvider
   local provider = M.acp_providers[provider_name] or require("avante.providers")[provider_name]

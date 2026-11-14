@@ -39,7 +39,7 @@ describe("RagService", function()
     local stub = require("luassert.stub")
     local curl
     before_each(function()
-      curl = require("plenary.curl")
+      curl = require("avante.utils.curl")
       stub(curl, "post")
     end)
     after_each(function() curl.post:revert() end)
@@ -156,7 +156,7 @@ describe("RagService", function()
         return { wait = function() return { code = 0 } end }
       end)
       local get = replace(
-        require("plenary.curl"),
+        require("avante.utils.curl"),
         "get",
         function() return { status = 200, body = '{"resources":[],"total_count":0}' } end
       )

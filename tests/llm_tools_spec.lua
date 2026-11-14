@@ -53,14 +53,31 @@ describe("llm_tools", function()
     LlmToolHelpers.already_in_context:revert()
   end)
 
+  describe("insert", function()
+    it("rejects a missing path before trying to edit it", function()
+      local insert = require("avante.llm_tools.insert")
+      local ok, err = insert.func({ path = "missing.txt" }, { on_complete = function() end })
+      assert.is_false(ok)
+      assert.matches("File not found", err)
+    end)
+  end)
+
+  for _, name in ipairs({ "insert", "undo_edit" }) do
+    it(name .. " rejects directories before opening an editing buffer", function()
+      local get_bufnr = stub(LlmToolHelpers, "get_bufnr").returns(0, "directory reached editing")
+      local ok, err = require("avante.llm_tools." .. name).func(
+        { path = "test_dir1", insert_line = 0, new_str = "content" },
+        { on_complete = function() end }
+      )
+      get_bufnr:revert()
+      assert.is_false(ok)
+      assert.equals("Path is not a file: " .. test_dir .. "/test_dir1", err)
+    end)
+  end
+
   describe("copy_path", function()
     it("reports a failed nested copy", function()
-      local Path = require("plenary.path")
-      local copy_stub = stub(
-        Path,
-        "copy",
-        function() return { [Path:new("nested")] = { [Path:new("nested/file")] = false } } end
-      )
+      local copy_stub = stub(Utils.filesystem, "copy_dir").returns(nil, "nested/file: copy failed")
       local completed
       LlmTools.copy_path({ source_path = "test_dir1", destination_path = "failed" }, {
         session_ctx = {},
@@ -226,6 +243,27 @@ describe("llm_tools", function()
   end)
 
   describe("delete_path", function()
+    it("deletes a nonempty directory recursively", function()
+      local completed
+      LlmTools.delete_path({ path = "test_dir1" }, {
+        on_complete = function(ok, err) completed = { ok, err } end,
+      })
+      assert.same({ true }, completed)
+      assert.equals(0, vim.fn.isdirectory(test_dir .. "/test_dir1"))
+    end)
+
+    it("reports deletion errors and leaves the file intact", function()
+      local remove = stub(vim.fs, "rm", function() error("EACCES") end)
+      local completed
+      LlmTools.delete_path({ path = "test.txt" }, {
+        on_complete = function(ok, err) completed = { ok, err } end,
+      })
+      remove:revert()
+      assert.is_false(completed[1])
+      assert.matches("EACCES", completed[2])
+      assert.equals(1, vim.fn.filereadable(test_file))
+    end)
+
     it("should delete existing file", function()
       LlmTools.delete_path({ path = "test.txt" }, {
         session_ctx = {},
@@ -237,6 +275,20 @@ describe("llm_tools", function()
           assert.is_false(file_exists)
         end,
       })
+    end)
+  end)
+
+  describe("move_path", function()
+    it("reports a failed rename and preserves the source", function()
+      local rename = stub(vim.uv, "fs_rename").returns(nil, "EXDEV")
+      local completed
+      LlmTools.move_path({ source_path = "test.txt", destination_path = "moved.txt" }, {
+        on_complete = function(ok, err) completed = { ok, err } end,
+      })
+      rename:revert()
+      assert.is_false(completed[1])
+      assert.matches("EXDEV", completed[2])
+      assert.equals(1, vim.fn.filereadable(test_file))
     end)
   end)
 
