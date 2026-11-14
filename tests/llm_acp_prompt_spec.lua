@@ -1,7 +1,7 @@
 local stub = require("luassert.stub")
 local ACPClient = require("avante.libs.acp_client")
 local Config = require("avante.config")
-local FileUtils = require("avante.utils.file")
+local Filesystem = require("avante.utils.filesystem")
 local LLMToolHelpers = require("avante.llm_tools.helpers")
 local Utils = require("avante.utils")
 local llm = require("avante.llm")
@@ -600,7 +600,7 @@ describe("llm._continue_stream_acp", function()
       handlers = config.handlers
       return client
     end)
-    local write_stub = stub(FileUtils, "write_atomically").returns(true)
+    local write_stub = stub(Filesystem, "write_atomically").returns(true)
     local path = vim.fn.tempname()
     local bufnr = vim.api.nvim_create_buf(true, false)
     vim.api.nvim_buf_set_name(bufnr, path)

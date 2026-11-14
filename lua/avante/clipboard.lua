@@ -7,7 +7,6 @@ local Config = require("avante.config")
 local ImgClip = nil
 
 ---@class AvanteClipboard
----@field get_base64_content fun(filepath: string): string
 ---
 ---@class avante.Clipboard: AvanteClipboard
 local M = {}
@@ -27,7 +26,7 @@ M.support_paste_image = Config.support_paste_image
 function M.setup()
   local dir = get_paste_directory()
 
-  if vim.uv.fs_stat(dir) == nil then vim.fn.mkdir(dir, "p") end
+  if not Utils.filesystem.exists(dir) then vim.fn.mkdir(dir, "p") end
 
   if M.support_paste_image() and ImgClip == nil then
     ---@type {paste_image: fun(opts: table, line?: string): boolean}
@@ -55,25 +54,6 @@ function M.paste_image(line)
 
   ---@diagnostic disable-next-line: need-check-nil, undefined-field
   return ImgClip.paste_image(opts, line)
-end
-
----@param filepath string
----@return string
-function M.get_base64_content(filepath)
-  local os_mapping = Utils.get_os_name()
-  ---@type { stdout: string, code: integer }
-  local output
-  if os_mapping == "darwin" or os_mapping == "linux" then
-    output = Utils.shell_run(("cat %s | base64 | tr -d '\n'"):format(filepath))
-  else
-    output =
-      Utils.shell_run(("([Convert]::ToBase64String([IO.File]::ReadAllBytes('%s')) -replace '`r`n')"):format(filepath))
-  end
-  if output.code == 0 then
-    return output.stdout
-  else
-    error("Failed to convert image to base64")
-  end
 end
 
 return M

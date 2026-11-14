@@ -2,8 +2,6 @@
 ---@brief Prompt related utilities
 local fn = vim.fn
 local Utils = require("avante.utils")
-local Path = require("plenary.path")
-local Scan = require("plenary.scandir")
 local Config = require("avante.config")
 
 ---@class avante.Path
@@ -12,27 +10,23 @@ local Config = require("avante.config")
 ---@field data_path string
 local P = {}
 
-local function filepath_to_filename(filepath) return tostring(filepath):sub(tostring(filepath:parent()):len() + 2) end
-
 ---@return { name: string, root: string, history_count: integer, directory: string }[]
 function P.list_projects()
-  local projects_dir = Path:new(Config.history.storage_path):joinpath("projects")
-  if not projects_dir:exists() then return {} end
+  local projects_dir = vim.fs.joinpath(Config.history.storage_path, "projects")
+  if not Utils.filesystem.exists(projects_dir) then return {} end
 
   ---@type {name: string, root: string, history_count: integer, directory: string}[]
   local projects = {}
-  ---@type string[]
-  local dirs = Scan.scan_dir(tostring(projects_dir), { depth = 1, add_dirs = true, only_dirs = true })
+  for name, kind in vim.fs.dir(projects_dir) do
+    if kind ~= "directory" or name:sub(1, 1) == "." then goto continue end
+    local project_dir = vim.fs.joinpath(projects_dir, name)
+    local history_dir = vim.fs.joinpath(project_dir, "history")
 
-  for _, dir_path in ipairs(dirs) do
-    local project_dir = Path:new(dir_path)
-    local history_dir = project_dir:joinpath("history")
-
-    local metadata_file = history_dir:joinpath("metadata.json")
+    local metadata_file = vim.fs.joinpath(history_dir, "metadata.json")
     ---@type string
     local project_root = ""
-    if metadata_file:exists() then
-      local content = metadata_file:read()
+    if Utils.filesystem.exists(metadata_file) then
+      local content = fn.readblob(metadata_file)
       if content then
         ---@type {project_root?: string}
         local metadata = vim.json.decode(content)
@@ -45,19 +39,19 @@ function P.list_projects()
 
     -- Count history files
     local history_count = 0
-    if history_dir:exists() then
+    if Utils.filesystem.exists(history_dir) then
       ---@type string[]
-      local history_files = vim.fn.glob(tostring(history_dir:joinpath("*.json")), true, true)
+      local history_files = fn.glob(vim.fs.joinpath(history_dir, "*.json"), true, true)
       for _, file in ipairs(history_files) do
         if not file:match("metadata.json") then history_count = history_count + 1 end
       end
     end
 
     table.insert(projects, {
-      name = filepath_to_filename(project_dir),
+      name = name,
       root = project_root,
       history_count = history_count,
-      directory = tostring(project_dir),
+      directory = project_dir,
     })
 
     ::continue::
@@ -111,32 +105,27 @@ function Prompt.get_templates_dir(project_root)
   if not P.available() then error("Make sure to build avante (missing avante_templates)", 2) end
 
   -- get root directory of given bufnr
-  local directory = Path:new(project_root)
+  local directory = project_root
   if Utils.get_os_name() == "windows" then
-    local win_path = vim.fs.abspath(tostring(directory)):gsub("^%a:", ""):gsub("^[/\\]+", "")
-    directory = Path:new(vim.fs.normalize(win_path))
+    local win_path = vim.fs.abspath(directory):gsub("^%a:", ""):gsub("^[/\\]+", "")
+    directory = vim.fs.normalize(win_path)
   end
-  local cache_prompt_dir = Path:new(P.cache_path):joinpath(directory)
-  local cache_dir_str = tostring(cache_prompt_dir):gsub("\\", "/")
-  if vim.fn.isdirectory(cache_dir_str) == 0 then vim.fn.mkdir(cache_dir_str, "p") end
+  local cache_prompt_dir = vim.fs.joinpath(P.cache_path, directory)
+  if fn.isdirectory(cache_prompt_dir) == 0 then fn.mkdir(cache_prompt_dir, "p") end
 
   ---Loop over files searching for [MODE].avanterules
   local function find_rules(dir)
     if not dir then return end
-    if vim.fn.isdirectory(dir) ~= 1 then return end
+    if not Utils.filesystem.is_directory(dir) then return end
 
-    ---@type string[]
-    local scanner = Scan.scan_dir(dir, { depth = 1, add_dirs = true })
-    for _, entry in ipairs(scanner) do
-      local file = Path:new(entry)
-      if file:is_file() then
-        local pieces = vim.split(entry, "/")
-        local piece = pieces[#pieces]
+    for piece in vim.fs.dir(dir) do
+      local entry = vim.fs.joinpath(dir, piece)
+      if piece:sub(1, 1) ~= "." and Utils.filesystem.is_regular_file(entry) then
         local mode = piece:match("([^.]+)%.avanterules$")
         if not mode or not Prompt.custom_modes[mode] then goto continue end
         if Prompt.custom_prompts_contents[mode] == nil then
           Utils.info(string.format("Using %s as %s system prompt", entry, mode))
-          Prompt.custom_prompts_contents[mode] = file:read()
+          Prompt.custom_prompts_contents[mode] = fn.readblob(entry)
         end
       end
       ::continue::
@@ -144,21 +133,19 @@ function Prompt.get_templates_dir(project_root)
   end
 
   if Config.rules.project_dir then
-    local project_rules_path = Path:new(Config.rules.project_dir)
-    if not project_rules_path:is_absolute() then project_rules_path = directory:joinpath(project_rules_path) end
-    find_rules(tostring(project_rules_path))
+    ---@type string
+    local project_rules_path = Config.rules.project_dir
+    if fn.isabsolutepath(project_rules_path) == 0 then
+      project_rules_path = vim.fs.joinpath(project_root, project_rules_path)
+    end
+    find_rules(project_rules_path)
   end
   find_rules(Config.rules.global_dir)
-  find_rules(vim.fs.abspath(tostring(directory)))
+  find_rules(project_root)
 
-  local source_dir =
-    Path:new(debug.getinfo(1).source:match("@?(.*/)"):gsub("/lua/avante/path.lua$", "") .. "templates")
+  local source_dir = vim.fs.joinpath(vim.fs.dirname(debug.getinfo(1, "S").source:sub(2)), "templates")
   -- Copy built-in templates to cache directory (only if not overridden by user templates)
-  source_dir:copy({
-    destination = cache_prompt_dir,
-    recursive = true,
-    override = true,
-  })
+  assert(Utils.filesystem.copy_dir(source_dir, cache_prompt_dir))
 
   -- Check for override prompt
   local override_prompt_dir = Config.override_prompt_dir
@@ -174,33 +161,24 @@ function Prompt.get_templates_dir(project_root)
     end
 
     if type(override_prompt_dir) == "string" then
-      local user_template_path = Path:new(override_prompt_dir)
-      if user_template_path:exists() then
-        ---@type string[]
-        local user_scanner =
-          Scan.scan_dir(vim.fs.abspath(tostring(user_template_path)), { depth = 1, add_dirs = false })
-        for _, entry in ipairs(user_scanner) do
-          local file = Path:new(entry)
-          if file:is_file() then
-            local pieces = vim.split(entry, "/")
-            local piece = pieces[#pieces]
-
+      if Utils.filesystem.is_directory(override_prompt_dir) then
+        for piece in vim.fs.dir(override_prompt_dir) do
+          local file = vim.fs.joinpath(override_prompt_dir, piece)
+          if piece:sub(1, 1) ~= "." and Utils.filesystem.is_regular_file(file) then
             if piece == "base.avanterules" then
-              local content = file:read()
+              local content = fn.readblob(file)
 
               if not content:match("{%% block extra_prompt %%}[%s,\\n]*{%% endblock %%}") then
                 Utils.warn("Appending missing extra_prompt block")
-                file:write("{% block extra_prompt %}\n", "a")
-                file:write("{% endblock %}\n", "a")
+                assert(fn.writefile("{% block extra_prompt %}\n{% endblock %}\n", file, "a") == 0)
               end
 
               if not content:match("{%% block custom_prompt %%}[%s,\\n]*{%% endblock %%}") then
                 Utils.warn("Appending missing custom_prompt block")
-                file:write("{% block custom_prompt %}\n", "a")
-                file:write("{% endblock %}", "a")
+                assert(fn.writefile("{% block custom_prompt %}\n{% endblock %}", file, "a") == 0)
               end
             end
-            file:copy({ destination = cache_prompt_dir:joinpath(piece) })
+            assert(vim.uv.fs_copyfile(file, vim.fs.joinpath(cache_prompt_dir, piece)))
           end
         end
       end
@@ -208,16 +186,13 @@ function Prompt.get_templates_dir(project_root)
   end
 
   for k, v in pairs(Prompt.custom_prompts_contents) do
-    local orig_file = cache_prompt_dir:joinpath(Prompt.get_builtin_prompts_filepath(k))
-    local orig_content = orig_file:read()
-    local f = cache_prompt_dir:joinpath(Prompt.get_custom_prompts_filepath(k))
-    f:write(orig_content, "w")
-    f:write("{% block custom_prompt -%}\n", "a")
-    f:write(v, "a")
-    f:write("\n{%- endblock %}", "a")
+    local orig_file = vim.fs.joinpath(cache_prompt_dir, Prompt.get_builtin_prompts_filepath(k))
+    local orig_content = fn.readblob(orig_file)
+    local f = vim.fs.joinpath(cache_prompt_dir, Prompt.get_custom_prompts_filepath(k))
+    assert(fn.writefile(orig_content .. "{% block custom_prompt -%}\n" .. v .. "\n{%- endblock %}", f) == 0)
   end
 
-  local dir = vim.fs.abspath(tostring(cache_prompt_dir))
+  local dir = vim.fs.abspath(cache_prompt_dir)
   return dir
 end
 
@@ -268,17 +243,17 @@ function RepoMap.filename(project_root, ext)
   return fn.substitute(path_with_separators, "[^A-Za-z0-9._]", "_", "g") .. "." .. ext .. ".repo_map.json"
 end
 
-function RepoMap.get(project_root, ext) return Path:new(P.data_path):joinpath(RepoMap.filename(project_root, ext)) end
+function RepoMap.get(project_root, ext) return vim.fs.joinpath(P.data_path, RepoMap.filename(project_root, ext)) end
 
 function RepoMap.save(project_root, ext, data)
   local file = RepoMap.get(project_root, ext)
-  file:write(vim.json.encode(data), "w")
+  assert(fn.writefile(vim.json.encode(data), file) == 0)
 end
 
 function RepoMap.load(project_root, ext)
   local file = RepoMap.get(project_root, ext)
-  if file:exists() then
-    local content = file:read()
+  if Utils.filesystem.exists(file) then
+    local content = fn.readblob(file)
     return content ~= nil and vim.json.decode(content) or {}
   end
   return nil
@@ -303,15 +278,15 @@ end
 --- Create storage_path , cache / data folders
 function P.setup()
   local history_path = Config.history.storage_path
-  if vim.uv.fs_stat(history_path) == nil then vim.fn.mkdir(history_path, "p") end
+  if not Utils.filesystem.exists(history_path) then vim.fn.mkdir(history_path, "p") end
   P.history_path = history_path
 
   local cache_path = vim.fs.joinpath(vim.fn.stdpath("cache"), "avante")
-  if vim.uv.fs_stat(cache_path) == nil then vim.fn.mkdir(cache_path, "p") end
+  if not Utils.filesystem.exists(cache_path) then vim.fn.mkdir(cache_path, "p") end
   P.cache_path = cache_path
 
   local data_path = vim.fs.joinpath(vim.fn.stdpath("data"), "avante")
-  if vim.uv.fs_stat(data_path) == nil then vim.fn.mkdir(data_path, "p") end
+  if not Utils.filesystem.exists(data_path) then vim.fn.mkdir(data_path, "p") end
   P.data_path = data_path
 
   vim.defer_fn(P._init_templates_lib, 1000)
@@ -326,8 +301,8 @@ function P.clear()
   vim.fs.rm(P.cache_path, { recursive = true })
   vim.fs.rm(P.history_path, { recursive = true })
 
-  if vim.uv.fs_stat(P.cache_path) == nil then vim.fn.mkdir(P.cache_path, "p") end
-  if vim.uv.fs_stat(P.history_path) == nil then vim.fn.mkdir(P.history_path, "p") end
+  if not Utils.filesystem.exists(P.cache_path) then vim.fn.mkdir(P.cache_path, "p") end
+  if not Utils.filesystem.exists(P.history_path) then vim.fn.mkdir(P.history_path, "p") end
 end
 
 return P

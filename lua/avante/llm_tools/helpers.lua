@@ -1,5 +1,4 @@
 local Utils = require("avante.utils")
-local Path = require("plenary.path")
 local Config = require("avante.config")
 local ACPConfirmAdapter = require("avante.ui.acp_confirm_adapter")
 
@@ -8,15 +7,6 @@ local M = {}
 M.CANCEL_TOKEN = "__CANCELLED__"
 ---@type table<avante.Sidebar, avante.ui.Confirm>
 M.confirm_popups = {}
-
----@param rel_path string
----@return string
-function M.get_abs_path(rel_path)
-  local project_root = Utils.get_project_root()
-  local p = Utils.is_absolute_path(rel_path) and rel_path or vim.fs.normalize(vim.fs.joinpath(project_root, rel_path))
-  if p:sub(-2) == "/." then p = p:sub(1, -3) end
-  return p
-end
 
 ---@type avante.acp.PermissionOption[]
 local default_permission_options = {
@@ -145,7 +135,7 @@ local function old_is_ignored(abs_path)
   -- Specifically, it should not check the project root itself
   -- Otherwise if the binary is named the same as the project root (such as Go binary), any paths
   -- insde the project root will be ignored
-  local rel_path = Utils.make_relative_path(abs_path, project_root)
+  local rel_path = Utils.filesystem.relative(project_root, abs_path, false)
   return Utils.is_ignored(rel_path, gitignore_patterns, gitignore_negate_patterns)
 end
 
@@ -186,7 +176,7 @@ end
 ---@param abs_path string
 ---@return boolean
 function M.has_permission_to_access(abs_path)
-  if not Path:new(abs_path):is_absolute() then return false end
+  if vim.fn.isabsolutepath(abs_path) == 0 then return false end
   local real_path = resolve_path(abs_path)
   if not real_path then return false end
   ---@param root string
@@ -195,7 +185,7 @@ function M.has_permission_to_access(abs_path)
     local real_root = resolve_path(root)
     if not real_root then return false end
     local path = real_path
-    if Utils.path.is_win() then
+    if Utils.is_win() then
       ---@type string, string
       path, real_root = path:lower(), real_root:lower()
     end
@@ -216,34 +206,6 @@ function M.already_in_context(path)
     return vim.tbl_contains(sidebar.file_selector.selected_filepaths, rel_path)
   end
   return false
-end
-
----@param path string
----@param session_ctx avante.SessionContext
----@return boolean
-function M.already_viewed(path, session_ctx)
-  local view_history = session_ctx.view_history or {}
-  local uniform_path = Utils.uniform_path(path)
-  if view_history[uniform_path] then return true end
-  return false
-end
-
----@param path string
----@param session_ctx avante.SessionContext
-function M.mark_as_viewed(path, session_ctx)
-  local view_history = session_ctx.view_history or {}
-  local uniform_path = Utils.uniform_path(path)
-  view_history[uniform_path] = true
-  session_ctx.view_history = view_history
-end
-
----@param path string
----@param session_ctx avante.SessionContext
-function M.mark_as_not_viewed(path, session_ctx)
-  local view_history = session_ctx.view_history or {}
-  local uniform_path = Utils.uniform_path(path)
-  view_history[uniform_path] = nil
-  session_ctx.view_history = view_history
 end
 
 ---@param abs_path string

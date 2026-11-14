@@ -6,7 +6,7 @@ local ACPClient = require("avante.libs.acp_client")
 local RigClient = require("avante.libs.rig_client")
 
 local Utils = require("avante.utils")
-local FileUtils = require("avante.utils.file")
+local Filesystem = require("avante.utils.filesystem")
 local Prompts = require("avante.utils.prompts")
 local Config = require("avante.config")
 local Api = require("avante.api")
@@ -291,7 +291,7 @@ function M.generate_prompts(opts)
     or Utils.get_project_root()
   local instruction_file_path = vim.fs.joinpath(project_root, project_instruction_file)
 
-  if vim.uv.fs_stat(instruction_file_path) and not opts._instructions_loaded then
+  if Utils.filesystem.exists(instruction_file_path) and not opts._instructions_loaded then
     log.info("Loading instructions from " .. instruction_file_path)
     local lines = Utils.read_file_from_buf_or_disk(vim.fs.abspath(instruction_file_path))
     local instruction_content = lines and table.concat(lines, "\n") or ""
@@ -336,7 +336,7 @@ function M.generate_prompts(opts)
   local selected_files = opts.selected_files or {}
   if opts.selected_filepaths then
     for _, filepath in ipairs(opts.selected_filepaths) do
-      local path = not Utils.is_absolute_path(filepath)
+      local path = vim.fn.isabsolutepath(filepath) == 0
           and filepath:sub(1, 7) ~= "term://"
           and vim.fs.joinpath(project_root, filepath)
         or filepath
@@ -816,7 +816,7 @@ function M._stream_acp(opts)
               local location = upd.locations[1]
               if not location or not location.path then return end
 
-              local abs_path = Utils.is_absolute_path(location.path) and location.path
+              local abs_path = vim.fn.isabsolutepath(location.path) == 1 and location.path
                 or vim.fs.joinpath(request_opts.acp_session_cwd or request_opts.acp_context.cwd, location.path)
               local bufnr = vim.fn.bufadd(abs_path)
 
@@ -905,7 +905,7 @@ function M._stream_acp(opts)
           }, opts.session_ctx, tool_call.kind)
         end,
         on_read_file = function(path, line, limit, callback, error_callback)
-          local abs_path = Utils.to_absolute_path(path)
+          local abs_path = vim.fs.abspath(path)
           local lines, err, errname = Utils.read_file_from_buf_or_disk(abs_path)
           if err then
             if error_callback then
@@ -941,8 +941,8 @@ function M._stream_acp(opts)
           callback(content)
         end,
         on_write_file = function(path, content, callback)
-          local abs_path = Utils.to_absolute_path(path)
-          local normalized_abs_path = vim.uv.fs_realpath(abs_path) or fn.resolve(Utils.abspath(abs_path))
+          local abs_path = vim.fs.abspath(path)
+          local normalized_abs_path = vim.uv.fs_realpath(abs_path) or fn.resolve(vim.fs.abspath(abs_path))
           ---@type integer[]
           local buffers = vim.tbl_filter(
             ---@param bufnr integer
@@ -951,7 +951,7 @@ function M._stream_acp(opts)
               if not vim.api.nvim_buf_is_valid(bufnr) then return false end
               local name = vim.api.nvim_buf_get_name(bufnr)
               return name ~= ""
-                and (vim.uv.fs_realpath(name) or fn.resolve(Utils.abspath(name))) == normalized_abs_path
+                and (vim.uv.fs_realpath(name) or fn.resolve(vim.fs.abspath(name))) == normalized_abs_path
             end,
             vim.api.nvim_list_bufs()
           )
@@ -961,7 +961,7 @@ function M._stream_acp(opts)
               return
             end
           end
-          local ok, err = FileUtils.write_atomically(abs_path, content)
+          local ok, err = Filesystem.write_atomically(abs_path, content)
           if not ok then
             callback(err or ("Failed to write file: " .. abs_path))
             return
@@ -1163,7 +1163,7 @@ function M._continue_stream_acp(opts, acp_client, session_id)
   if donot_use_builtin_system_prompt then
     if opts.selected_filepaths then
       for _, filepath in ipairs(opts.selected_filepaths) do
-        local abs_path = Utils.is_absolute_path(filepath) and filepath
+        local abs_path = vim.fn.isabsolutepath(filepath) == 1 and filepath
           or vim.fs.joinpath(acp_context(opts).cwd, filepath)
         local file_name = vim.fn.fnamemodify(abs_path, ":t")
         table.insert(prompt, { type = "resource_link", uri = vim.uri_from_fname(abs_path), name = file_name })
