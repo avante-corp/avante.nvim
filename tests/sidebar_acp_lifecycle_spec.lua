@@ -149,7 +149,7 @@ describe("Sidebar ACP request lifecycle", function()
     vim.api.nvim_buf_attach(code_buffer, false, { on_detach = function() detached = true end })
     -- Give each write a distinct timestamp even on filesystems with coarse timestamps.
     local mtime = os.time()
-    assert.is_true(require("avante.utils.file").write_atomically(filepath, "return 'updated by the ACP tool'\n"))
+    assert.is_true(require("avante.utils.filesystem").write_atomically(filepath, "return 'updated by the ACP tool'\n"))
     assert(vim.uv.fs_utime(filepath, mtime + 2, mtime + 2))
 
     vim.cmd("checktime " .. code_buffer)
@@ -158,7 +158,9 @@ describe("Sidebar ACP request lifecycle", function()
     assert.is_true(vim.wait(500, function() return flushed end, 5))
     assert.is_true(detached)
     assert.same({ "return 'updated by the ACP tool'" }, vim.api.nvim_buf_get_lines(code_buffer, 0, -1, false))
-    assert.is_true(require("avante.utils.file").write_atomically(filepath, "return 'updated again by the ACP tool'\n"))
+    assert.is_true(
+      require("avante.utils.filesystem").write_atomically(filepath, "return 'updated again by the ACP tool'\n")
+    )
     assert(vim.uv.fs_utime(filepath, mtime + 4, mtime + 4))
     vim.cmd("checktime " .. code_buffer)
     flushed = false

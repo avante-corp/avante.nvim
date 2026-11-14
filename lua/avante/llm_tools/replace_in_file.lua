@@ -113,7 +113,7 @@ function M.func(input, opts)
     return false, "path and the_diff are required " .. vim.inspect(input)
   end
   if on_log then on_log("path: " .. input.path) end
-  local abs_path = Helpers.get_abs_path(input.path)
+  local abs_path = Utils.to_absolute_path(input.path)
   if not Helpers.has_permission_to_access(abs_path) then return false, "No permission to access path: " .. abs_path end
 
   local is_streaming = opts.streaming or false
@@ -486,7 +486,6 @@ Please make sure the diff is formatted correctly, and that the SEARCH/REPLACE bl
           on_complete(false, "User canceled")
           return
         end
-        if session_ctx then Helpers.mark_as_not_viewed(input.path, session_ctx) end
         on_complete(true, nil)
       end,
     })
@@ -793,7 +792,6 @@ Please make sure the diff is formatted correctly, and that the SEARCH/REPLACE bl
       return
     end
     vim.api.nvim_buf_call(bufnr, function() vim.cmd("noautocmd write!") end)
-    if session_ctx then Helpers.mark_as_not_viewed(input.path, session_ctx) end
     on_complete(true, nil)
   end, { focus = not Config.behaviour.auto_focus_on_diff_view }, session_ctx, M.name)
 end

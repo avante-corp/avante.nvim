@@ -2502,8 +2502,7 @@ avante.utils : LazyUtilCore                                       *avante.utils*
     Fields: ~
         {tokens}       (avante.utils.tokens)
         {root}         (avante.utils.root)
-        {file}         (avante.utils.file)
-        {path}         (avante.utils.path)
+        {filesystem}   (avante.utils.filesystem)
         {environment}  (avante.utils.environment)
         {lsp}          (avante.utils.lsp)
         {logger}       (avante.utils.promptLogger)
@@ -2647,16 +2646,6 @@ M.get_hl()                                                 *avante-utils.get_hl*
 
     Returns: ~
         (vim.api.keyset.get_hl_info)
-
-
-M.norm({path})                                               *avante-utils.norm*
-     vendor from lazy.nvim for early access and override
-
-    Parameters: ~
-        {path}  (string)
-
-    Returns: ~
-        (string)
 
 
 M.notify({msg}, {opts?})                                   *avante-utils.notify*
@@ -2938,28 +2927,7 @@ M.scan_directory({options})                        *avante-utils.scan_directory*
         (string[])
 
 
-M.get_parent_path({filepath})                     *avante-utils.get_parent_path*
-
-    Parameters: ~
-        {filepath}  (string)
-
-    Returns: ~
-        (string)
-
-
-M.make_relative_path()                         *avante-utils.make_relative_path*
-
-
-M.is_absolute_path()                             *avante-utils.is_absolute_path*
-
-
-M.abspath()                                               *avante-utils.abspath*
-
-
 M.to_absolute_path()                             *avante-utils.to_absolute_path*
-
-
-M.path_exists()                                       *avante-utils.path_exists*
 
 
 M.is_first_letter_uppercase()           *avante-utils.is_first_letter_uppercase*
@@ -3033,9 +3001,6 @@ M.update_buffer_lines({ns_id}, {bufnr}, {old_lines}, {new_lines}, {skip_line_cou
 
 
 M.uniform_path()                                     *avante-utils.uniform_path*
-
-
-M.is_same_file()                                     *avante-utils.is_same_file*
 
 
 M.trim_think_content({content})                *avante-utils.trim_think_content*

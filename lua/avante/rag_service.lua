@@ -70,7 +70,6 @@
 ---@brief ]]
 
 local curl = require("plenary.curl")
-local Path = require("plenary.path")
 local Config = require("avante.config")
 local Utils = require("avante.utils")
 
@@ -144,8 +143,8 @@ function M.get_rag_service_port()
 end
 
 function M.get_data_path()
-  local p = Path:new(vim.fn.stdpath("data")):joinpath("avante/rag_service")
-  if not p:exists() then p:mkdir({ parents = true }) end
+  local p = vim.fs.joinpath(vim.fn.stdpath("data"), "avante/rag_service")
+  if not Utils.filesystem.exists(p) then vim.fn.mkdir(p, "p", 448) end -- 0700
   return p
 end
 

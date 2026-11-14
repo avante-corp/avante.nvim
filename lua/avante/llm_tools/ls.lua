@@ -48,7 +48,7 @@ M.returns = {
 ---@type AvanteLLMToolFunc<{ path: string, max_depth?: integer }>
 function M.func(input, opts)
   local on_log = opts.on_log
-  local abs_path = Helpers.get_abs_path(input.path)
+  local abs_path = Utils.to_absolute_path(input.path)
   if not Helpers.has_permission_to_access(abs_path) then return "", "No permission to access path: " .. abs_path end
   if on_log then on_log("path: " .. abs_path) end
   if on_log then on_log("max depth: " .. tostring(input.max_depth)) end

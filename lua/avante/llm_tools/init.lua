@@ -81,7 +81,6 @@
 ---
 
 local Utils = require("avante.utils")
-local Path = require("plenary.path")
 local Config = require("avante.config")
 local Helpers = require("avante.llm_tools.helpers")
 local WebSearch = require("avante.llm_tools.web_search")
@@ -94,10 +93,10 @@ local M = {}
 function M.read_file_toplevel_symbols(input, opts)
   local on_log = opts.on_log
   local RepoMap = require("avante.repo_map")
-  local abs_path = Helpers.get_abs_path(input.path)
+  local abs_path = Utils.to_absolute_path(input.path)
   if not Helpers.has_permission_to_access(abs_path) then return "", "No permission to access path: " .. abs_path end
   if on_log then on_log("path: " .. abs_path) end
-  if not Path:new(abs_path):exists() then return "", "File does not exists: " .. abs_path end
+  if not Utils.filesystem.exists(abs_path) then return "", "File does not exists: " .. abs_path end
   local filetype = RepoMap.get_ts_lang(abs_path)
   local repo_map_lib = RepoMap._init_repo_map_lib()
   if not repo_map_lib then return "", "Failed to load avante_repo_map" end
@@ -120,7 +119,7 @@ function M.str_replace_based_edit_tool(input, opts)
   if not input.command then return false, "command not provided" end
   if on_log then on_log("command: " .. input.command) end
   if not on_complete then return false, "on_complete not provided" end
-  local abs_path = Helpers.get_abs_path(input.path)
+  local abs_path = Utils.to_absolute_path(input.path)
   if not Helpers.has_permission_to_access(abs_path) then return false, "No permission to access path: " .. abs_path end
   if input.command == "view" then
     local view = require("avante.llm_tools.view")
@@ -148,7 +147,7 @@ end
 ---Read the contents of a file in the global scope if the file content is not already in context
 function M.read_global_file(input, opts)
   local on_log = opts.on_log
-  local abs_path = Helpers.get_abs_path(input.abs_path)
+  local abs_path = vim.fs.abspath(input.abs_path)
   if Helpers.is_ignored(abs_path) then return "", "This file is ignored: " .. abs_path end
   if on_log then on_log("path: " .. abs_path) end
   local file = io.open(abs_path, "r")
@@ -162,7 +161,7 @@ end
 function M.write_global_file(input, opts)
   local on_log = opts.on_log
   local on_complete = opts.on_complete
-  local abs_path = Helpers.get_abs_path(input.abs_path)
+  local abs_path = vim.fs.abspath(input.abs_path)
   if Helpers.is_ignored(abs_path) then return false, "This file is ignored: " .. abs_path end
   if on_log then on_log("path: " .. abs_path) end
   if on_log then on_log("content: " .. input.content) end
@@ -187,15 +186,17 @@ end
 function M.move_path(input, opts)
   local on_log = opts.on_log
   local on_complete = opts.on_complete
-  local abs_path = Helpers.get_abs_path(input.source_path)
+  local abs_path = Utils.to_absolute_path(input.source_path)
   if not Helpers.has_permission_to_access(abs_path) then return false, "No permission to access path: " .. abs_path end
-  if not Path:new(abs_path):exists() then return false, "The source path not found: " .. abs_path end
-  local new_abs_path = Helpers.get_abs_path(input.destination_path)
+  if not Utils.filesystem.exists(abs_path) then return false, "The source path not found: " .. abs_path end
+  local new_abs_path = Utils.to_absolute_path(input.destination_path)
   if on_log then on_log(abs_path .. " -> " .. new_abs_path) end
   if not Helpers.has_permission_to_access(new_abs_path) then
     return false, "No permission to access path: " .. new_abs_path
   end
-  if Path:new(new_abs_path):exists() then return false, "The destination path already exists: " .. new_abs_path end
+  if Utils.filesystem.exists(new_abs_path) then
+    return false, "The destination path already exists: " .. new_abs_path
+  end
   if not on_complete then return false, "on_complete not provided" end
   Helpers.confirm(
     "Are you sure you want to move the path: " .. abs_path .. " to: " .. new_abs_path,
@@ -204,7 +205,11 @@ function M.move_path(input, opts)
         on_complete(false, "User declined, reason: " .. (reason or "unknown"))
         return
       end
-      os.rename(abs_path, new_abs_path)
+      local renamed, err = vim.uv.fs_rename(abs_path, new_abs_path)
+      if not renamed then
+        on_complete(false, err)
+        return
+      end
       on_complete(true, nil)
     end,
     nil,
@@ -217,14 +222,16 @@ end
 function M.copy_path(input, opts)
   local on_log = opts.on_log
   local on_complete = opts.on_complete
-  local abs_path = Helpers.get_abs_path(input.source_path)
+  local abs_path = Utils.to_absolute_path(input.source_path)
   if not Helpers.has_permission_to_access(abs_path) then return false, "No permission to access path: " .. abs_path end
-  if not Path:new(abs_path):exists() then return false, "The source path not found: " .. abs_path end
-  local new_abs_path = Helpers.get_abs_path(input.destination_path)
+  if not Utils.filesystem.exists(abs_path) then return false, "The source path not found: " .. abs_path end
+  local new_abs_path = Utils.to_absolute_path(input.destination_path)
   if not Helpers.has_permission_to_access(new_abs_path) then
     return false, "No permission to access path: " .. new_abs_path
   end
-  if Path:new(new_abs_path):exists() then return false, "The destination path already exists: " .. new_abs_path end
+  if Utils.filesystem.exists(new_abs_path) then
+    return false, "The destination path already exists: " .. new_abs_path
+  end
   if not on_complete then return false, "on_complete not provided" end
   Helpers.confirm(
     "Are you sure you want to copy the path: " .. abs_path .. " to: " .. new_abs_path,
@@ -234,23 +241,17 @@ function M.copy_path(input, opts)
         return
       end
       if on_log then on_log("Copying path: " .. abs_path .. " to " .. new_abs_path) end
+      ---@type boolean?, string?
+      local copied, copy_err
       if vim.fn.isdirectory(abs_path) == 1 then
-        ---@param results avante.PathCopyResults
-        ---@return boolean
-        local function copied_all(results)
-          for _, result in pairs(results) do
-            if result == false or (type(result) == "table" and not copied_all(result)) then return false end
-          end
-          return true
-        end
-        local results = Path:new(abs_path)
-          :copy({ destination = new_abs_path, recursive = true, parents = true, hidden = false })
-        if not copied_all(results) then
-          on_complete(false, "Failed to copy all files from: " .. abs_path)
-          return
-        end
+        copied, copy_err = Utils.filesystem.copy_dir(abs_path, new_abs_path, { hidden = false })
       else
-        Path:new(new_abs_path):write(Path:new(abs_path):read(), "w")
+        copied, copy_err =
+          vim.uv.fs_copyfile(abs_path, new_abs_path, { excl = true, ficlone = false, ficlone_force = false })
+      end
+      if not copied then
+        on_complete(false, "Failed to copy all files from: " .. abs_path .. ": " .. tostring(copy_err))
+        return
       end
       on_complete(true, nil)
     end,
@@ -264,9 +265,9 @@ end
 function M.delete_path(input, opts)
   local on_log = opts.on_log
   local on_complete = opts.on_complete
-  local abs_path = Helpers.get_abs_path(input.path)
+  local abs_path = Utils.to_absolute_path(input.path)
   if not Helpers.has_permission_to_access(abs_path) then return false, "No permission to access path: " .. abs_path end
-  if not Path:new(abs_path):exists() then return false, "Path not found: " .. abs_path end
+  if not Utils.filesystem.exists(abs_path) then return false, "Path not found: " .. abs_path end
   if not on_complete then return false, "on_complete not provided" end
   Helpers.confirm("Are you sure you want to delete the path: " .. abs_path, function(ok, reason)
     if not ok then
@@ -274,7 +275,11 @@ function M.delete_path(input, opts)
       return
     end
     if on_log then on_log("Deleting path: " .. abs_path) end
-    os.remove(abs_path)
+    local removed, err = pcall(vim.fs.rm, abs_path, { recursive = true })
+    if not removed then
+      on_complete(false, tostring(err))
+      return
+    end
     on_complete(true, nil)
   end, nil, opts.session_ctx, "delete_path")
 end
@@ -283,9 +288,9 @@ end
 function M.create_dir(input, opts)
   local on_log = opts.on_log
   local on_complete = opts.on_complete
-  local abs_path = Helpers.get_abs_path(input.path)
+  local abs_path = Utils.to_absolute_path(input.path)
   if not Helpers.has_permission_to_access(abs_path) then return false, "No permission to access path: " .. abs_path end
-  if Path:new(abs_path):exists() then return false, "Directory already exists: " .. abs_path end
+  if Utils.filesystem.exists(abs_path) then return false, "Directory already exists: " .. abs_path end
   if not on_complete then return false, "on_complete not provided" end
   Helpers.confirm("Are you sure you want to create the directory: " .. abs_path, function(ok, reason)
     if not ok then
@@ -293,7 +298,7 @@ function M.create_dir(input, opts)
       return
     end
     if on_log then on_log("Creating directory: " .. abs_path) end
-    Path:new(abs_path):mkdir({ parents = true })
+    vim.fn.mkdir(abs_path, "p")
     on_complete(true, nil)
   end, nil, opts.session_ctx, "create_dir")
 end
@@ -489,9 +494,9 @@ end
 function M.python(input, opts)
   local on_log = opts.on_log
   local on_complete = opts.on_complete
-  local abs_path = Helpers.get_abs_path(input.path)
+  local abs_path = Utils.to_absolute_path(input.path)
   if not Helpers.has_permission_to_access(abs_path) then return nil, "No permission to access path: " .. abs_path end
-  if not Path:new(abs_path):exists() then return nil, "Path not found: " .. abs_path end
+  if not Utils.filesystem.exists(abs_path) then return nil, "Path not found: " .. abs_path end
   if on_log then on_log("cwd: " .. abs_path) end
   if on_log then on_log("code:\n" .. input.code) end
   local container_image = input.container_image or "python:3.14-slim-bookworm"

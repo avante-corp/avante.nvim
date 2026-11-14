@@ -12,8 +12,7 @@ local LRUCache = require("avante.utils.lru_cache")
 ---@class avante.utils: LazyUtilCore
 ---@field tokens avante.utils.tokens
 ---@field root avante.utils.root
----@field file avante.utils.file
----@field path avante.utils.path
+---@field filesystem avante.utils.filesystem
 ---@field environment avante.utils.environment
 ---@field lsp avante.utils.lsp
 ---@field logger avante.utils.promptLogger
@@ -41,9 +40,9 @@ function M.has(plugin)
   return res
 end
 
-function M.is_win() return M.path.is_win() end
+function M.is_win() return require("avante.utils.platform").is_win end
 
-M.path_sep = M.path.SEP
+M.path_sep = M.filesystem.SEP
 
 ---@return "linux" | "darwin" | "windows"
 function M.get_os_name()
@@ -392,12 +391,6 @@ function M.get_hl(name)
   if not name then return {} end
   return api.nvim_get_hl(0, { name = name, link = false })
 end
-
---- vendor from lazy.nvim for early access and override
-
----@param path string
----@return string
-function M.norm(path) return M.path.normalize(path) end
 
 ---@param msg string|string[]
 ---@param opts? LazyNotifyOpts
@@ -757,7 +750,7 @@ end
 
 function M.relative_path(absolute)
   local project_root = M.get_project_root()
-  return M.make_relative_path(absolute, project_root)
+  return M.filesystem.relative(project_root, absolute, false)
 end
 
 function M.get_doc()
@@ -958,6 +951,7 @@ end
 ---@param options { directory: string, add_dirs?: boolean, max_depth?: integer }
 ---@return string[]
 function M.scan_directory(options)
+  local directory = vim.fs.normalize(vim.fs.abspath(options.directory), { expand_env = false })
   local cmd_supports_max_depth = true
   local cmd = (function()
     if vim.fn.executable("rg") == 1 then
@@ -973,8 +967,8 @@ function M.scan_directory(options)
         "!.git/",
       }
 
-      if options.max_depth ~= nil then vim.list_extend(cmd, { "--max-depth", options.max_depth }) end
-      table.insert(cmd, options.directory)
+      if options.max_depth ~= nil then vim.list_extend(cmd, { "--max-depth", tostring(options.max_depth) }) end
+      table.insert(cmd, directory)
 
       return cmd
     end
@@ -995,33 +989,16 @@ function M.scan_directory(options)
         ".git",
       }
 
-      if options.max_depth ~= nil then vim.list_extend(cmd, { "--max-depth", options.max_depth }) end
-      vim.list_extend(cmd, { "--base-directory", options.directory })
+      if options.max_depth ~= nil then vim.list_extend(cmd, { "--max-depth", tostring(options.max_depth) }) end
+      vim.list_extend(cmd, { "--base-directory", directory })
 
       return cmd
     end
   end)()
 
   if not cmd then
-    if M.path_exists(vim.fs.joinpath(options.directory, ".git")) and vim.fn.executable("git") == 1 then
-      if vim.fn.has("win32") == 1 then
-        cmd = {
-          "powershell",
-          "-NoProfile",
-          "-NonInteractive",
-          "-Command",
-          string.format(
-            "Push-Location '%s'; (git ls-files --exclude-standard), (git ls-files --exclude-standard --others)",
-            options.directory:gsub("/", "\\")
-          ),
-        }
-      else
-        cmd = {
-          "bash",
-          "-c",
-          string.format("cd %s && git ls-files -co --exclude-standard", options.directory),
-        }
-      end
+    if M.filesystem.exists(vim.fs.joinpath(directory, ".git")) and vim.fn.executable("git") == 1 then
+      cmd = { "git", "-C", directory, "ls-files", "-co", "--exclude-standard" }
       cmd_supports_max_depth = false
     else
       M.error("No search command found, please install fd or fdfind or rg")
@@ -1029,8 +1006,14 @@ function M.scan_directory(options)
     end
   end
 
-  ---@type string[]
-  local files = vim.fn.systemlist(cmd)
+  local result = vim.system(cmd, { text = true }):wait()
+  if result.code ~= 0 then
+    if cmd[1] ~= "rg" or result.code ~= 1 then
+      M.error("Failed to scan directory: " .. (result.stderr or result.stdout or "unknown error"))
+    end
+    return {}
+  end
+  local files = vim.split(result.stdout or "", "\n", { trimempty = true })
 
   files = vim
     .iter(files)
@@ -1038,7 +1021,7 @@ function M.scan_directory(options)
       ---@param file string
       ---@return string
       function(file)
-        if not M.is_absolute_path(file) then return vim.fs.joinpath(options.directory, file) end
+        if vim.fn.isabsolutepath(file) == 0 then return vim.fs.joinpath(directory, file) end
         return file
       end
     )
@@ -1048,9 +1031,7 @@ function M.scan_directory(options)
     files = vim
       .iter(files)
       :filter(function(file)
-        local base_dir = options.directory
-        if base_dir:sub(-2) == "/." or base_dir:sub(-2) == "\\." then base_dir = base_dir:sub(1, -3) end
-        local rel_path = M.make_relative_path(file, base_dir)
+        local rel_path = M.filesystem.relative(directory, file, false)
         local pieces = vim.split(rel_path, "[/\\]", { plain = false })
         return #pieces <= options.max_depth
       end)
@@ -1063,7 +1044,7 @@ function M.scan_directory(options)
     ---@type table<string, boolean>
     local dirs_seen = {}
     for _, file in ipairs(files) do
-      local dir = M.get_parent_path(file)
+      local dir = vim.fs.dirname(file)
       if not dirs_seen[dir] then
         table.insert(dirs, dir)
         dirs_seen[dir] = true
@@ -1075,37 +1056,11 @@ function M.scan_directory(options)
   return files
 end
 
----@param filepath string
----@return string
-function M.get_parent_path(filepath)
-  if filepath == nil then error("filepath cannot be nil") end
-  if filepath == "" then return "" end
-  local is_abs = M.is_absolute_path(filepath)
-  if filepath:sub(-1) == M.path_sep then filepath = filepath:sub(1, -2) end
-  if filepath == "" then return "" end
-  local parts = vim.split(filepath, M.path_sep)
-  local parent_parts = vim.list_slice(parts, 1, #parts - 1)
-  local res = table.concat(parent_parts, M.path_sep)
-  if res == "" then
-    if is_abs then return M.path_sep end
-    return "."
-  end
-  return res
-end
-
-function M.make_relative_path(filepath, base_dir) return M.path.relative(base_dir, filepath, false) end
-
-function M.is_absolute_path(path) return M.path.is_absolute(path) end
-
-function M.abspath(path) return M.path.abspath(path) end
-
 function M.to_absolute_path(path)
   if not path or path == "" then return path end
-  if M.is_absolute_path(path) or path:sub(1, 7) == "term://" then return path end
-  return M.abspath(vim.fs.joinpath(M.get_project_root(), path))
+  if vim.fn.isabsolutepath(path) == 1 or path:sub(1, 7) == "term://" then return path end
+  return M.filesystem.normalize(vim.fs.abspath(vim.fs.joinpath(M.get_project_root(), path)))
 end
-
-function M.path_exists(path) return M.path.is_exist(path) end
 
 function M.is_first_letter_uppercase(str) return string.match(str, "^[A-Z]") ~= nil end
 
@@ -1273,7 +1228,7 @@ end
 function M.open_buffer(path, set_current_buf)
   if set_current_buf == nil then set_current_buf = true end
 
-  local abs_path = M.is_absolute_path(path) and path or vim.fs.joinpath(M.get_project_root(), path)
+  local abs_path = vim.fn.isabsolutepath(path) == 1 and path or vim.fs.joinpath(M.get_project_root(), path)
 
   ---@type integer
   local bufnr
@@ -1410,14 +1365,12 @@ end
 
 function M.uniform_path(path)
   if type(path) ~= "string" then path = tostring(path) end
-  if not M.file.is_in_project(path) then return path end
+  if not M.filesystem.is_in_project(path) then return path end
   local project_root = M.get_project_root()
-  local abs_path = M.is_absolute_path(path) and path or vim.fs.joinpath(project_root, path)
-  local relative_path = M.make_relative_path(abs_path, project_root)
+  local abs_path = vim.fn.isabsolutepath(path) == 1 and path or vim.fs.joinpath(project_root, path)
+  local relative_path = M.filesystem.relative(project_root, abs_path, false)
   return relative_path
 end
-
-function M.is_same_file(filepath_a, filepath_b) return M.uniform_path(filepath_a) == M.uniform_path(filepath_b) end
 
 ---Removes <think> tags, returning only text between them
 ---@param content string
@@ -1447,14 +1400,14 @@ end
 ---@return string|nil error
 ---@return string|nil errname
 function M.read_file_from_buf_or_disk(filepath)
-  local abs_path = (filepath:sub(1, 7) == "term://" or M.is_absolute_path(filepath)) and filepath
+  local abs_path = (filepath:sub(1, 7) == "term://" or vim.fn.isabsolutepath(filepath) == 1) and filepath
     or vim.fs.joinpath(M.get_project_root(), filepath)
   local stat, stat_err, stat_errname = vim.uv.fs_stat(abs_path)
   if stat and stat.type ~= "file" then return {}, "Cannot read a non-regular file: " .. filepath, nil end
 
   local function file_identity(path)
     if path:sub(1, 7) == "term://" then return path end
-    return vim.uv.fs_realpath(path) or fn.resolve(M.abspath(path))
+    return vim.uv.fs_realpath(path) or fn.resolve(vim.fs.abspath(path))
   end
   local identity = file_identity(abs_path)
   -- bufnr(string) interprets patterns and can match a different file outside the requested directory.
