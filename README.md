@@ -208,6 +208,7 @@ Avante.nvim consists of lua code + rust libraries for the backend.
     "nvim-mini/mini.pick", -- for file_selector provider mini.pick
     "nvim-telescope/telescope.nvim", -- for file_selector provider telescope
     "hrsh7th/nvim-cmp", -- autocompletion for avante commands and mentions
+    "Kaiser-Yang/blink-cmp-avante", -- autocompletion for blink.cmp
     "ibhagwan/fzf-lua", -- for file_selector provider fzf
     "folke/snacks.nvim", -- for input provider snacks
     "nvim-tree/nvim-web-devicons", -- or echasnovski/mini.icons
@@ -280,6 +281,7 @@ vim.pack.add({
   -- Optional deps
   'https://github.com/MeanderingProgrammer/render-markdown.nvim',
   'https://github.com/hrsh7th/nvim-cmp',
+  'https://github.com/Kaiser-Yang/blink-cmp-avante', -- autocompletion for blink.cmp
   'https://github.com/nvim-tree/nvim-web-devicons', -- or 'echasnovski/mini.icons'
   'https://github.com/HakonHarnes/img-clip.nvim',
   'https://github.com/folke/snacks.nvim', -- for modern input UI
@@ -319,6 +321,7 @@ Plug 'MeanderingProgrammer/render-markdown.nvim'
 
 " Optional deps
 Plug 'hrsh7th/nvim-cmp'
+Plug 'Kaiser-Yang/blink-cmp-avante' " autocompletion for blink.cmp
 Plug 'nvim-tree/nvim-web-devicons' "or Plug 'echasnovski/mini.icons'
 Plug 'HakonHarnes/img-clip.nvim'
 Plug 'folke/snacks.nvim' " for modern input UI
@@ -356,6 +359,7 @@ add({
 })
 --- optional
 add({ source = 'hrsh7th/nvim-cmp' })
+add({ source = 'Kaiser-Yang/blink-cmp-avante' })
 add({ source = 'HakonHarnes/img-clip.nvim' })
 add({ source = 'MeanderingProgrammer/render-markdown.nvim' })
 
@@ -659,12 +663,6 @@ _See [config.lua#L9](./lua/avante/config.lua) for the up to date full default co
 ```
 
 </details>
-
-### Blink.cmp users
-
-For blink cmp users (nvim-cmp alternative) view below instruction for configuration
-This is achieved by emulating nvim-cmp using blink.compat
-or you can use [Kaiser-Yang/blink-cmp-avante](https://github.com/Kaiser-Yang/blink-cmp-avante).
 
 <details>
   <summary>Lua</summary>
