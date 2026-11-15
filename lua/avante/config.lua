@@ -1245,4 +1245,16 @@ function M.get_provider_config(provider_name)
   return config
 end
 
+---Returns the avante custom config for render-markdown.nvim
+---Pass the returned table to render-markdown setup function
+---@return table
+function M.render_markdown_avante_config()
+  return {
+    callout = {
+      thought = { raw = '[!THOUGHT]',   rendered = 'Thought content 🤔 ',   highlight =  'RenderMarkdownSuccess',  category = 'github'   },
+    }
+
+  }
+end
+
 return M
