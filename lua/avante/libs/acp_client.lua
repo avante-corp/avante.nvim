@@ -98,8 +98,17 @@
 ---@field on_replay? fun(update: table): boolean
 ---@field additional_directories? string[]
 
+---@class avante.acp.PromptUsage
+---@field inputTokens? number
+---@field outputTokens? number
+---@field totalTokens? number
+---@field cachedReadTokens? number
+---@field cachedWriteTokens? number
+---@field thoughtTokens? number
+
 ---@class avante.acp.PromptResult
 ---@field stopReason "end_turn"|"cancelled"|string
+---@field usage? avante.acp.PromptUsage
 
 ---@alias avante.acp.OperationCallback fun(result: table|nil, err: avante.acp.ACPError|nil)
 ---@alias avante.acp.SessionCallback fun(session_id: string|nil, err: avante.acp.ACPError|nil)

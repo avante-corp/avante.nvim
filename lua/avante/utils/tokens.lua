@@ -25,8 +25,23 @@ function Tokens.calculate_tokens(content)
         text = text .. item.text
       elseif type(item) == "table" and item.type == "image" then
         text = text .. item.source.data
+      elseif type(item) == "table" and item.type == "tool_use" then
+        local ok, input = pcall(vim.json.encode, item.input or vim.empty_dict())
+        text = text .. (item.name or "") .. (ok and input or "")
       elseif type(item) == "table" and item.type == "tool_result" then
-        if type(item.content) == "string" then text = text .. item.content end
+        if type(item.content) == "string" then
+          text = text .. item.content
+        elseif type(item.content) == "table" then
+          ---@type (string|{ type: string, text: string })[]
+          local parts = item.content --[[@as table]]
+          for _, part in ipairs(parts) do
+            if type(part) == "string" then
+              text = text .. part
+            elseif type(part) == "table" and part.type == "text" then
+              text = text .. part.text
+            end
+          end
+        end
       end
     end
   end

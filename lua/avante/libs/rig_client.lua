@@ -117,9 +117,10 @@ local function load_native()
   return native
 end
 
+--- Serialize tools to the JSON Schema definitions sent to providers.
 ---@param tools? AvanteLLMTool[]
 ---@return avante.llm.NativeToolInput[]
-local function tool_definitions(tools)
+function M.tool_definitions(tools)
   ---@type avante.llm.NativeToolInput[]
   local definitions = {}
   for _, tool in ipairs(tools or {}) do
@@ -262,7 +263,7 @@ function M._build_request(provider, prompt_opts, session_ctx)
   end
 
   local tools = {}
-  if not provider_conf.disable_tools then tools = tool_definitions(prompt_opts.tools) end
+  if not provider_conf.disable_tools then tools = M.tool_definitions(prompt_opts.tools) end
   local deployment = nil
   if protocol == "azure" then
     deployment = provider_conf.deployment
