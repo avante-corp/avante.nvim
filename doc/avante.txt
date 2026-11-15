@@ -1721,6 +1721,7 @@ Built-in slash commands available in the Avante input buffer.
  - `/clear`: clear chat history
  - `/new`: start a new chat
  - `/resume`: open a picker for previous chat sessions
+ - `/usage`: estimate the current context breakdown
  - `/compact`: compact history messages
  - `/model`: select model
  - `/lines <start>-<end> <question>`: ask about specific lines
@@ -3376,6 +3377,17 @@ avante.acp.LoadSessionOpts                          *avante.acp.LoadSessionOpts*
     Fields: ~
         {on_replay?}               (fun(update:table):boolean)
         {additional_directories?}  (string[])
+
+
+avante.acp.PromptUsage                                  *avante.acp.PromptUsage*
+
+    Fields: ~
+        {inputTokens?}        (number)
+        {outputTokens?}       (number)
+        {totalTokens?}        (number)
+        {cachedReadTokens?}   (number)
+        {cachedWriteTokens?}  (number)
+        {thoughtTokens?}      (number)
 
 
 avante.acp.PromptResult                                *avante.acp.PromptResult*

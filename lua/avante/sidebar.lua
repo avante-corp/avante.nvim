@@ -2743,6 +2743,7 @@ function Sidebar:finish_acp_import(import, session_id, messages)
   chat_history.todos = {}
   chat_history.memory = nil
   chat_history.tokens_usage = nil
+  chat_history.acp_context_usage = nil
   HistoryStorage.save(self.code.bufnr, chat_history)
 
   if not self:is_open() then return end
@@ -3606,6 +3607,12 @@ function Sidebar:handle_submit(request)
         self:save_history(chat_history, code_bufnr, history_project_root)
       end,
       get_tokens_usage = function() return chat_history.tokens_usage end,
+      ---@param usage avante.ACPContextUsage
+      update_acp_context_usage = function(usage)
+        if not is_current_request() then return end
+        -- Agents may send this often during a turn; the turn's final save persists it.
+        chat_history.acp_context_usage = usage
+      end,
     })
 
     ---@param pending_compaction_history_messages avante.HistoryMessage[]

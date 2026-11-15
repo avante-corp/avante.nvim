@@ -759,6 +759,27 @@ function M._stream_acp(opts)
             return
           end
 
+          -- Context window occupancy (and optional cumulative cost), not
+          -- per-request token counts: keep it apart from update_tokens_usage,
+          -- which accumulates values.
+          if update.sessionUpdate == "usage_update" then
+            if type(update.used) ~= "number" or type(update.size) ~= "number" then return end
+            local request_opts = opts
+            ---@type avante.ACPContextUsage
+            local usage = { used = update.used, size = update.size }
+            ---@type table|nil
+            local cost = update.cost
+            if type(cost) == "table" and type(cost.amount) == "number" and type(cost.currency) == "string" then
+              usage.cost = { amount = cost.amount, currency = cost.currency }
+            end
+            vim.schedule(function()
+              if opts == request_opts and request_opts.update_acp_context_usage then
+                request_opts.update_acp_context_usage(usage)
+              end
+            end)
+            return
+          end
+
           -- Follow agent edit locations: navigate to the file being edited.
           -- Extracted as a function so it can be called from both tool_call
           -- and tool_call_update (some ACP adapters send locations in the
@@ -1241,6 +1262,18 @@ function M._continue_stream_acp(opts, acp_client, session_id)
       return
     end
     rawset(opts, "_acp_session_recreated", nil)
+    -- Agents may report token usage in the prompt response (ACP `usage` field).
+    local usage = type(result) == "table" and result.usage or nil
+    if type(usage) == "table" and opts.update_tokens_usage then
+      opts.update_tokens_usage({
+        prompt_tokens = usage.inputTokens,
+        completion_tokens = usage.outputTokens,
+        total_tokens = usage.totalTokens,
+        cached_input_tokens = usage.cachedReadTokens,
+        cache_creation_input_tokens = usage.cachedWriteTokens,
+        reasoning_tokens = usage.thoughtTokens,
+      })
+    end
     finish_acp_request(opts, acp_client, { reason = "complete" })
   end)
 end

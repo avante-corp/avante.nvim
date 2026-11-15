@@ -280,6 +280,28 @@ describe("ACP stream handlers", function()
     assert.same({}, received)
   end)
 
+  it("reports usage_update context usage without touching token totals", function()
+    local context_usages, token_usages = {}, {}
+    local client = start_request(sidebar(), {
+      update_acp_context_usage = function(usage) table.insert(context_usages, usage) end,
+      update_tokens_usage = function(usage) table.insert(token_usages, usage) end,
+    })
+    client.config.handlers.on_session_update({
+      sessionUpdate = "usage_update",
+      used = 53000,
+      size = 200000,
+      cost = { amount = 0.045, currency = "USD" },
+    })
+    client.config.handlers.on_session_update({ sessionUpdate = "usage_update", used = "bogus", size = 200000 })
+    assert.is_true(vim.wait(500, function() return #context_usages > 0 end, 5))
+    local flushed = false
+    vim.schedule(function() flushed = true end)
+    assert.is_true(vim.wait(500, function() return flushed end, 5))
+
+    assert.same({ { used = 53000, size = 200000, cost = { amount = 0.045, currency = "USD" } } }, context_usages)
+    assert.same({}, token_usages)
+  end)
+
   it("does not send a user prompt while the sidebar's session is still loading", function()
     local owner = sidebar()
     local client, premature_prompt = nil, false

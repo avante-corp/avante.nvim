@@ -750,13 +750,14 @@ Mentions allow you to quickly reference specific features or add files to the ch
 
 #### Slash Commands (`/` trigger)
 
-Built-in slash commands for common operations:
+Built-in slash commands for common operations (see `:help avante-slashcommands`):
 
 - `/help` - Show help message with available commands
 - `/init` - Initialize AGENTS.md based on current project
 - `/clear` - Clear chat history
 - `/new` - Start a new chat
 - `/compact` - Compact history messages to save tokens
+- `/usage` - Estimate the current context breakdown (or show agent-reported usage for ACP providers)
 - `/lines <start>-<end> <question>` - Ask about specific lines
 - `/commit` - Generate commit message for changes
 

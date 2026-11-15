@@ -186,6 +186,15 @@ vim.g.avante_login = vim.g.avante_login
 ---@field tool_use_prompt_tokens? number
 ---@field reasoning_tokens? number
 ---
+---@class avante.ACPCost
+---@field amount number Cumulative session cost
+---@field currency string ISO 4217 code or another unit such as "credits"
+---
+---@class avante.ACPContextUsage Context window state reported by an ACP agent (`usage_update`)
+---@field used number Tokens currently in context
+---@field size number Total context window size in tokens
+---@field cost? avante.ACPCost
+---
 ---@class AvanteLLMThinkingBlock
 ---@field thinking string
 ---@field signature string
@@ -351,6 +360,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field on_messages_add? fun(messages: avante.HistoryMessage[]): nil
 ---@field on_state_change? fun(state: avante.GenerateState): nil
 ---@field update_tokens_usage? fun(usage: avante.LLMTokenUsage): nil
+---@field update_acp_context_usage? fun(usage: avante.ACPContextUsage): nil
 ---@field on_request? fun(context: avante.TurnContext, snapshot: avante.PromptSnapshot): nil
 ---@field private _request_state? avante.LLMRequestState
 ---
@@ -512,6 +522,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field prompt_snapshots? table<string, avante.PromptSnapshot>
 ---@field turn_contexts? avante.TurnContext[]
 ---@field tokens_usage avante.LLMTokenUsage | nil
+---@field acp_context_usage? avante.ACPContextUsage Latest `usage_update` from the ACP agent
 ---@field acp_session_id string | nil
 ---@field acp_provider? string Provider that owns the persisted ACP session
 ---@field acp_session_cwd string | nil Directory of an imported ACP session, used to load it
@@ -534,7 +545,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field content string
 ---@field uri string
 ---
----@alias AvanteSlashCommandBuiltInName "clear" | "help" | "lines" | "commit" | "new" | "resume" | "init" | "compact" | "model"
+---@alias AvanteSlashCommandBuiltInName "clear" | "help" | "lines" | "commit" | "new" | "resume" | "init" | "compact" | "model" | "usage"
 ---@alias AvanteSlashCommandCallback fun(self: avante.Sidebar, args: string, cb?: fun(args: string): nil): nil
 ---@class AvanteSlashCommand
 ---@field name AvanteSlashCommandBuiltInName | string
