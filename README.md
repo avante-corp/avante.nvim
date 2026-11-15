@@ -159,7 +159,8 @@ myapp is a modern e-commerce platform targeting small businesses. we prioritize 
 
 ## Installation
 
-For building binary if you wish to build from source, then `cargo` is required. Otherwise `curl` and `tar` will be used to get prebuilt binary from GitHub.
+Avante.nvim consists of lua code + rust libraries for the backend.
+`cargo` can be used to build the binaries but you can also fetch prebuilt libraries via `:AvanteBuild` from GitHub.
 
 <details open>
 
