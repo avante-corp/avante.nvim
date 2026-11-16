@@ -1177,11 +1177,11 @@ Avante.nvim 可以通过其扩展模块与其他插件协同工作。下面是�
       </a>
     </td>
     <td align="center">
-      <a href="https://s.kiiro.ai/r/mGPJOd" target="_blank">
-        <img height="80" src="https://github.com/user-attachments/assets/7b7bd75e-1fd2-48cc-a71a-cff206e4fbd7" alt="BabelTower API" /><br/>
-        <strong>BabelTower API</strong>
+      <a href="https://sessionman.dev/" target="_blank">
+        <img height="80" src="doc/assets/sessionman.svg" alt="SessionMan" /><br/>
+        <strong>SessionMan</strong>
         <div>&nbsp;</div>
-        <div>无需帐户，立即使用任何模型</div>
+        <div>切换 Coding Agent，延续当前会话。</div>
       </a>
     </td>
   </tr>
