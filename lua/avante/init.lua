@@ -29,7 +29,6 @@
 ---@brief [[
 --- avante.nvim requires Neovim 0.12.0 or later.
 --- Mandatory dependencies are:
---- - 'nvim-lua/plenary.nvim'
 --- - 'MunifTanjim/nui.nvim'.
 --- - "ColinKennedy/mega.cmdparse"
 --- - "ColinKennedy/mega.logging" (as dependency of cmdparse)

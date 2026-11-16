@@ -307,11 +307,7 @@
           });
 
           ci = let
-            neovimTested = pkgs.wrapNeovimUnstable pkgs.neovim-unwrapped {
-              plugins = [
-                pkgs.vimPlugins.plenary-nvim
-              ];
-            };
+            neovimTested = pkgs.wrapNeovimUnstable pkgs.neovim-unwrapped {};
           in
             basic.overrideAttrs(oa: {
             buildInputs = oa.buildInputs ++ [

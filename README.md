@@ -201,7 +201,6 @@ For building binary if you wish to build from source, then `cargo` is required. 
     },
   },
   dependencies = {
-    "nvim-lua/plenary.nvim",
     "MunifTanjim/nui.nvim",
     { "ColinKennedy/mega.cmdparse", dependencies = { "ColinKennedy/mega.logging" } },
     --- The below dependencies are optional,
@@ -273,7 +272,6 @@ vim.pack.add({
   },
 
   -- Deps
-  'https://github.com/nvim-lua/plenary.nvim',
   'https://github.com/MunifTanjim/nui.nvim',
   'https://github.com/ColinKennedy/mega.logging',
   'https://github.com/ColinKennedy/mega.cmdparse',
@@ -313,7 +311,6 @@ require('avante').setup()
 call plug#begin()
 
 " Deps
-Plug 'nvim-lua/plenary.nvim'
 Plug 'MunifTanjim/nui.nvim'
 Plug 'ColinKennedy/mega.logging'
 Plug 'ColinKennedy/mega.cmdparse'
@@ -349,7 +346,6 @@ add({
   source = 'yetone/avante.nvim',
   monitor = 'main',
   depends = {
-    'nvim-lua/plenary.nvim',
     'MunifTanjim/nui.nvim',
     'ColinKennedy/mega.logging',
     'ColinKennedy/mega.cmdparse',
@@ -1477,7 +1473,6 @@ See [the wiki](https://github.com/yetone/avante.nvim/wiki/plugin%E2%80%90integra
 - [ ] better debugging capabilities (for prompts notably)
 - [ ] provide an helper to report bugs more effectively
 - [ ] Better codebase indexing
-- [ ] Get rid of archived plenary.nvim
 
 ## Roadmap
 

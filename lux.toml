@@ -15,7 +15,6 @@ license = "Apache-2.0"
 
 [dependencies]
 luarocks = ">= 3.11.1, < 4.0.0"
-"plenary.nvim" = "*"
 "nui.nvim" = "*"
 "mega.cmdparse" = "*"
 

@@ -79,7 +79,6 @@
     },
   },
   dependencies = {
-    "nvim-lua/plenary.nvim",
     "MunifTanjim/nui.nvim",
     --- 以下依赖项是可选的，
     "echasnovski/mini.pick", -- 用于文件选择器提供者 mini.pick
@@ -126,7 +125,6 @@
 ```vim
 
 " 依赖项
-Plug 'nvim-lua/plenary.nvim'
 Plug 'MunifTanjim/nui.nvim'
 Plug 'MeanderingProgrammer/render-markdown.nvim'
 
@@ -156,7 +154,6 @@ add({
   source = 'yetone/avante.nvim',
   monitor = 'main',
   depends = {
-    'nvim-lua/plenary.nvim',
     'MunifTanjim/nui.nvim',
     'echasnovski/mini.icons'
   },
@@ -185,7 +182,6 @@ end)
 ```vim
 
   -- 必需插件
-  use 'nvim-lua/plenary.nvim'
   use 'MunifTanjim/nui.nvim'
   use 'MeanderingProgrammer/render-markdown.nvim'
 
