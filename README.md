@@ -1572,7 +1572,7 @@ The high quality and ingenuity of these projects' source code have been immensel
       </a>
     </td>
     <td align="center">
-      <a href="https://sessionman.dev/" target="_blank">
+      <a href="https://sessionman.dev/?utm_source=github&amp;utm_medium=sponsorship&amp;utm_campaign=avante.nvim" target="_blank">
         <img height="80" src="doc/assets/sessionman.svg" alt="SessionMan" /><br/>
         <strong>SessionMan</strong>
         <div>&nbsp;</div>
