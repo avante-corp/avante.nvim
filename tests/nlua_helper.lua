@@ -4,13 +4,6 @@ package.path = deps .. "/?.lua;" .. deps .. "/?/init.lua;" .. package.path
 
 vim.opt.runtimepath:prepend(cwd)
 
-package.preload["plenary.curl"] = function()
-  return {
-    get = function() error("plenary.curl.get was not stubbed for this test") end,
-    post = function() error("plenary.curl.post was not stubbed for this test") end,
-  }
-end
-
 return function(busted)
   local schedule = vim.schedule
   local callback_errors = {}

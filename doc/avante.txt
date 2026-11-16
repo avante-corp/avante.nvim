@@ -3190,19 +3190,17 @@ M.is_floating_window()                         *avante-utils.is_floating_window*
 Curl wrapper                                                 *avante-utils-curl*
 
 
- Drop-in replacement for plenary.curl's `get` and `post` that keeps `headers`, a string `body` and
- `auth` off curl's command line, where any user of the machine can read them (e.g. with `ps`).
- They are written to files only the current user can read, which curl loads with `-H @file`,
- `--data-binary @file` and `--config file`, and the files are removed once curl exits.
+ HTTP GET/POST requests using curl. Headers and auth are read from private files,
+ and the request body is sent through stdin, keeping secrets off the command line.
+ Temporary files are removed when the process exits.
 
 
 avante.utils.curl.Response                          *avante.utils.curl.Response*
 
     Fields: ~
-        {status}   (integer)
-        {headers}  (string[])
-        {body}     (string)
-        {exit}     (integer)
+        {status}  (integer)
+        {body}    (string)
+        {exit}    (integer)
 
 
 avante.utils.curl.Error                                *avante.utils.curl.Error*
@@ -3213,44 +3211,23 @@ avante.utils.curl.Error                                *avante.utils.curl.Error*
         {exit}     (integer)
 
 
+avante.utils.curl.Job : vim.SystemObj                    *avante.utils.curl.Job*
+
+    Fields: ~
+        {wait}  (fun(self:avante.utils.curl.Job,timeout?:integer):avante.utils.curl.Job)
+
+
 avante.utils.curl.Options                            *avante.utils.curl.Options*
 
     Fields: ~
-        {headers?}       (table<string,string>)
-        {query?}         (table<string,string|number>)
-        {body?}          (string|table<string,string|number>)
-        {data?}          (table<string,string|number>)
-        {raw_body?}      (string|table<string,string|number>)
-        {in_file?}       (string)
-        {accept?}        (string)
-        {auth?}          (string|string[])
-        {form?}          (table<string,string>)
-        {raw?}           (string[])
-        {output?}        (string)
-        {timeout?}       (number)
-        {http_version?}  (string)
-        {proxy?}         (string)
-        {insecure?}      (boolean)
-        {compressed?}    (boolean)
-        {callback?}      (fun(response:avante.utils.curl.Response))
-        {stream?}        (fun(err:string|nil,data:string|nil,job:Job))
-        {on_error?}      (fun(err:avante.utils.curl.Error))
-        {dry_run?}       (boolean)
-        {dump?}          (string[])
-
-
-avante.utils.curl                                            *avante.utils.curl*
-
-
-M.write_headers_file({headers})           *avante-utils-curl.write_headers_file*
-    Writes headers to a private file in the format of curl's `-H @file`.
-    The caller must delete the file once curl has exited.
-
-    Parameters: ~
-        {headers}  (table<string,string>)
-
-    Returns: ~
-        (string)  path
+        {headers?}   (table<string,string>)
+        {body?}      (string)
+        {auth?}      (string)
+        {timeout?}   (integer)
+        {proxy?}     (string)
+        {insecure?}  (boolean)
+        {callback?}  (fun(response:avante.utils.curl.Response))
+        {on_error?}  (fun(err:avante.utils.curl.Error))
 
 
 M.get({url}, {opts?})                                    *avante-utils-curl.get*
@@ -3260,8 +3237,8 @@ M.get({url}, {opts?})                                    *avante-utils-curl.get*
         {opts?}  (avante.utils.curl.Options)
 
     Returns: ~
-        (avante.utils.curl.Response|Job|string[])  Response for sync requests, Job for callback/stream, arguments for dry_run
-        (fun())                                    cleanup
+        (avante.utils.curl.Response|avante.utils.curl.Job)
+        (fun())                                             cleanup
 
 
 M.post({url}, {opts?})                                  *avante-utils-curl.post*
@@ -3271,8 +3248,8 @@ M.post({url}, {opts?})                                  *avante-utils-curl.post*
         {opts?}  (avante.utils.curl.Options)
 
     Returns: ~
-        (avante.utils.curl.Response|Job|string[])  Response for sync requests, Job for callback/stream, arguments for dry_run
-        (fun())                                    cleanup
+        (avante.utils.curl.Response|avante.utils.curl.Job)
+        (fun())                                             cleanup
 
 
 ==============================================================================

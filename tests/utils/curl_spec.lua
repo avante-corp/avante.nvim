@@ -1,155 +1,129 @@
 local stub = require("luassert.stub")
+local Curl = require("avante.utils.curl")
 
 local SECRET = "sk-test-SECRET123"
 local URL = "https://api.example.com/v1/models"
 
-local function read_file(path)
-  local file = assert(io.open(path, "r"))
-  local content = file:read("*a")
-  file:close()
-  return content
-end
-
-local function exists(path) return vim.uv.fs_stat(path) ~= nil end
-
 describe("avante.utils.curl", function()
-  local Curl = require("avante.utils.curl")
-  local plenary_curl = require("plenary.curl")
-  local get, post
-  ---@type { opts: table }[]
-  local requests
-  ---@type { path: string, mode: integer, content: string }[]
-  local files
-
-  -- Stands in for plenary.curl, recording the files handed to curl while they still exist
-  local function fake_curl(result)
-    return function(_, opts)
-      table.insert(requests, { opts = opts })
-      for i, arg in ipairs(opts.raw or {}) do
-        local path = arg:match("^@(.+)") or (opts.raw[i - 1] == "--config" and arg)
-        if path then
-          local mode = bit.band(assert(vim.uv.fs_stat(path)).mode, 511)
-          table.insert(files, { path = path, mode = mode, content = read_file(path) })
-        end
-      end
-      return result
-    end
-  end
+  local system, args, options, on_exit, result, files
 
   before_each(function()
-    requests, files = {}, {}
-    get = stub(plenary_curl, "get", fake_curl({ status = 200 }))
-    post = stub(plenary_curl, "post", fake_curl({ status = 200 }))
+    files = {}
+    result = { code = 0, signal = 0, stdout = "{}\n200", stderr = "" }
+    system = stub(vim, "system", function(command, opts, callback)
+      args, options, on_exit = command, opts, callback
+      for i, arg in ipairs(args) do
+        local path = arg:match("^@(.+)") or (args[i - 1] == "--config" and arg)
+        if path and path ~= "-" then
+          local file = assert(io.open(path, "r"))
+          files[#files + 1] = {
+            path = path,
+            content = file:read("*a"),
+            mode = bit.band(assert(vim.uv.fs_stat(path)).mode, 511),
+          }
+          file:close()
+        end
+      end
+      return { wait = function() return result end }
+    end)
   end)
 
   after_each(function()
-    get:revert()
-    post:revert()
+    system:revert()
+    for _, file in ipairs(files) do
+      assert.is_nil(vim.uv.fs_stat(file.path))
+    end
   end)
 
-  it("sends the headers from a file only the user can read instead of the command line", function()
+  it("keeps credentials and body off argv and preserves request options", function()
     local opts = {
-      headers = { Authorization = "Bearer " .. SECRET, content_type = "application/json" },
-      raw = { "--max-time", "5" },
+      headers = { Authorization = "Bearer " .. SECRET },
+      auth = 'user:se"cr\\et-' .. SECRET,
+      body = '{"key":"' .. SECRET .. '"}',
+      proxy = "http://localhost:8080",
+      insecure = true,
+      timeout = 1000,
     }
-    assert.same({ status = 200 }, Curl.get(URL, opts))
-
-    local sent = requests[1].opts
-    assert.is_nil(sent.headers)
-    assert.is_nil(vim.inspect(sent):find(SECRET, 1, true))
-    assert.same({ "-H", "@" .. files[1].path, "--max-time", "5" }, sent.raw)
-    assert.equals(tonumber("600", 8), files[1].mode)
-    local lines = vim.split(files[1].content, "\n", { trimempty = true })
-    table.sort(lines)
-    -- Same header names as plenary.curl sends
-    assert.same({ "Authorization: Bearer " .. SECRET, "Content-Type: application/json" }, lines)
-    assert.is_false(exists(files[1].path))
-    -- The caller's options are left alone
-    assert.equals("application/json", opts.headers.content_type)
+    local original = vim.deepcopy(opts)
+    assert.same({ status = 200, body = "{}", exit = 0 }, Curl.post(URL, opts))
+    assert.is_nil(table.concat(args, " "):find(SECRET, 1, true))
+    assert.equals("Authorization: Bearer " .. SECRET, files[1].content)
+    assert.equals('user = "user:se\\"cr\\\\et-' .. SECRET .. '"\n', files[2].content)
+    for _, file in ipairs(files) do
+      assert.equals(384, file.mode)
+    end
+    assert.equals(opts.body, options.stdin)
+    assert.equals(opts.timeout, options.timeout)
+    assert.is_true(vim.tbl_contains(args, opts.proxy))
+    assert.is_true(vim.tbl_contains(args, "--insecure"))
+    assert.is_true(vim.tbl_contains(args, "@-"))
+    assert.same(original, opts)
   end)
 
-  it("removes the files once an async request completes", function()
-    local job = {}
-    post.invokes(fake_curl(job))
+  it("returns HTTP errors and empty responses without treating them as transport errors", function()
+    result.stdout = "unavailable\n503"
+    assert.same({ status = 503, body = "unavailable", exit = 0 }, Curl.get(URL))
+    result.stdout = "\n204"
+    assert.same({ status = 204, body = "", exit = 0 }, Curl.get(URL))
+  end)
+
+  it("completes async callbacks and cleans up private files", function()
     local callback = stub.new()
-    assert.equals(job, Curl.post(URL, { headers = { ["x-api-key"] = SECRET }, callback = callback }))
-    assert.is_true(exists(files[1].path))
-
-    requests[1].opts.callback({ status = 200 })
-    assert.is_false(exists(files[1].path))
-    assert.stub(callback).was_called_with({ status = 200 })
+    local job = Curl.get(URL, { headers = { Authorization = SECRET }, callback = callback })
+    assert.is_not_nil(vim.uv.fs_stat(files[1].path))
+    on_exit(result)
+    job:wait(100)
+    assert.stub(callback).was_called_with({ status = 200, body = "{}", exit = 0 })
   end)
 
-  it("removes the files once an async request fails", function()
+  it("reports async transport errors, including termination by a signal", function()
     local on_error = stub.new()
-    Curl.post(URL, { headers = { ["x-api-key"] = SECRET }, stream = function() end, on_error = on_error })
-    assert.is_true(exists(files[1].path))
-
-    requests[1].opts.on_error({ exit = 7, message = "curl failed" })
-    assert.is_false(exists(files[1].path))
-    assert.stub(on_error).was_called_with({ exit = 7, message = "curl failed" })
+    Curl.get(URL, { headers = { Authorization = SECRET }, callback = function() end, on_error = on_error })
+    on_exit({ code = 7, signal = 0, stderr = "connection refused" })
+    assert.stub(on_error).was_called_with({ message = "connection refused", stderr = "connection refused", exit = 7 })
+    Curl.get(URL, { callback = function() end, on_error = on_error })
+    on_exit({ code = 0, signal = 15 })
+    assert.equals(143, on_error.calls[2].vals[1].exit)
   end)
 
-  it("still raises plenary.curl's error for failed async requests without on_error", function()
-    Curl.get(URL, { headers = { Authorization = "token " .. SECRET }, callback = function() end })
-    assert.has_error(function() requests[1].opts.on_error({ exit = 7, message = "curl failed" }) end, "curl failed")
-    assert.is_false(exists(files[1].path))
+  it("raises unhandled transport errors and rejects malformed output", function()
+    result = { code = 28, signal = 0, stderr = "request timed out" }
+    assert.has_error(function() Curl.get(URL, { headers = { Authorization = SECRET } }) end, "request timed out")
+    result = { code = 0, signal = 0, stdout = "invalid" }
+    assert.has_error(function() Curl.get(URL) end, "Invalid HTTP response")
+    Curl.get(URL, { callback = function() end })
+    assert.has_error(function() on_exit({ code = 7, signal = 0, stderr = "curl failed" }) end, "curl failed")
   end)
 
-  it("returns a function that removes the files right away", function()
-    local _, cleanup = Curl.post(URL, { headers = { ["x-api-key"] = SECRET }, stream = function() end })
-    assert.is_true(exists(files[1].path))
-    cleanup()
-    assert.is_false(exists(files[1].path))
-  end)
-
-  it("removes the files when curl cannot be started", function()
-    post.invokes(function(...)
-      fake_curl()(...)
-      error("curl: Executable not found")
+  it("cleans up when curl cannot start", function()
+    system.invokes(function(command)
+      for i, arg in ipairs(command) do
+        if arg == "--config" then files[1] = { path = command[i + 1] } end
+      end
+      error("curl: Executable not found", 0)
     end)
-    assert.has_error(function()
-      Curl.post(URL, { headers = { ["x-api-key"] = SECRET }, callback = function() end })
-    end, "curl: Executable not found")
-    assert.is_false(exists(files[1].path))
+    assert.has_error(function() Curl.get(URL, { auth = SECRET }) end, "curl: Executable not found")
+    assert.is_not_nil(files[1])
   end)
 
-  it("sends a string body from a file only the user can read instead of the command line", function()
-    local body = "grant_type=urn:ibm:params:oauth:grant-type:apikey&apikey=" .. SECRET
-    Curl.post(URL, { headers = { ["Content-Type"] = "application/x-www-form-urlencoded" }, body = body })
-
-    local sent = requests[1].opts
-    assert.is_nil(sent.body)
-    assert.is_nil(vim.inspect(sent):find(SECRET, 1, true))
-    assert.same({ "-H", "@" .. files[1].path, "--data-binary", "@" .. files[2].path }, sent.raw)
-    assert.equals(body, files[2].content)
-    assert.equals(tonumber("600", 8), files[2].mode)
-    assert.is_false(exists(files[2].path))
+  it("raises when waiting times out and allows explicit cleanup", function()
+    local job, cleanup = Curl.get(URL, { headers = { Authorization = SECRET }, callback = function() end })
+    assert.has_error(function() job:wait(1) end, "curl request timed out")
+    cleanup()
+    assert.is_nil(vim.uv.fs_stat(files[1].path))
+    on_exit(result)
   end)
+end)
 
-  it("leaves a body that is the path of a file to plenary.curl", function()
-    local body_file = vim.fn.tempname()
-    vim.fn.writefile({ "{}" }, body_file)
-    Curl.post(URL, { body = body_file })
-    assert.same({ body = body_file }, requests[1].opts)
-    os.remove(body_file)
-  end)
-
-  it("passes auth through a curl config file instead of --user", function()
-    Curl.post(URL, { auth = 'AKIDTEST:se"cr\\et-' .. SECRET, raw = { "--aws-sigv4", "aws:amz:us-east-1:bedrock" } })
-
-    local sent = requests[1].opts
-    assert.is_nil(sent.auth)
-    assert.is_nil(vim.inspect(sent):find(SECRET, 1, true))
-    assert.same({ "--config", files[1].path, "--aws-sigv4", "aws:amz:us-east-1:bedrock" }, sent.raw)
-    assert.equals('user = "AKIDTEST:se\\"cr\\\\et-' .. SECRET .. '"\n', files[1].content)
-    assert.equals(tonumber("600", 8), files[1].mode)
-    assert.is_false(exists(files[1].path))
-  end)
-
-  it("hands requests without headers, body or auth to plenary.curl as they are", function()
-    local opts = { timeout = 1000, raw = { "--max-time", "5" } }
-    Curl.get(URL, opts)
-    assert.same(opts, requests[1].opts)
-  end)
+it("waits for a real curl process to finish its callback", function()
+  local path = vim.fn.tempname()
+  vim.fn.writefile({ "{}" }, path)
+  local response
+  local job = Curl.get("file://" .. path, {
+    callback = function(value) response = value end,
+  })
+  local ok, err = pcall(job.wait, job, 1000)
+  os.remove(path)
+  assert.is_true(ok, err)
+  assert.same({ status = 0, body = "{}", exit = 0 }, response)
 end)
