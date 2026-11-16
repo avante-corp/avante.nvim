@@ -77,7 +77,7 @@ dependencies:
         repo_id: 588678074
     'dtolnay/rust-toolchain@1.99.0':
         ref: '1.99.0'
-        commit: 'sha1-ff7f6a3374ce205788da40198ec918bd5d67aea7'
+        commit: 'sha1-92e73e19cbfb3981e63ef478a16f95f415e634d3'
         owner_id: 1940490
         repo_id: 260749683
     'googleapis/release-please-action@v5.0.0':
