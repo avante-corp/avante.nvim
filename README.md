@@ -23,27 +23,6 @@
 
 <https://github.com/user-attachments/assets/86140bfd-08b4-483d-a887-1b701d9e37dd>
 
-## Table of contents
-
-- [Features preview](#features-preview)
-- [Avante Zen Mode](#avante-zen-mode)
-- [Project instructions](#project-instructions-with-avantemd)
-- [Installation](#installation)
-- [Usage](#usage)
-  - [Key Bindings](#key-bindings)
-  - [Commands](#commands)
-- [Highlight Groups](#highlight-groups)
-- [Fast Apply](#fast-apply)
-- [ACP Support](#acp-support)
-- [RAG Service](#rag-service)
-- [Tools](#tools)
-  - [Disable Tools](#disable-tools)
-  - [Web Search Engines](#web-search-engines)
-- [Integrations](#integrations)
-- [FAQ](#faq)
-- [Contributing](#contributing)
-- [License](#license)
-
 ## Sponsorship ❤️
 
 If you like this project, please consider supporting me on Patreon, as it helps me to continue maintaining and improving it:
@@ -60,7 +39,7 @@ If you like this project, please consider supporting me on Patreon, as it helps 
   llama-cpp, ...
 - **RAG (optional)**: you can with some extra configuration run a local RAG
 
-## Avante Zen Mode
+### Avante Zen Mode
 
 It is possible to launch avante such that it looks like a typical Vibe Coding Agent CLI using Neovim as frontend. All you need to do is install [./contrib/avante](./contrib/avante) in your PATH (or create the equivalent alias); simply type `avante` in a terminal to enter Avante’s Zen ("standalone") Mode!
 
@@ -68,7 +47,7 @@ The effect is as follows:
 
 <img alt="Avante Zen Mode" src="https://github.com/user-attachments/assets/60880f65-af55-4e4c-a565-23bb63e19251" />
 
-## Project instructions with avante.md
+### Project instructions with avante.md
 
 
 The `avante.md` file allows you to provide project-specific context and instructions to the ai. This file should be placed in your project root and will be automatically referenced during all interactions with avante. Avante is also capable of reading AGENTS.md, CLAUDE.md etc (see `:h avante-prompts.get_agents_rules_prompt`).
@@ -375,9 +354,9 @@ require('avante').setup({
 >
 > Any rendering plugins that support markdown should work with Avante as long as you add the supported filetype `Avante`. See <https://github.com/yetone/avante.nvim/issues/175> and [this comment](https://github.com/yetone/avante.nvim/issues/175#issuecomment-2313749363) for more information.
 
-### Configuration
+## Configuration
 
-You can configure avante.nvim using a global variable:
+You can configure avante using a global variable:
 
 ```lua
 vim.g.avante = {
@@ -611,7 +590,7 @@ To create a customized selector provider, you can specify a customized function 
 
 ### Input Provider Configuration
 
-Avante.nvim supports multiple input providers for user input (like API key entry). You can configure which provider to use:
+Avante.nvim supports multiple user input providers (like for API key entry). You can configure which provider to use:
 
 <details>
   <summary>Native Input Provider (Default)</summary>
@@ -787,6 +766,20 @@ Here's a complete blink.cmp configuration example with all Avante sources:
 ```
 
 </details>
+
+### MCP
+
+You can integrate MCP functionality for Avante through `mcphub.nvim`. For detailed documentation, please refer to [mcphub.nvim](https://ravitemer.github.io/mcphub.nvim/extensions/avante.html).
+
+
+### 3rd party plugins
+
+Avante.nvim can be extended to work with other plugins by using its extension modules:
+- [`nvim-tree`](https://github.com/nvim-tree/nvim-tree.lua)
+- neotree
+
+See [the wiki](https://github.com/yetone/avante.nvim/wiki/plugin%E2%80%90integrations) for details.
+
 
 ## Usage
 
@@ -1362,21 +1355,6 @@ If you have the following structure:
 >
 > `*.avanterules` is a jinja template file, in which will be rendered using [minijinja](https://github.com/mitsuhiko/minijinja). See [templates](https://github.com/yetone/avante.nvim/blob/main/lua/avante/templates) for example on how to extend current templates.
 
-## Integrations
-
-### MCP
-
-You can integrate MCP functionality for Avante through `mcphub.nvim`. For detailed documentation, please refer to [mcphub.nvim](https://ravitemer.github.io/mcphub.nvim/extensions/avante.html).
-
-
-### 3rd party plugins
-
-Avante.nvim can be extended to work with other plugins by using its extension modules:
-- [`nvim-tree`](https://github.com/nvim-tree/nvim-tree.lua)
-- neotree
-
-See [the wiki](https://github.com/yetone/avante.nvim/wiki/plugin%E2%80%90integrations) for details.
-
 ## TODOs
 
 - [x] Chat with the selected block
@@ -1385,7 +1363,6 @@ See [the wiki](https://github.com/yetone/avante.nvim/wiki/plugin%E2%80%90integra
 - [x] Chat with project (You can use `@codebase` to chat with the whole project)
 - [ ] improve security aspects, document sandboxing approach
 - [ ] make RAG service more accessible
-- [ ] move more of the internal code to rust
 - [ ] better debugging capabilities (for prompts notably)
 - [ ] provide an helper to report bugs more effectively
 - [ ] Better codebase indexing
