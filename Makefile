@@ -201,3 +201,6 @@ rag-venv:
 rag-start:
 	# append your flags to this command
 	cd py/rag-service && uv run avante-rag-service
+
+gen-readme-toc: README.md
+	doctoc --title '**Table of Contents**' README.md
