@@ -767,9 +767,10 @@ Here's a complete blink.cmp configuration example with all Avante sources:
 
 </details>
 
-### MCP
+### MCP integration
 
-You can integrate MCP functionality for Avante through `mcphub.nvim`. For detailed documentation, please refer to [mcphub.nvim](https://ravitemer.github.io/mcphub.nvim/extensions/avante.html).
+You can integrate MCP functionality for Avante through `mcphub.nvim`.
+For detailed documentation, please refer to [mcphub.nvim](https://ravitemer.github.io/mcphub.nvim/extensions/avante.html).
 
 
 ### 3rd party plugins
@@ -805,8 +806,6 @@ See [highlights.lua](./lua/avante/highlights.lua) for more information
 
 ### Basic Functionality
 
-Given its early stage, `avante.nvim` currently supports the following basic functionalities:
-
 With `behaviour.show_token_usage = true`, each completed conversation turn shows reported token usage, including tool-call continuations, separated from the reply by a blank line.
 The Usage heading is followed by Total, Input, Output, Cached, and Reasoning on separate lines.
 Total is uncached input + output, and Input excludes cached reads, matching Codex's counting convention.
@@ -824,7 +823,7 @@ Summaries are hidden by default, including those in saved history; token trackin
 >
 > **Scoped API Keys (Recommended for Isolation)**
 >
-> Avante now supports scoped API keys, allowing you to isolate API keys specifically for Avante without affecting other applications. Simply prefix any API key with `AVANTE_`:
+> Avante supports scoped API keys, allowing you to isolate API keys specifically for Avante without affecting other applications. Simply prefix any API key with `AVANTE_`:
 >
 > ```sh
 > # Scoped keys (recommended)
@@ -837,9 +836,9 @@ Summaries are hidden by default, including those in saved history; token trackin
 > export AVANTE_MOONSHOT_API_KEY=your-moonshot-api-key
 > ```
 >
-> **Global API Keys (Legacy)**
+> **Global API Keys **
 >
-> You can still use the traditional global API keys if you prefer:
+> You can use the traditional global API keys if you prefer:
 >
 > For Claude:
 >
@@ -1058,9 +1057,9 @@ Providers that support subscription authentication can be signed in with `:Avant
 
 ## ACP Support
 
-Avante.nvim now supports the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/overview/introduction), enabling seamless integration with AI agents that follow this standardized communication protocol. ACP provides a unified way for AI agents to interact with development environments, offering enhanced capabilities for code editing, file operations, and tool execution.
+Avante.nvim supports the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/overview/introduction), enabling seamless integration with AI agents that follow this standardized communication protocol. ACP provides a unified way for AI agents to interact with development environments, offering enhanced capabilities for code editing, file operations, and tool execution.
 
-ACP protocol handling uses the official Rust SDK, with a bounded stdio adapter in the native module. The required native module is included in release artifacts and is built with the other native dependencies when running `:AvanteBuild source=true`.
+ACP protocol handling uses the [official Rust SDK][acp-rust-sdk], with a bounded stdio adapter in the native module. The required native module is included in release artifacts and is built with the other native dependencies when running `:AvanteBuild source=true`.
 
 Cancellation also works while the agent connects or loads a session. During a prompt, Avante waits up to two seconds for cancellation to complete, then terminates an unresponsive connection. Reconnecting to the same provider preserves the saved session when the agent supports loading it. Incoming ACP messages larger than 8 MiB are rejected; when queued events fill the native buffer, reading pauses until Neovim catches up.
 
@@ -1474,7 +1473,7 @@ The high quality and ingenuity of these projects' source code have been immensel
 
 avante.nvim is licensed under the Apache 2.0 License. For more details, please refer to the [LICENSE](./LICENSE) file.
 
-# Star History
+## Star History
 
 <p align="center">
   <a target="_blank" href="https://star-history.dera.page/#avante-corp/avante.nvim&Date">
@@ -1484,3 +1483,6 @@ avante.nvim is licensed under the Apache 2.0 License. For more details, please r
     </picture>
   </a>
 </p>
+
+
+[acp-rust-sdk]: https://github.com/agentclientprotocol/rust-sdk
