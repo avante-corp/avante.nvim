@@ -1250,6 +1250,13 @@ end
 ---@return table
 function M.render_markdown_avante_config()
   return {
+    file_types = {
+      "markdown",
+      -- waiting for https://github.com/MeanderingProgrammer/render-markdown.nvim/issues/715 's fix
+      -- to make it into a release
+      "markdown.Avante"
+    },
+
     callout = {
       thought = { raw = '[!THOUGHT]',   rendered = 'Thought content 🤔 ',   highlight =  'RenderMarkdownSuccess',  category = 'github'   },
     }
