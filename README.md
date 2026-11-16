@@ -780,6 +780,26 @@ Avante.nvim can be extended to work with other plugins by using its extension mo
 
 See [the wiki](https://github.com/yetone/avante.nvim/wiki/plugin%E2%80%90integrations) for details.
 
+### Highlight Groups
+
+| Highlight Group             | Description                                   | Notes                                        |
+| --------------------------- | --------------------------------------------- | -------------------------------------------- |
+| AvanteTitle                 | Title                                         |                                              |
+| AvanteReversedTitle         | Used for rounded border                       |                                              |
+| AvanteSubtitle              | Selected code title                           |                                              |
+| AvanteReversedSubtitle      | Used for rounded border                       |                                              |
+| AvanteThirdTitle            | Prompt title                                  |                                              |
+| AvanteReversedThirdTitle    | Used for rounded border                       |                                              |
+| AvanteConflictCurrent       | Current conflict highlight                    | Default to `Config.highlights.diff.current`  |
+| AvanteConflictIncoming      | Incoming conflict highlight                   | Default to `Config.highlights.diff.incoming` |
+| AvanteConflictCurrentLabel  | Current conflict label highlight              | Default to shade of `AvanteConflictCurrent`  |
+| AvanteConflictIncomingLabel | Incoming conflict label highlight             | Default to shade of `AvanteConflictIncoming` |
+| AvantePopupHint             | Usage hints in popup menus                    |                                              |
+| AvanteInlineHint            | The end-of-line hint displayed in visual mode |                                              |
+| AvantePromptInput           | The body highlight of the prompt input        |                                              |
+| AvantePromptInputBorder     | The border highlight of the prompt input      | Default to `NormalFloat`                     |
+
+See [highlights.lua](./lua/avante/highlights.lua) for more information
 
 ## Usage
 
@@ -952,26 +972,6 @@ The following key bindings are available for use with `avante.nvim`:
 | `:AvanteModels`                    | Show model list                                                                                             |                                                     |
 | `:AvanteSwitchSelectorProvider`    | Switch avante selector provider (e.g. native, telescope, fzf_lua, mini_pick, snacks)                        |                                                     |
 
-## Highlight Groups
-
-| Highlight Group             | Description                                   | Notes                                        |
-| --------------------------- | --------------------------------------------- | -------------------------------------------- |
-| AvanteTitle                 | Title                                         |                                              |
-| AvanteReversedTitle         | Used for rounded border                       |                                              |
-| AvanteSubtitle              | Selected code title                           |                                              |
-| AvanteReversedSubtitle      | Used for rounded border                       |                                              |
-| AvanteThirdTitle            | Prompt title                                  |                                              |
-| AvanteReversedThirdTitle    | Used for rounded border                       |                                              |
-| AvanteConflictCurrent       | Current conflict highlight                    | Default to `Config.highlights.diff.current`  |
-| AvanteConflictIncoming      | Incoming conflict highlight                   | Default to `Config.highlights.diff.incoming` |
-| AvanteConflictCurrentLabel  | Current conflict label highlight              | Default to shade of `AvanteConflictCurrent`  |
-| AvanteConflictIncomingLabel | Incoming conflict label highlight             | Default to shade of `AvanteConflictIncoming` |
-| AvantePopupHint             | Usage hints in popup menus                    |                                              |
-| AvanteInlineHint            | The end-of-line hint displayed in visual mode |                                              |
-| AvantePromptInput           | The body highlight of the prompt input        |                                              |
-| AvantePromptInputBorder     | The border highlight of the prompt input      | Default to `NormalFloat`                     |
-
-See [highlights.lua](./lua/avante/highlights.lua) for more information
 
 ## Fast Apply
 
