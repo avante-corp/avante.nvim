@@ -23,6 +23,60 @@
 
 <https://github.com/user-attachments/assets/86140bfd-08b4-483d-a887-1b701d9e37dd>
 
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**
+
+- [Sponsorship ❤️](#sponsorship-)
+- [Features preview](#features-preview)
+  - [Avante Zen Mode](#avante-zen-mode)
+  - [Project instructions with avante.md](#project-instructions-with-avantemd)
+- [Installation](#installation)
+- [Configuration](#configuration)
+  - [Input Provider Configuration](#input-provider-configuration)
+  - [Available Completion Sources](#available-completion-sources)
+    - [Mentions (`@` trigger)](#mentions--trigger)
+    - [Slash Commands (`/` trigger)](#slash-commands--trigger)
+    - [Shortcuts (`#` trigger)](#shortcuts--trigger)
+  - [Configuration Example](#configuration-example)
+  - [MCP integration](#mcp-integration)
+  - [3rd party plugins](#3rd-party-plugins)
+  - [Highlight Groups](#highlight-groups)
+- [Usage](#usage)
+  - [Basic Functionality](#basic-functionality)
+  - [Key Bindings](#key-bindings)
+  - [Commands](#commands)
+- [Fast Apply](#fast-apply)
+  - [Purpose and Benefits](#purpose-and-benefits)
+  - [Configuration](#configuration-1)
+  - [Model Options](#model-options)
+  - [How It Works](#how-it-works)
+- [Provider Authentication](#provider-authentication)
+- [ACP Support](#acp-support)
+- [RAG Service](#rag-service)
+  - [Rag installation](#rag-installation)
+  - [Nix Docker image](#nix-docker-image)
+  - [RAG configuration](#rag-configuration)
+  - [RAG usage](#rag-usage)
+- [Tools](#tools)
+  - [Add your own tools](#add-your-own-tools)
+  - [Disable Tools](#disable-tools)
+  - [Web Search Engines](#web-search-engines)
+- [Custom prompts](#custom-prompts)
+- [TODOs](#todos)
+- [Roadmap](#roadmap)
+- [FAQ](#faq)
+  - [Get notified when LLM answers](#get-notified-when-llm-answers)
+  - [How to disable agentic mode?](#how-to-disable-agentic-mode)
+- [Contributing](#contributing)
+- [Acknowledgments](#acknowledgments)
+- [Business Sponsors](#business-sponsors)
+- [License](#license)
+- [Star History](#star-history)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
+
 ## Sponsorship ❤️
 
 If you like this project, please consider supporting me on Patreon, as it helps me to continue maintaining and improving it:
