@@ -8,10 +8,6 @@ function M.check()
 
   -- Required dependencies with their module names
   local required_plugins = {
-    ["plenary.nvim"] = {
-      path = "nvim-lua/plenary.nvim",
-      module = "plenary",
-    },
     ["nui.nvim"] = {
       path = "MunifTanjim/nui.nvim",
       module = "nui.popup",

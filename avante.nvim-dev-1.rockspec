@@ -17,7 +17,6 @@ description = {
 dependencies = {
 	"lua==5.1",
 	"nui.nvim",
-	"plenary.nvim",
 	"luarocks>=3.11.1, <4.0.0",
 	"mega.cmdparse",
 }
