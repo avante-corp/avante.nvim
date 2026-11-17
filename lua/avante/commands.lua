@@ -120,6 +120,7 @@
 --- :AvanteModels [--all] [timeout]
 ---         Show the model list, optionally querying all providers and overriding
 ---         the model-list timeout in milliseconds. See |avante-api.select_model|
+---         Use :AvanteModels --help for generated help.
 ---
 ---                                                     *:AvanteACPModels*
 --- :AvanteACPModels
@@ -201,6 +202,22 @@ function M.setup()
     end
   )
   cmdparse.create_user_command(build, nil, { desc = "avante: build dependencies" })
+
+  local models = cmdparse.ParameterParser.new({ name = "AvanteModels", help = "Show available models" })
+  models:add_parameter({ name = "--all", action = "store_true", help = "Query all configured providers" })
+  models:add_parameter({ name = "timeout", required = false, help = "Model-list timeout in milliseconds" })
+  models:set_execute(function(data)
+    local timeout
+    if data.namespace.timeout ~= nil then
+      timeout = tonumber(data.namespace.timeout)
+      if not timeout or timeout <= 0 or timeout % 1 ~= 0 then
+        require("avante.utils").error("Invalid timeout. Expected a positive integer in milliseconds.")
+        return
+      end
+    end
+    require("avante.model_selector").open(data.namespace.all == true, timeout)
+  end)
+  cmdparse.create_user_command(models, nil, { desc = "avante: show models" })
 
   local parser = cmdparse.ParameterParser.new({ name = "Avante", help = "Avante commands" })
   local subparsers = parser:add_subparsers({ destination = "command" })
