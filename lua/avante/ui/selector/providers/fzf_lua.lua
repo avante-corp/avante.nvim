@@ -16,20 +16,16 @@ function M.show(selector)
   end
 
   local function close_action() selector.on_select(nil) end
-  fzf_lua.fzf_live(
-    function(args)
-      local query = args[1] or ""
-      local items = {}
-      ---@type string[]
-      local titles = vim.iter(selector.items):map(function(item) return item.title end):totable()
-      for _, item in ipairs(titles) do
-        if query == "" or item:match(query:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%1")) then
-          table.insert(items, item)
-        end
+  -- Let fzf do the matching (fuzzy, smart-case). A content function lets
+  -- the ctrl-delete action reload the list after items are removed.
+  fzf_lua.fzf_exec(
+    function(fzf_cb)
+      for _, item in ipairs(selector.items) do
+        fzf_cb(item.title)
       end
-      return items
+      fzf_cb()
     end,
-    -- fzf_live accepts public options and normalizes them despite its Resolved annotation.
+    -- fzf_exec accepts public options and normalizes them despite its Resolved annotation.
     ---@diagnostic disable-next-line: param-type-mismatch
     vim.tbl_deep_extend("force", {
       prompt = selector.title,

@@ -23,8 +23,9 @@ local list_models_cached_result = {}
 ---@param provider_name string
 ---@param provider_cfg AvanteProviderFunctor
 ---@param timeout? integer Timeout in milliseconds
+---@param no_cache? boolean Skip the cached model list for this invocation
 ---@return avante.ModelSelectorEntry[]
-local function create_model_entries(provider_name, provider_cfg, timeout)
+local function create_model_entries(provider_name, provider_cfg, timeout, no_cache)
   ---@type avante.ModelSelectorEntry[]
   local res = {}
   local list_models = provider_cfg.list_models
@@ -36,12 +37,15 @@ local function create_model_entries(provider_name, provider_cfg, timeout)
     if type(list_models) == "function" then
       if M.list_models_invoked[cache_key] then return {} end
       M.list_models_invoked[cache_key] = true
-      local cached_result = list_models_cached_result[cache_key]
+      local cached_result = not no_cache and list_models_cached_result[cache_key] or nil
       if cached_result then
         models = cached_result
       else
+        -- Providers keep their own in-memory cache; drop it so --no-cache really refetches.
+        if no_cache then provider_cfg._model_list_cache = nil end
         models = list_models(provider_cfg, timeout)
         -- Failed lookups return an empty list; retry after login or transient failures.
+        -- A forced refetch replaces the stale entry so later cached calls see it too.
         if models and #models > 0 then list_models_cached_result[cache_key] = models end
       end
     else
@@ -69,6 +73,9 @@ local function create_model_entries(provider_name, provider_cfg, timeout)
         )
         :totable()
     end
+    -- A non-empty remote listing is authoritative: configured model names the
+    -- endpoint does not serve would only produce unusable entries.
+    if type(list_models) == "function" and #res > 0 then return res end
   end
   if provider_cfg.model then
     local seen = vim.iter(res):find(function(item) return item.model == provider_cfg.model end)
@@ -100,7 +107,8 @@ end
 ---Open a modal to select a specific model
 ---@param all? boolean Loop over all providers if true
 ---@param timeout? integer Timeout in milliseconds for listing models
-function M.open(all, timeout)
+---@param no_cache? boolean Skip cached model lists for this invocation
+function M.open(all, timeout, no_cache)
   M.list_models_invoked = {}
   M.list_models_returned = {}
   ---@type avante.ModelSelectorEntry[]
@@ -111,12 +119,25 @@ function M.open(all, timeout)
   -- Collect models from providers
   local provider_names = all and vim.tbl_keys(Config.providers) or { Config.provider }
   for _, provider_name in ipairs(provider_names) do
-    local provider_cfg = Providers[provider_name]
+    -- Check the raw config first: hidden entries may be partial overrides that
+    -- cannot be instantiated as providers.
+    local raw_cfg = Config.providers[provider_name]
+    if type(raw_cfg) == "table" and raw_cfg.hide_in_model_selector then goto continue end
+    local ok, provider_cfg = pcall(function() return Providers[provider_name] end)
+    if not ok then
+      Utils.warn("Skipping provider " .. provider_name .. ": " .. tostring(provider_cfg))
+      goto continue
+    end
     if not provider_cfg then goto continue end
     if provider_cfg.hide_in_model_selector then goto continue end
     if not provider_cfg.is_env_set() then goto continue end
-    local entries = create_model_entries(provider_name, provider_cfg, timeout)
-    models = vim.list_extend(models, entries)
+    -- One unreachable endpoint must not hide the models of every other provider.
+    local listed, entries = pcall(create_model_entries, provider_name, provider_cfg, timeout, no_cache)
+    if listed then
+      models = vim.list_extend(models, entries)
+    else
+      Utils.warn("Failed to list models for " .. provider_name .. ": " .. tostring(entries))
+    end
     ::continue::
   end
 

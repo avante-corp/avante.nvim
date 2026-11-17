@@ -1066,7 +1066,9 @@ local function apply_model_selection(config, model_name, provider_name)
     target_provider.model = model_name
     if not target_provider.model_names then target_provider.model_names = {} end
     ---@type string[]
-    local model_names = { model_name, current_model_name }
+    local model_names = { model_name }
+    -- The previous model only belongs here when it came from this same provider.
+    if target_provider_name == current_provider_name then table.insert(model_names, current_model_name) end
     for _, model_name_ in ipairs(model_names) do
       if not vim.tbl_contains(target_provider.model_names, model_name_) then
         table.insert(target_provider.model_names, model_name_)
