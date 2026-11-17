@@ -137,8 +137,13 @@ describe("providers", function()
   it("keeps internal provider identity out of parsed user configuration", function()
     local Providers = require("avante.providers")
     local provider = Providers.test_openai
+    local config = Config.get_provider_config("test_openai")
     local parsed = Providers.parse_config(provider)
 
+    assert.same("openai", config.__inherited_from)
+    assert.is_nil(config._name)
+    assert.is_nil(config._protocol)
+    assert.is_nil(config._dialect)
     assert.same("test_openai", provider._name)
     assert.same("openai", provider._protocol)
     assert.is_nil(parsed._name)

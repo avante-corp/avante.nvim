@@ -1,17 +1,51 @@
 local RigClient = require("avante.libs.rig_client")
+local Config = require("avante.config")
+local Providers = require("avante.providers")
 
 describe("Rig client adapter", function()
+  local api_key_stub
+
+  local function configure_provider(name, opts)
+    Config.providers[name] = vim.tbl_extend("force", {
+      model = "test-model",
+      endpoint = "https://example.test/v1",
+    }, opts)
+    rawset(Providers, name, nil)
+  end
+
+  before_each(function()
+    api_key_stub = nil
+    Config.providers = nil
+    Config.setup({})
+    Config.providers = vim.deepcopy(Config.providers)
+    for name in pairs(Config.providers) do
+      rawset(Providers, name, nil)
+    end
+  end)
+
+  after_each(function()
+    if api_key_stub then api_key_stub:revert() end
+    for name in pairs(Config.providers) do
+      rawset(Providers, name, nil)
+    end
+    Config.providers = nil
+    Config.setup({})
+  end)
+
   it("routes Claude subscriptions through Cloak without reading an API key", function()
-    local request = RigClient._build_request({
-      _name = "claude",
-      _protocol = "claude",
+    configure_provider("claude", {
       auth_type = "subscription",
       api_key_name = "ANTHROPIC_API_KEY",
       model = "claude-opus-4-8",
       endpoint = "https://api.anthropic.com",
-      parse_api_key = function() error("must not read an API key") end,
-    }, { system_prompt = "system", messages = { { role = "user", content = "hello" } } })
+    })
+    api_key_stub = stub(Providers.claude, "parse_api_key")
+    local request = RigClient._build_request(
+      Providers.claude,
+      { system_prompt = "system", messages = { { role = "user", content = "hello" } } }
+    )
 
+    assert.stub(api_key_stub).was_not_called()
     assert.same("claude", request.provider.protocol)
     assert.same("subscription", request.provider.auth)
     assert.same(vim.fn.stdpath("data") .. "/avante/claude-cloak", request.provider.authHome)
@@ -19,23 +53,23 @@ describe("Rig client adapter", function()
   end)
 
   it("routes ChatGPT subscriptions through Responses without API keys or stored-response continuation", function()
-    local request = RigClient._build_request({
-      _name = "openai",
-      _protocol = "openai",
+    configure_provider("openai", {
       auth_type = "subscription",
       api_key_name = "OPENAI_API_KEY",
       model = "gpt-6.1-sol",
       endpoint = "https://api.openai.com/v1",
       use_response_api = false,
       support_previous_response_id = true,
-      parse_api_key = function() error("must not read an API key") end,
-    }, {
+    })
+    api_key_stub = stub(Providers.openai, "parse_api_key")
+    local request = RigClient._build_request(Providers.openai, {
       system_prompt = "system",
       messages = {
         { role = "user", content = { { type = "tool_result", tool_use_id = "call_1", content = "result" } } },
       },
     }, { previous_response_id = "resp_old", resolved_api_route = "chat" })
 
+    assert.stub(api_key_stub).was_not_called()
     assert.same("openai", request.provider.protocol)
     assert.same("chatgpt", request.provider.auth)
     assert.same("responses", request.provider.route)
@@ -43,6 +77,25 @@ describe("Rig client adapter", function()
     assert.is_nil(request.provider.apiKey)
     assert.is_nil(request.prompt.additionalParams.previous_response_id)
   end)
+
+  for _, case in ipairs({
+    { params = {}, expected = "session-key" },
+    { params = { prompt_cache_key = "native-key" }, expected = "native-key" },
+  }) do
+    it("preserves ChatGPT cache key precedence for " .. vim.inspect(case.params), function()
+      configure_provider("openai", {
+        api_key_name = "cmd:echo token",
+        auth_type = "subscription",
+        extra_request_body = case.params,
+      })
+      local request = RigClient._build_request(
+        Providers.openai,
+        { system_prompt = "system", messages = { { role = "user", content = "hello" } } },
+        { session_id = "session-key" }
+      )
+      assert.same(case.expected, request.prompt.additionalParams.prompt_cache_key)
+    end)
+  end
 
   for _, name in ipairs({ "claude", "chatgpt", "copilot" }) do
     describe(name .. " authentication", function()
@@ -94,48 +147,47 @@ describe("Rig client adapter", function()
     end)
   end
 
-  local function provider(name, inherited, overrides)
-    return vim.tbl_extend("force", {
-      _name = name,
-      _protocol = inherited,
-      model = "test-model",
-      endpoint = "https://example.test/v1",
-      parse_api_key = function() return "token" end,
-    }, overrides or {})
-  end
-
   it("passes semantic messages and custom parameters instead of a protocol body", function()
-    local request = RigClient._build_request(
-      provider("deepseek", "openai", {
-        extra_request_body = { reasoning_context = { mode = "preserve" } },
-        use_response_api = true,
-      }),
-      {
-        system_prompt = "system",
-        messages = { { role = "user", content = "hello" } },
-      }
-    )
+    configure_provider("deepseek", {
+      __inherited_from = "openai",
+      api_key_name = "cmd:echo token",
+      extra_request_body = { reasoning_context = { mode = "preserve" } },
+      use_response_api = true,
+    })
+    local request = RigClient._build_request(Providers.deepseek, {
+      system_prompt = "system",
+      messages = { { role = "user", content = "hello" } },
+    })
 
     assert.same("deepseek", request.provider.name)
     assert.same("openai", request.provider.protocol)
     assert.same("responses", request.provider.route)
     assert.same("system", request.prompt.systemPrompt)
     assert.same({ { role = "user", content = "hello" } }, request.prompt.messages)
-    assert.same({ reasoning_context = { mode = "preserve" } }, request.prompt.additionalParams)
+    assert.same(
+      vim.tbl_extend(
+        "force",
+        Config.providers.openai.extra_request_body,
+        { reasoning_context = { mode = "preserve" } }
+      ),
+      request.prompt.additionalParams
+    )
     assert.is_nil(request.url)
     assert.is_nil(request.body)
   end)
 
   it("resolves a dynamic Responses route once per request", function()
     local calls = 0
+    configure_provider("openai", {
+      api_key_name = "cmd:echo token",
+      dialect = "openai",
+      use_response_api = function()
+        calls = calls + 1
+        return true
+      end,
+    })
     local request = RigClient._build_request(
-      provider("openai", "openai", {
-        dialect = "openai",
-        use_response_api = function()
-          calls = calls + 1
-          return true
-        end,
-      }),
+      Providers.openai,
       { system_prompt = "system", messages = { { role = "user", content = "hello" } } }
     )
 
@@ -144,16 +196,16 @@ describe("Rig client adapter", function()
   end)
 
   it("passes an inherited protocol with an explicit Rig dialect", function()
-    local request = RigClient._build_request(
-      provider("private_gateway", "openai", {
-        dialect = "mistral",
-        extra_request_body = { reasoning_context = "carry" },
-      }),
-      {
-        system_prompt = "system",
-        messages = { { role = "user", content = "hello" } },
-      }
-    )
+    configure_provider("private_gateway", {
+      __inherited_from = "openai",
+      api_key_name = "cmd:echo token",
+      dialect = "mistral",
+      extra_request_body = { reasoning_context = "carry" },
+    })
+    local request = RigClient._build_request(Providers.private_gateway, {
+      system_prompt = "system",
+      messages = { { role = "user", content = "hello" } },
+    })
 
     assert.same("private_gateway", request.provider.name)
     assert.same("openai", request.provider.protocol)
@@ -186,16 +238,18 @@ describe("Rig client adapter", function()
     it("provides default request headers to extra_headers callbacks", function()
       local defaults
       local callbacks = 0
+      configure_provider("private_gateway", {
+        __inherited_from = "openai",
+        api_key_name = "cmd:echo token",
+        extra_headers = function(headers)
+          callbacks = callbacks + 1
+          defaults = vim.deepcopy(headers)
+          headers["X-Gateway-Auth"] = headers.Authorization
+          return headers
+        end,
+      })
       local request = RigClient._build_request(
-        provider("private_gateway", "openai", {
-          api_key_name = "TEST_KEY",
-          extra_headers = function(headers)
-            callbacks = callbacks + 1
-            defaults = vim.deepcopy(headers)
-            headers["X-Gateway-Auth"] = headers.Authorization
-            return headers
-          end,
-        }),
+        Providers.private_gateway,
         { system_prompt = "system", messages = { { role = "user", content = "hello" } } }
       )
 
@@ -210,15 +264,17 @@ describe("Rig client adapter", function()
 
     it("keeps changes to default request headers made by extra_headers callbacks", function()
       local original_auth
+      configure_provider("private_gateway", {
+        __inherited_from = "openai",
+        api_key_name = "cmd:echo token",
+        extra_headers = function(headers)
+          original_auth = headers.Authorization
+          headers.Authorization = "Gateway token"
+          return headers
+        end,
+      })
       local request = RigClient._build_request(
-        provider("private_gateway", "openai", {
-          api_key_name = "TEST_KEY",
-          extra_headers = function(headers)
-            original_auth = headers.Authorization
-            headers.Authorization = "Gateway token"
-            return headers
-          end,
-        }),
+        Providers.private_gateway,
         { system_prompt = "system", messages = { { role = "user", content = "hello" } } }
       )
 
@@ -228,11 +284,13 @@ describe("Rig client adapter", function()
     end)
 
     it("allows extra_headers callbacks to return a whitelist without default authentication", function()
+      configure_provider("public_gateway", {
+        __inherited_from = "openai",
+        api_key_name = "cmd:echo token",
+        extra_headers = function(headers) return { ["Content-Type"] = headers["Content-Type"] } end,
+      })
       local request = RigClient._build_request(
-        provider("public_gateway", "openai", {
-          api_key_name = "TEST_KEY",
-          extra_headers = function(headers) return { ["Content-Type"] = headers["Content-Type"] } end,
-        }),
+        Providers.public_gateway,
         { system_prompt = "system", messages = { { role = "user", content = "hello" } } }
       )
 
@@ -242,17 +300,17 @@ describe("Rig client adapter", function()
   end)
 
   it("uses the protocol for Azure-specific configuration", function()
-    local request = RigClient._build_request(
-      provider("private_azure", "azure", {
-        deployment = "test-deployment",
-        api_version = "2025-01-01-preview",
-        entra = true,
-      }),
-      {
-        system_prompt = "system",
-        messages = { { role = "user", content = "hello" } },
-      }
-    )
+    configure_provider("private_azure", {
+      __inherited_from = "azure",
+      api_key_name = "cmd:echo token",
+      deployment = "test-deployment",
+      api_version = "2025-01-01-preview",
+      entra = true,
+    })
+    local request = RigClient._build_request(Providers.private_azure, {
+      system_prompt = "system",
+      messages = { { role = "user", content = "hello" } },
+    })
 
     assert.same("private_azure", request.provider.name)
     assert.same("azure", request.provider.protocol)
@@ -262,7 +320,11 @@ describe("Rig client adapter", function()
   end)
 
   it("keeps Azure configurations that only name a deployment working", function()
-    local azure = provider("azure", "azure", { deployment = "test-deployment" })
+    configure_provider("azure", {
+      api_key_name = "cmd:echo token",
+      deployment = "test-deployment",
+    })
+    local azure = Providers.azure
     azure.model = nil
     local request = RigClient._build_request(azure, {
       system_prompt = "system",
@@ -273,26 +335,26 @@ describe("Rig client adapter", function()
   end)
 
   it("rejects Azure configuration without a deployment", function()
-    assert.has_error(
-      function()
-        RigClient._build_request(provider("azure", "azure", { deployment = "" }), {
-          system_prompt = "system",
-          messages = {},
-        })
-      end,
-      "Azure deployment is not set"
-    )
+    assert.has_error(function()
+      configure_provider("azure", {
+        api_key_name = "cmd:echo token",
+        deployment = "",
+      })
+      RigClient._build_request(Providers.azure, {
+        system_prompt = "system",
+        messages = {},
+      })
+    end, "Azure deployment is not set")
   end)
 
   it("honors both Copilot route overrides", function()
     for _, use_responses in ipairs({ true, false }) do
-      local request = RigClient._build_request(
-        provider("copilot", "copilot", {
-          model = use_responses and "gpt-5" or "gpt-5-codex",
-          use_response_api = use_responses,
-        }),
-        { system_prompt = "system", messages = {} }
-      )
+      configure_provider("copilot", {
+        api_key_name = "cmd:echo token",
+        model = use_responses and "gpt-5" or "gpt-5-codex",
+        use_response_api = use_responses,
+      })
+      local request = RigClient._build_request(Providers.copilot, { system_prompt = "system", messages = {} })
       assert.same(use_responses and "responses" or "chat", request.provider.route)
     end
   end)
@@ -309,7 +371,10 @@ describe("Rig client adapter", function()
   end)
 
   it("converts Avante tools to Rig tool definitions", function()
-    local request = RigClient._build_request(provider("openai", "openai"), {
+    configure_provider("openai", {
+      api_key_name = "cmd:echo token",
+    })
+    local request = RigClient._build_request(Providers.openai, {
       system_prompt = "system",
       messages = { { role = "user", content = "hello" } },
       tools = {
@@ -332,13 +397,12 @@ describe("Rig client adapter", function()
   end)
 
   it("uses Rig provider identities for SDK-backed providers", function()
+    configure_provider("bedrock", {
+      aws_region = "us-east-1",
+      aws_profile = "work",
+    })
     local bedrock = RigClient._build_request(
-      provider("bedrock", "bedrock", {
-        endpoint = nil,
-        aws_region = "us-east-1",
-        aws_profile = "work",
-        parse_api_key = function() return nil end,
-      }),
+      Providers.bedrock,
       { system_prompt = "system", messages = { { role = "user", content = "hello" } } }
     )
 
@@ -349,13 +413,14 @@ describe("Rig client adapter", function()
   end)
 
   it("uses native tools for Ollama", function()
-    local ollama = provider("ollama", "ollama", {
-      parse_api_key = function() return nil end,
+    configure_provider("ollama", {
+      api_key_name = "",
       keep_alive = "10m",
       extra_request_body = {
         options = { temperature = 0.75, keep_alive = "5m" },
       },
     })
+    local ollama = Providers.ollama
     local request = RigClient._build_request(ollama, {
       system_prompt = "system",
       messages = { { role = "user", content = "hello" } },
@@ -409,8 +474,11 @@ describe("Rig client adapter", function()
     local messages = {}
     local stops = {}
 
+    configure_provider("openai", {
+      api_key_name = "cmd:echo token",
+    })
     RigClient.start(
-      provider("openai", "openai"),
+      Providers.openai,
       { system_prompt = "system", messages = { { role = "user", content = "hello" } } },
       {
         on_messages_add = function(items) messages[#messages + 1] = items[1] end,
@@ -451,8 +519,11 @@ describe("Rig client adapter", function()
     local messages = {}
     local stopped
 
+    configure_provider("openai", {
+      api_key_name = "cmd:echo token",
+    })
     RigClient.start(
-      provider("openai", "openai"),
+      Providers.openai,
       { system_prompt = "system", messages = { { role = "user", content = "hello" } } },
       {
         on_messages_add = function(items) messages[#messages + 1] = items[1] end,
@@ -520,7 +591,10 @@ describe("Rig client adapter", function()
     }
     local messages, order, chunks = {}, {}, {}
     local stopped
-    RigClient.start(provider("claude", "claude"), { system_prompt = "system", messages = {} }, {
+    configure_provider("claude", {
+      api_key_name = "cmd:echo token",
+    })
+    RigClient.start(Providers.claude, { system_prompt = "system", messages = {} }, {
       on_messages_add = function(items)
         for _, item in ipairs(items) do
           if not messages[item.uuid] then order[#order + 1] = item.uuid end
@@ -558,18 +632,22 @@ describe("Rig client adapter", function()
       },
     }
     local session_ctx = { previous_response_id = "resp_1" }
-    local enabled_provider = provider("openai", "openai", {
+    configure_provider("openai", {
+      api_key_name = "cmd:echo token",
       use_response_api = true,
       support_previous_response_id = true,
       extra_request_body = { store = true },
     })
+    local enabled_provider = Providers.openai
     local enabled =
       RigClient._build_request(enabled_provider, { system_prompt = "system", messages = messages }, session_ctx)
-    local disabled = RigClient._build_request(
-      provider("openai", "openai", { use_response_api = true, support_previous_response_id = false }),
-      { system_prompt = "system", messages = messages },
-      session_ctx
-    )
+    configure_provider("openai", {
+      api_key_name = "cmd:echo token",
+      use_response_api = true,
+      support_previous_response_id = false,
+    })
+    local disabled =
+      RigClient._build_request(Providers.openai, { system_prompt = "system", messages = messages }, session_ctx)
     local stale = RigClient._build_request(enabled_provider, {
       system_prompt = "system",
       messages = {
@@ -611,8 +689,13 @@ describe("Rig client adapter", function()
     local session_ctx = {}
     local stopped
 
+    configure_provider("openai", {
+      api_key_name = "cmd:echo token",
+      use_response_api = true,
+      support_previous_response_id = true,
+    })
     RigClient.start(
-      provider("openai", "openai", { use_response_api = true, support_previous_response_id = true }),
+      Providers.openai,
       { system_prompt = "system", messages = { { role = "user", content = "hello" } } },
       { on_stop = function(result) stopped = result end },
       nil,
@@ -636,8 +719,11 @@ describe("Rig client adapter", function()
     local timer_stub = stub(vim.uv or vim.loop, "new_timer").returns(nil)
     local stopped
 
+    configure_provider("openai", {
+      api_key_name = "cmd:echo token",
+    })
     local request = RigClient.start(
-      provider("openai", "openai"),
+      Providers.openai,
       { system_prompt = "system", messages = { { role = "user", content = "hello" } } },
       { on_stop = function(result) stopped = result end }
     )
@@ -689,8 +775,11 @@ describe("Rig client adapter", function()
     end)
 
     local function start(on_chunk, on_messages_add)
+      configure_provider("openai", {
+        api_key_name = "cmd:echo token",
+      })
       request = RigClient.start(
-        provider("openai", "openai"),
+        Providers.openai,
         { system_prompt = "system", messages = { { role = "user", content = "hello" } } },
         {
           on_chunk = on_chunk or function(chunk) chunks[#chunks + 1] = chunk end,
@@ -829,17 +918,19 @@ describe("Rig client adapter", function()
         sent = input
         error("stop before sending")
       end
+      configure_provider("openai", {
+        api_key_name = "cmd:echo token",
+        auth_type = "subscription",
+        extra_headers = { Authorization = "secret header" },
+        extra_request_body = {
+          reasoning_effort = "low",
+          reasoning = { effort = "high" },
+          thinking = { budget_tokens = 1024 },
+          api_key = "secret parameter",
+        },
+      })
       RigClient.start(
-        provider("openai", "openai", {
-          auth_type = "subscription",
-          extra_headers = { Authorization = "secret header" },
-          extra_request_body = {
-            reasoning_effort = "low",
-            reasoning = { effort = "high" },
-            thinking = { budget_tokens = 1024 },
-            api_key = "secret parameter",
-          },
-        }),
+        Providers.openai,
         { system_prompt = "Final system", instructions = "Project rules", messages = {} },
         {
           on_request = function(settings, prompt)
@@ -861,7 +952,10 @@ describe("Rig client adapter", function()
     end)
 
     it("reports history write failures before starting the request", function()
-      request = RigClient.start(provider("openai", "openai"), { system_prompt = "system", messages = {} }, {
+      configure_provider("openai", {
+        api_key_name = "cmd:echo token",
+      })
+      request = RigClient.start(Providers.openai, { system_prompt = "system", messages = {} }, {
         on_request = function() error("history write failed") end,
         on_stop = function(result) stops[#stops + 1] = result end,
       })
@@ -874,8 +968,11 @@ describe("Rig client adapter", function()
 
     for _, state in ipairs({ "generating", "generated" }) do
       it("terminates and releases resources when a " .. state .. " message callback throws", function()
+        configure_provider("openai", {
+          api_key_name = "cmd:echo token",
+        })
         request = RigClient.start(
-          provider("openai", "openai"),
+          Providers.openai,
           { system_prompt = "system", messages = { { role = "user", content = "hello" } } },
           {
             on_messages_add = function(messages)
@@ -901,8 +998,11 @@ describe("Rig client adapter", function()
 
     it("reports a throwing stop callback without notifying it twice", function()
       error_stub = stub(require("avante.utils"), "error")
+      configure_provider("openai", {
+        api_key_name = "cmd:echo token",
+      })
       request = RigClient.start(
-        provider("openai", "openai"),
+        Providers.openai,
         { system_prompt = "system", messages = { { role = "user", content = "hello" } } },
         {
           on_stop = function(result)

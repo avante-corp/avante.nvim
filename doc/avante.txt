@@ -543,6 +543,24 @@ Tokenizer                                                            *Tokenizer*
         
 
 
+Common generation parameters accepted in `extra_request_body`:
+- `temperature`, `top_p`; `max_tokens`, `max_completion_tokens` and
+  `max_output_tokens` are aliases for the output-token limit.
+- `reasoning_effort`: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`.
+- `seed`: a non-negative integer; `stop`: a string or a list of strings.
+- `parallel_tool_calls`: a boolean; `service_tier`: `auto`, `default`, `flex`,
+  `priority`; `verbosity`: `low`, `medium`, `high`.
+- `cache`: `none`, `short`, `long`.
+These parameters are mapped to each provider's request fields; unsupported
+options are ignored. Provider-specific enum strings, such as Claude's
+`service_tier = "standard_only"`, remain native overrides. Other fields remain
+provider-specific request-body overrides, for example:
+- `prompt_cache_key`: a prompt-cache routing key for OpenAI and ChatGPT.
+- `reasoning`: reasoning settings for APIs such as OpenAI and DeepSeek Responses.
+- `thinking`: thinking settings for APIs such as DeepSeek Chat and Claude Messages.
+- `generationConfig`: generation settings for Gemini.
+The accepted structure and values depend on the selected provider, API and model.
+
 AvanteConflictMappings                                  *AvanteConflictMappings*
 
 
