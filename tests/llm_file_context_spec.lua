@@ -113,7 +113,11 @@ describe("selected file context", function()
 
   it("keeps full file contents when the provider disables tools", function()
     local prompt = generate({
-      provider = { _protocol = "openai", model = "gpt-mock", disable_tools = true },
+      provider = vim.tbl_extend(
+        "force",
+        require("avante.providers").openai,
+        { model = "gpt-mock", disable_tools = true }
+      ),
     })
     assert.matches(disk_content, context(prompt), nil, true)
   end)

@@ -335,6 +335,34 @@ fn take_u64(params: &mut Map<String, Value>, keys: &[&str]) -> Result<Option<u64
     Ok(result)
 }
 
+fn take_option<T: serde::de::DeserializeOwned>(
+    params: &mut Map<String, Value>,
+    key: &str,
+) -> Result<Option<T>, String> {
+    params
+        .shift_remove(key)
+        .map(|value| serde_json::from_value(value).map_err(|error| format!("{key}: {error}")))
+        .transpose()
+}
+
+fn take_portable_enum<T: serde::de::DeserializeOwned>(
+    params: &mut Map<String, Value>,
+    key: &str,
+) -> Result<Option<T>, String> {
+    let Some(value) = params.get(key) else {
+        return Ok(None);
+    };
+    if !value.is_string() {
+        return Err(format!("{key} must be a string"));
+    }
+    // Preserve provider-specific spellings, such as Claude's `standard_only` tier.
+    let Ok(option) = serde_json::from_value(value.clone()) else {
+        return Ok(None);
+    };
+    params.shift_remove(key);
+    Ok(Some(option))
+}
+
 pub(super) fn apply_generation_params(
     provider: &ProviderInput,
     request: &mut CompletionRequest,
@@ -352,6 +380,19 @@ pub(super) fn apply_generation_params(
     if let Some(Value::Object(mut params)) = additional_params {
         request.temperature = take_f64(&mut params, "temperature")?;
         request.options.top_p = take_f64(&mut params, "top_p")?;
+        request.options.seed = take_option(&mut params, "seed")?;
+        request.options.parallel_tool_calls = take_option(&mut params, "parallel_tool_calls")?;
+        request.options.service_tier = take_portable_enum(&mut params, "service_tier")?;
+        request.options.verbosity = take_portable_enum(&mut params, "verbosity")?;
+        request.options.cache = take_portable_enum(&mut params, "cache")?;
+        if let Some(stop) = params.shift_remove("stop") {
+            let stop = match stop {
+                Value::String(_) => Value::Array(vec![stop]),
+                other => other,
+            };
+            request.options.stop =
+                serde_json::from_value(stop).map_err(|error| format!("stop: {error}"))?;
+        }
         let explicit_completion_cap = matches!(provider.protocol, ProtocolInput::Azure)
             && !matches!(provider.route, Some(RouteInput::Responses))
             && params.contains_key("max_completion_tokens");
@@ -396,11 +437,9 @@ pub(super) fn apply_generation_params(
             request.options.reasoning = Some(reasoning);
         }
         if matches!(provider.auth, Some(AuthInput::Chatgpt)) {
-            request.options.cache_key = match params.shift_remove("prompt_cache_key") {
-                Some(Value::String(key)) => Some(key),
-                Some(_) => return Err("prompt_cache_key must be a string".to_owned()),
-                None => None,
-            };
+            if let Some(key) = take_option(&mut params, "prompt_cache_key")? {
+                request.options.cache_key = Some(key);
+            }
             params.shift_remove("previous_response_id");
             params.shift_remove("conversation");
         }

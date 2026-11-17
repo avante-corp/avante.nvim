@@ -285,7 +285,7 @@ function M._build_request(provider, prompt_opts, session_ctx)
       authHome = auth_home,
       route = route,
       apiVersion = rawget(provider_conf, "api_version"),
-      promptCaching = provider.support_prompt_caching == true,
+      promptCaching = provider.support_prompt_caching == true and additional_params.cache ~= "none",
       headers = headers,
       proxy = provider_conf.proxy,
       allowInsecure = provider_conf.allow_insecure == true,

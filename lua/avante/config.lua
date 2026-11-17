@@ -433,6 +433,25 @@ M._defaults = {
       context_window = 128000, -- Context window used to trigger local compaction
       use_response_api = copilot_use_response_api, -- Automatically switch GPT-5 and GPT-6 models to the Response API
       support_previous_response_id = true,
+      ---@brief [[
+      ---Common generation parameters accepted in `extra_request_body`:
+      ---- `temperature`, `top_p`; `max_tokens`, `max_completion_tokens` and
+      ---  `max_output_tokens` are aliases for the output-token limit.
+      ---- `reasoning_effort`: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`.
+      ---- `seed`: a non-negative integer; `stop`: a string or a list of strings.
+      ---- `parallel_tool_calls`: a boolean; `service_tier`: `auto`, `default`, `flex`,
+      ---  `priority`; `verbosity`: `low`, `medium`, `high`.
+      ---- `cache`: `none`, `short`, `long`.
+      ---These parameters are mapped to each provider's request fields; unsupported
+      ---options are ignored. Provider-specific enum strings, such as Claude's
+      ---`service_tier = "standard_only"`, remain native overrides. Other fields remain
+      ---provider-specific request-body overrides, for example:
+      ---- `prompt_cache_key`: a prompt-cache routing key for OpenAI and ChatGPT.
+      ---- `reasoning`: reasoning settings for APIs such as OpenAI and DeepSeek Responses.
+      ---- `thinking`: thinking settings for APIs such as DeepSeek Chat and Claude Messages.
+      ---- `generationConfig`: generation settings for Gemini.
+      ---The accepted structure and values depend on the selected provider, API and model.
+      ---@brief ]]
       extra_request_body = {
         max_completion_tokens = 16384, -- Increase this to include reasoning tokens (for reasoning models). For Response API, will be converted to max_output_tokens
         reasoning_effort = "medium", -- none|minimal|low|medium|high|xhigh|max; Responses converts this to reasoning.effort

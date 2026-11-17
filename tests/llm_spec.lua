@@ -2,6 +2,8 @@ local utils = require("avante.utils")
 
 local llm = require("avante.llm")
 local RigClient = require("avante.libs.rig_client")
+local Config = require("avante.config")
+local Providers = require("avante.providers")
 
 describe("generate_prompts", function()
   local project_root = "/tmp/project_root"
@@ -97,6 +99,8 @@ describe("generate_prompts", function()
   end)
 
   after_each(function()
+    Config.providers.prompt_test = nil
+    rawset(Providers, "prompt_test", nil)
     -- Clean up created test files and directories
     local mock_dir = vim.fs.joinpath("tests", project_root)
     if vim.uv.fs_stat(mock_dir) then vim.fs.rm(mock_dir, { recursive = true }) end
@@ -167,20 +171,22 @@ describe("generate_prompts", function()
       })
     end
 
-    local responses = generate({
-      _protocol = "openai",
-      _name = "openai",
+    Config.providers.prompt_test = {
+      __inherited_from = "openai",
       endpoint = "https://api.openai.com/v1",
       model = "gpt-5.6-sol",
       context_window = 1000,
       use_response_api = true,
-    })
-    local chat = generate({
-      _protocol = "openai",
+    }
+    local responses = generate(Providers.prompt_test)
+    Config.providers.prompt_test = {
+      __inherited_from = "openai",
       model = "custom-chat-model",
       context_window = 1000,
       use_response_api = false,
-    })
+    }
+    rawset(Providers, "prompt_test", nil)
+    local chat = generate(Providers.prompt_test)
 
     assert.same(history_messages, responses.pending_compaction_history_messages)
     assert.same(history_messages, chat.pending_compaction_history_messages)
@@ -197,10 +203,8 @@ describe("generate_prompts", function()
 
   it("resolves a dynamic Responses route once for prompt generation and transport", function()
     local calls = 0
-    local provider = {
-      _name = "openai",
-      _protocol = "openai",
-      dialect = "openai",
+    Config.providers.prompt_test = {
+      __inherited_from = "openai",
       endpoint = "https://api.openai.com/v1",
       model = "gpt-mock",
       context_window = 1000,
@@ -208,8 +212,9 @@ describe("generate_prompts", function()
         calls = calls + 1
         return true
       end,
-      parse_api_key = function() return "token" end,
+      api_key_name = "",
     }
+    local provider = Providers.prompt_test
     local opts = { provider = provider, session_ctx = {} }
 
     local prompt = llm.generate_prompts(opts)

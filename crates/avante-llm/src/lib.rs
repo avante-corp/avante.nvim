@@ -2256,11 +2256,110 @@ mod tests {
     }
 
     #[test]
+    fn extracts_portable_generation_options_without_consuming_native_fields() {
+        use rig::completion::options::{
+            CacheRetention, GenerationOptions, OnUnsupported, ServiceTier, Verbosity,
+        };
+
+        for stop in [json!("END"), json!(["END"])] {
+            let mut prompt = prompt();
+            prompt.additional_params = Some(json!({
+                "seed": 7,
+                "stop": stop,
+                "parallel_tool_calls": false,
+                "service_tier": "priority",
+                "verbosity": "low",
+                "cache": "short",
+                "prompt_cache_key": "conversation-1",
+                "reasoning": {"effort": "low"},
+                "thinking": {"type": "enabled", "budget_tokens": 1024}
+            }));
+            let request =
+                completion_request(&provider("openai", Some(RouteInput::Chat)), prompt).unwrap();
+
+            assert_eq!(
+                request.options,
+                GenerationOptions::new()
+                    .seed(7)
+                    .stop(["END"])
+                    .parallel_tool_calls(false)
+                    .service_tier(ServiceTier::Priority)
+                    .verbosity(Verbosity::Low)
+                    .cache(CacheRetention::Short)
+                    .on_unsupported(OnUnsupported::Ignore)
+            );
+            assert_eq!(
+                request.additional_params,
+                Some(json!({
+                    "prompt_cache_key": "conversation-1",
+                    "reasoning": {"effort": "low"},
+                    "thinking": {"type": "enabled", "budget_tokens": 1024}
+                }))
+            );
+        }
+    }
+
+    #[test]
+    fn preserves_provider_specific_generation_enum_values() {
+        let mut prompt = prompt();
+        let params = json!({"service_tier": "standard_only", "cache": "provider-cache", "verbosity": "provider-verbosity"});
+        prompt.additional_params = Some(params.clone());
+        let request = completion_request(&provider("anthropic", None), prompt).unwrap();
+        assert_eq!(request.options.service_tier, None);
+        assert_eq!(request.options.cache, None);
+        assert_eq!(request.options.verbosity, None);
+        assert_eq!(request.additional_params, Some(params));
+    }
+
+    #[test]
+    fn maps_portable_options_into_openai_responses_fields() {
+        let mut provider = provider("openai", Some(RouteInput::Responses));
+        provider.model = "gpt-6-luna".to_owned();
+        let mut prompt = prompt();
+        prompt.additional_params = Some(json!({
+            "seed": 7, "stop": ["END"], "verbosity": "low",
+            "service_tier": "priority", "parallel_tool_calls": false,
+            "cache": "long", "prompt_cache_key": "conversation-1"
+        }));
+        let wire = rig::providers::openai::wire::OpenAiWire::new(
+            configure_openai(&provider),
+            &provider.model,
+        );
+        let encoded = wire
+            .encode(
+                completion_request(&provider, prompt).unwrap(),
+                Mode::Streaming,
+            )
+            .unwrap();
+        let Body::Bytes(bytes) = encoded.request.into_body() else {
+            panic!("JSON request")
+        };
+        let body: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["text"]["verbosity"], "low", "{body}");
+        assert_eq!(body["service_tier"], "priority", "{body}");
+        assert_eq!(body["parallel_tool_calls"], false, "{body}");
+        assert_eq!(body["prompt_cache_options"]["ttl"], "12h", "{body}");
+        assert_eq!(body["prompt_cache_key"], "conversation-1", "{body}");
+        for key in ["seed", "stop", "verbosity", "cache"] {
+            assert!(body.get(key).is_none(), "{body}");
+        }
+    }
+
+    #[test]
     fn rejects_invalid_typed_generation_parameters() {
         for (params, expected) in [
             (json!({"temperature": "hot"}), "temperature"),
             (json!({"max_tokens": -1}), "max_tokens"),
             (json!({"reasoning_effort": true}), "reasoning_effort"),
+            (json!({"seed": -1}), "seed"),
+            (json!({"stop": [1]}), "stop"),
+            (
+                json!({"parallel_tool_calls": "false"}),
+                "parallel_tool_calls",
+            ),
+            (json!({"service_tier": true}), "service_tier"),
+            (json!({"verbosity": 1}), "verbosity"),
+            (json!({"cache": 1}), "cache"),
         ] {
             let mut prompt = prompt();
             prompt.additional_params = Some(params);
