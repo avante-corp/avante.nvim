@@ -117,9 +117,10 @@
 ---         Deprecated alias for :Avante toggle. Shows a deprecation warning.
 ---
 ---                                                     *:AvanteModels*
---- :AvanteModels [--all] [timeout]
+--- :AvanteModels [--all] [--no-cache] [timeout]
 ---         Show the model list, optionally querying all providers and overriding
----         the model-list timeout in milliseconds. See |avante-api.select_model|
+---         the model-list timeout in milliseconds. Use --no-cache to fetch fresh
+---         model lists instead of using cached results. See |avante-api.select_model|
 ---         Use :AvanteModels --help for generated help.
 ---
 ---                                                     *:AvanteACPModels*
@@ -205,8 +206,10 @@ function M.setup()
 
   local models = cmdparse.ParameterParser.new({ name = "AvanteModels", help = "Show available models" })
   models:add_parameter({ name = "--all", action = "store_true", help = "Query all configured providers" })
+  models:add_parameter({ name = "--no-cache", action = "store_true", help = "Fetch fresh model lists" })
   models:add_parameter({ name = "timeout", required = false, help = "Model-list timeout in milliseconds" })
   models:set_execute(function(data)
+    ---@type integer?
     local timeout
     if data.namespace.timeout ~= nil then
       timeout = tonumber(data.namespace.timeout)
@@ -215,7 +218,8 @@ function M.setup()
         return
       end
     end
-    require("avante.model_selector").open(data.namespace.all == true, timeout)
+    -- cmdparse keeps the dash in flag names: `--no-cache` lands in namespace["no-cache"].
+    require("avante.model_selector").open(data.namespace.all == true, timeout, data.namespace["no-cache"] == true)
   end)
   cmdparse.create_user_command(models, nil, { desc = "avante: show models" })
 
