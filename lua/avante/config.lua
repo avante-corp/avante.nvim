@@ -423,6 +423,10 @@ M._defaults = {
       command = "kimi",
       args = { "acp" },
     },
+    ["pi"] = {
+      command = "pi-acp",
+      args = {},
+    },
   },
   providers = {
     ---@type AvanteSupportedProvider
