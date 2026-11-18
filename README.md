@@ -452,7 +452,18 @@ _See [config.lua#L9](./lua/avante/config.lua) for the up to date full default co
   -- WARNING: Since auto-suggestions are a high-frequency operation and therefore expensive,
   -- currently designating it as `copilot` provider is dangerous because: https://github.com/yetone/avante.nvim/issues/1048
   -- Of course, you can reduce the request frequency by increasing `suggestion.debounce`.
-  auto_suggestions_provider = "claude",
+  -- Follow the current API provider; when chat uses an ACP agent, use a separate API provider for suggestions.
+  auto_suggestions_provider = function(current_provider_name)
+    local config = require("avante.config")
+    return config.acp_providers[current_provider_name] and config.auto_suggestions_acp_provider or current_provider_name
+  end,
+  -- Read by the default function above when the current chat provider is an ACP agent in acp_providers.
+  -- Set to an API provider name in providers, such as "ollama" or "openai".
+  -- Example: the ACP agent handles chat requests; Ollama provides inline code suggestions.
+  -- Default: nil. Suggestions are skipped for ACP chats with a one-time warning when this is unset.
+  -- auto_suggestions_acp_provider = "ollama",
+  -- A string pins suggestions to that provider; custom functions control selection and must return a provider name.
+  -- auto_suggestions_provider = "ollama",
   providers = {
     claude = {
       endpoint = "https://api.anthropic.com",

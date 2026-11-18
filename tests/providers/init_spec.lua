@@ -82,20 +82,56 @@ describe("providers", function()
     assert.are.same(0, submitted)
   end)
 
-  it("initializes only the explicit suggestion provider when the current provider uses ACP", function()
-    local initialized = 0
+  it("honors explicit suggestion providers and evaluates selectors per suggestion", function()
+    local initialized, resolved = 0, 0
     Config.override({
       provider = "test_acp",
       acp_providers = { test_acp = { command = "test-agent" } },
+      auto_suggestions_acp_provider = "test_claude",
+      auto_suggestions_provider = "test_openai",
       providers = { test_openai = { setup = function() initialized = initialized + 1 end } },
     })
     local Providers = require("avante.providers")
     Providers.setup()
-    assert.same(0, initialized)
+    assert.equals("test_openai", Providers.get_auto_suggestions_provider()._name)
+    assert.equals(1, initialized)
 
-    Config.override({ auto_suggestions_provider = "test_openai" })
+    Config.override({
+      auto_suggestions_provider = function(current_provider_name)
+        assert.equals("test_acp", current_provider_name)
+        resolved = resolved + 1
+        return "test_openai"
+      end,
+    })
     Providers.setup()
-    assert.same(1, initialized)
+    assert.equals(0, resolved)
+    for _ = 1, 2 do
+      assert.equals("test_openai", Providers.get_auto_suggestions_provider()._name)
+    end
+    assert.equals(2, resolved)
+    assert.equals(1, initialized)
+  end)
+
+  it("follows provider switches and initializes the ACP suggestion API provider only once", function()
+    local initialized = 0
+    Config.override({
+      provider = "test_acp",
+      acp_providers = { test_acp = { command = "test-agent" } },
+      auto_suggestions_acp_provider = "test_claude",
+      providers = { test_claude = { setup = function() initialized = initialized + 1 end } },
+    })
+    package.loaded["avante"] = { get = function() end }
+    local Providers = require("avante.providers")
+    Providers.setup()
+    assert.equals(0, initialized)
+
+    local selected_providers = {}
+    for _, name in ipairs({ "test_acp", "test_openai", "test_acp" }) do
+      Providers.refresh(name)
+      selected_providers[#selected_providers + 1] = Providers.get_auto_suggestions_provider()._name
+    end
+    assert.same({ "test_claude", "test_openai", "test_claude" }, selected_providers)
+    assert.equals(1, initialized)
   end)
 
   it("keeps internal provider identity out of parsed user configuration", function()

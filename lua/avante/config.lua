@@ -269,6 +269,8 @@ local M = {}
 --- Default configuration for project-specific instruction file
 M.instructions_file = "avante.md"
 
+---@alias avante.AutoSuggestionsProvider avante.ProviderName|fun(current_provider_name: avante.ProviderName): avante.ProviderName
+
 ---@class avante.Config
 ---@field debug boolean
 --- will keep requests and responses on the filesystem. Check the logs to find their paths
@@ -287,7 +289,14 @@ M.instructions_file = "avante.md"
 --- WARNING: Since auto-suggestions are a high-frequency operation and therefore expensive,
 --- currently designating it as `copilot` provider is dangerous because: https://github.com/yetone/avante.nvim/issues/1048
 --- Of course, you can reduce the request frequency by increasing `suggestion.debounce`.
----@field auto_suggestions_provider? avante.ProviderName
+--- A function is called for each suggestion with the current chat provider name and must return a provider name.
+--- By default, suggestions follow the current API provider or use auto_suggestions_acp_provider for ACP.
+---@field auto_suggestions_provider? avante.AutoSuggestionsProvider
+--- API provider for inline code suggestions while an ACP agent handles chat requests.
+--- The default auto_suggestions_provider function reads this field when the current provider is in acp_providers.
+--- Set to an API provider name in providers (e.g. "ollama"); acp_providers configures the separate chat agents.
+--- Defaults to nil; when unset, ACP suggestions are skipped with a one-time warning.
+---@field auto_suggestions_acp_provider? avante.ProviderName
 ---To add support for custom provider, follow the format below
 ---See https://github.com/avante-corp/avante.nvim/wiki#custom-providers for more details
 ---@field providers table<string, AvanteProvider>
@@ -341,7 +350,11 @@ M._defaults = {
   mode = "agentic",
   ---@type avante.ProviderName
   provider = "claude",
-  auto_suggestions_provider = nil,
+  auto_suggestions_provider = function(current_provider_name)
+    -- Read live configuration so provider switches and overrides take effect.
+    return M.acp_providers[current_provider_name] and M.auto_suggestions_acp_provider or current_provider_name
+  end,
+  auto_suggestions_acp_provider = nil,
   memory_summary_provider = nil,
   ---@alias Tokenizer "tiktoken" | "hf"
   ---@type Tokenizer
