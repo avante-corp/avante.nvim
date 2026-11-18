@@ -440,6 +440,10 @@ M._defaults = {
       command = "pi-acp",
       args = {},
     },
+    ["hermes"] = {
+      command = "hermes",
+      args = { "acp" },
+    },
   },
   providers = {
     ---@type AvanteSupportedProvider
