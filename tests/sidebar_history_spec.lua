@@ -167,6 +167,18 @@ describe("Sidebar request history", function()
     assert.stub(sidebar.render_result_header).was_called(1)
   end)
 
+  it("keeps the current provider and loads history when the saved provider was removed", function()
+    Config.provider = "openai"
+    local history = { turn_contexts = { { provider = "removed-provider" } } }
+    stubs[#stubs + 1] = stub(HistoryStorage, "load").returns(history)
+    local sidebar = setmetatable({ code = { bufnr = bufnr } }, { __index = Sidebar })
+
+    sidebar:reload_chat_history(nil, "/project")
+
+    assert.equals("openai", Config.provider)
+    assert.equals(history, sidebar.chat_history)
+  end)
+
   it("restores the ACP provider that owns the latest session", function()
     Config.provider = "test-acp"
     Config.acp_providers = {
