@@ -265,25 +265,14 @@ M = setmetatable(M, {
 function M.setup()
   vim.g.avante_login = false
 
-  if require("avante.api").is_acp_provider() then return end
+  if not require("avante.api").is_acp_provider() then E.setup({ provider = M[Config.provider] }) end
 
-  ---@type AvanteProviderFunctor | AvanteBedrockProviderFunctor
-  local provider = M[Config.provider]
-
-  E.setup({ provider = provider })
-
-  if Config.auto_suggestions_provider then
-    local auto_suggestions_provider = M[Config.auto_suggestions_provider]
-    if auto_suggestions_provider and auto_suggestions_provider ~= provider then
-      E.setup({ provider = auto_suggestions_provider })
-    end
+  if Config.auto_suggestions_provider and Config.auto_suggestions_provider ~= Config.provider then
+    E.setup({ provider = M[Config.auto_suggestions_provider] })
   end
 
-  if Config.memory_summary_provider then
-    local memory_summary_provider = M[Config.memory_summary_provider]
-    if memory_summary_provider and memory_summary_provider ~= provider then
-      E.setup({ provider = memory_summary_provider })
-    end
+  if Config.memory_summary_provider and Config.memory_summary_provider ~= Config.provider then
+    E.setup({ provider = M[Config.memory_summary_provider] })
   end
 end
 

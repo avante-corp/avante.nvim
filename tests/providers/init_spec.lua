@@ -82,6 +82,22 @@ describe("providers", function()
     assert.are.same(0, submitted)
   end)
 
+  it("initializes only the explicit suggestion provider when the current provider uses ACP", function()
+    local initialized = 0
+    Config.override({
+      provider = "test_acp",
+      acp_providers = { test_acp = { command = "test-agent" } },
+      providers = { test_openai = { setup = function() initialized = initialized + 1 end } },
+    })
+    local Providers = require("avante.providers")
+    Providers.setup()
+    assert.same(0, initialized)
+
+    Config.override({ auto_suggestions_provider = "test_openai" })
+    Providers.setup()
+    assert.same(1, initialized)
+  end)
+
   it("keeps internal provider identity out of parsed user configuration", function()
     local Providers = require("avante.providers")
     local provider = Providers.test_openai

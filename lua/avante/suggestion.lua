@@ -160,6 +160,10 @@ end
 function Suggestion:suggest()
   Utils.debug("suggesting")
 
+  local provider_name = Config.auto_suggestions_provider or Config.provider
+  if Config.acp_providers[provider_name] then return end
+  local provider = Providers[provider_name]
+
   local ctx = self:ctx()
   local doc = Utils.get_doc()
   ctx.prev_doc = doc
@@ -172,8 +176,6 @@ function Suggestion:suggest()
   local code_content = table.concat(Utils.prepend_line_numbers(lines), "\n")
 
   local full_response = ""
-
-  local provider = Providers[Config.auto_suggestions_provider or Config.provider]
 
   ---@type AvanteLLMMessage[]
   local llm_messages = {
