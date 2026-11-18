@@ -29,6 +29,7 @@ describe("non-ACP LLM lifecycle", function()
       providers = Config.providers,
       acp_providers = Config.acp_providers,
       auto_suggestions_provider = Config.auto_suggestions_provider,
+      auto_suggestions_acp_provider = Config.auto_suggestions_acp_provider,
       behaviour = Config.behaviour,
       mode = Config.mode,
       dual_boost = Config.dual_boost,
@@ -47,6 +48,7 @@ describe("non-ACP LLM lifecycle", function()
     Config.providers = saved_config.providers
     Config.acp_providers = saved_config.acp_providers
     Config.auto_suggestions_provider = saved_config.auto_suggestions_provider
+    Config.auto_suggestions_acp_provider = saved_config.auto_suggestions_acp_provider
     Config.behaviour = saved_config.behaviour
     Config.mode = saved_config.mode
     Config.dual_boost = saved_config.dual_boost
@@ -55,9 +57,13 @@ describe("non-ACP LLM lifecycle", function()
   it("keeps API suggestions independent of ACP chats and preserves ACP routing", function()
     Config.providers = vim.deepcopy(Config._defaults.providers)
     Config.acp_providers = { ["test-acp"] = { command = "test-agent" } }
-    Config.auto_suggestions_provider = nil
+    Config.auto_suggestions_provider = Config._defaults.auto_suggestions_provider
+    Config.auto_suggestions_acp_provider = nil
     Config.behaviour = { auto_suggestions = true }
     Config.dual_boost = { enabled = false }
+    local Providers = require("avante.providers")
+    add_stub(Providers.env, "setup")
+    add_stub(Utils, "warn")
     local requested = {}
     add_stub(Utils, "get_doc").returns({ position = { row = 1, col = 0 } })
     add_stub(Llm, "request").invokes(function(opts)
@@ -76,10 +82,11 @@ describe("non-ACP LLM lifecycle", function()
     assert.is_true(Config.behaviour.auto_suggestions)
     assert.stub(acp).was_not_called()
 
+    Config.auto_suggestions_acp_provider = "ollama"
     Config.provider = "test-acp"
-    Config.auto_suggestions_provider = "ollama"
     suggestion:suggest()
     assert.same({ "ollama", "openai", "ollama" }, requested)
+    assert.stub(acp).was_not_called()
 
     Llm._stream({})
     Config.provider = "openai"

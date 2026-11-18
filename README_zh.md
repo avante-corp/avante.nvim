@@ -297,7 +297,18 @@ _请参见 [config.lua#L9](./lua/avante/config.lua) 以获取完整配置_
   -- 警告：由于自动建议是高频操作，因此成本较高，
   -- 目前将其指定为 `copilot` 提供者是危险的，因为：https://github.com/yetone/avante.nvim/issues/1048
   -- 当然，您可以通过增加 `suggestion.debounce` 来减少请求频率。
-  auto_suggestions_provider = "claude",
+  -- 默认跟随当前 API provider；问答交给 ACP agent 时，使用独立的 API provider 提供代码补全。
+  auto_suggestions_provider = function(current_provider_name)
+    local config = require("avante.config")
+    return config.acp_providers[current_provider_name] and config.auto_suggestions_acp_provider or current_provider_name
+  end,
+  -- 当前聊天 provider 是 acp_providers 中的 ACP agent 时，上面的默认函数会读取此字段。
+  -- 值填写 providers 中的 API provider 名称，例如 "ollama" 或 "openai"。
+  -- 例如：ACP agent 负责处理问答，Ollama 负责编辑器里的行内代码补全。
+  -- 默认为 nil；未配置时，ACP 问答期间跳过自动补全，并显示一次警告。
+  -- auto_suggestions_acp_provider = "ollama",
+  -- 设置字符串则固定使用该 provider；自定义函数自行决定选择规则，必须返回 provider 名称。
+  -- auto_suggestions_provider = "ollama",
   providers = {
     claude = {
       endpoint = "https://api.anthropic.com",

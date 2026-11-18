@@ -35,6 +35,8 @@ local Utils = require("avante.utils")
 ---@field ollama AvanteProviderFunctor
 ---@field openai AvanteProviderFunctor
 local M = {}
+---@type table<AvanteProviderFunctor|AvanteBedrockProviderFunctor, boolean>
+local initialized_providers = {}
 
 local supported_protocols = {
   openai = true,
@@ -93,6 +95,7 @@ end
 ---@private
 function E.setup(opts)
   opts.provider.setup()
+  initialized_providers[opts.provider] = true
 
   local var = opts.provider.api_key_name
 
@@ -267,7 +270,8 @@ function M.setup()
 
   if not require("avante.api").is_acp_provider() then E.setup({ provider = M[Config.provider] }) end
 
-  if Config.auto_suggestions_provider and Config.auto_suggestions_provider ~= Config.provider then
+  -- Resolve functions per suggestion so they can follow provider switches.
+  if type(Config.auto_suggestions_provider) == "string" and Config.auto_suggestions_provider ~= Config.provider then
     E.setup({ provider = M[Config.auto_suggestions_provider] })
   end
 
@@ -355,6 +359,24 @@ function M.get_config(provider_name)
   provider_name = provider_name or Config.provider
   local cur = Config.get_provider_config(provider_name)
   return type(cur) == "function" and cur() or cur
+end
+
+---@return AvanteProviderFunctor | AvanteBedrockProviderFunctor | nil
+function M.get_auto_suggestions_provider()
+  local suggestion_provider_name = Config.auto_suggestions_provider
+  if type(suggestion_provider_name) == "function" then
+    suggestion_provider_name = suggestion_provider_name(Config.provider)
+  end
+  vim.validate("auto_suggestions_provider", suggestion_provider_name, "string")
+  -- ACP sessions cannot serve suggestion requests, even when explicitly selected.
+  if Config.acp_providers[suggestion_provider_name] then return nil end
+
+  local suggestion_provider = M[suggestion_provider_name]
+  -- Lazy providers missed startup's login event; initialize once and prompt immediately if needed.
+  if not initialized_providers[suggestion_provider] then
+    E.setup({ provider = suggestion_provider, refresh = true })
+  end
+  return suggestion_provider
 end
 
 ---@return AvanteProviderFunctor | AvanteBedrockProviderFunctor

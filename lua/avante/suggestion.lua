@@ -160,10 +160,14 @@ end
 function Suggestion:suggest()
   Utils.debug("suggesting")
 
-  local provider_name = Config.auto_suggestions_provider or Config.provider
-  if Config.acp_providers[provider_name] then return end
-  local provider = Providers[provider_name]
-
+  local suggestion_provider = Providers.get_auto_suggestions_provider()
+  if not suggestion_provider then
+    Utils.warn(
+      'Auto suggestions require an API provider. Set auto_suggestions_acp_provider to a configured API provider, e.g. "ollama", when using ACP.',
+      { once = true }
+    )
+    return
+  end
   local ctx = self:ctx()
   local doc = Utils.get_doc()
   ctx.prev_doc = doc
@@ -245,7 +249,7 @@ L5:     pass
 
   local Llm = require("avante.llm")
   Llm.stream({
-    provider = provider,
+    provider = suggestion_provider,
     ask = true,
     diagnostics = vim.json.encode(diagnostics),
     selected_files = { { content = code_content, file_type = filetype, path = "" } },

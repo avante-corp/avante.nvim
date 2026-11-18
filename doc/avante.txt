@@ -462,57 +462,69 @@ avante.Config.RagService                              *avante.Config.RagService*
 avante.CoreConfig : avante.Config                            *avante.CoreConfig*
 
 
+avante.AutoSuggestionsProvider                  *avante.AutoSuggestionsProvider*
+
+    Type: ~
+        avante.ProviderName|fun(current_provider_name:avante.ProviderName):avante.ProviderName
+
+
 avante.Config                                                    *avante.Config*
 
     Fields: ~
-        {debug}                       (boolean)
-        {log_level}                   (vim.log.levels)                          will keep requests and responses on the filesystem. Check the logs to find their paths
-        {memory_summary_provider?}    (avante.ProviderName)
-        {mode}                        (avante.Mode)                             Avante.nvim provides two interaction modes:
-                                                                                - *agentic* (default): Uses AI tools to automatically generate and apply code changes
-                                                                                - *legacy*: Uses the traditional planning method without automatic tool execution
+        {debug}                           (boolean)
+        {log_level}                       (vim.log.levels)                          will keep requests and responses on the filesystem. Check the logs to find their paths
+        {memory_summary_provider?}        (avante.ProviderName)
+        {mode}                            (avante.Mode)                             Avante.nvim provides two interaction modes:
+                                                                                    - *agentic* (default): Uses AI tools to automatically generate and apply code changes
+                                                                                    - *legacy*: Uses the traditional planning method without automatic tool execution
 
-                                                                                **When should you use legacy mode?**
-                                                                                - If you prefer more control over what actions the AI takes
-                                                                                - If you're concerned about security with automatic tool execution
-                                                                                - If you want to manually review each step before applying changes
-                                                                                - If you're working in a sensitive environment where automatic code changes aren't desired
-        {auto_suggestions_provider?}  (avante.ProviderName)                     WARNING: Since auto-suggestions are a high-frequency operation and therefore expensive,
-                                                                                currently designating it as `copilot` provider is dangerous because: https://github.com/yetone/avante.nvim/issues/1048
-                                                                                Of course, you can reduce the request frequency by increasing `suggestion.debounce`.
-        {providers}                   (table<string,AvanteProvider>)           To add support for custom provider, follow the format below
-                                                                               See https://github.com/avante-corp/avante.nvim/wiki#custom-providers for more details
-        {acp_providers}               (table<string,AvanteACPProvider>)        Agent Client Protocol providers.  |avante-acp|
-        {provider?}                   (avante.ProviderName)
-                                                                               Default provider on startup. An explicit :AvanteSwitchProvider --save choice takes precedence.
-                                                                               If undefined, avante loads the last provider used.
-        {system_prompt?}              (string|fun():string)
-                                                                               System prompt
-        {override_prompt_dir}         (string|nil|fun():string)                 override_prompt_dir allows you to specify a directory containing your own custom prompt templates, which will override the built-in templates. This is useful if you want to maintain a set of custom prompts outside of your Neovim configuration.
-                                                                               <lua
-                                                                                -- Example: Override with prompts from a specific directory
-                                                                                vim.g.avante = {
-                                                                                  override_prompt_dir = vim.fn.expand("~/.config/nvim/avante_prompts"),
-                                                                                })
+                                                                                    **When should you use legacy mode?**
+                                                                                    - If you prefer more control over what actions the AI takes
+                                                                                    - If you're concerned about security with automatic tool execution
+                                                                                    - If you want to manually review each step before applying changes
+                                                                                    - If you're working in a sensitive environment where automatic code changes aren't desired
+        {auto_suggestions_provider?}      (avante.AutoSuggestionsProvider)          WARNING: Since auto-suggestions are a high-frequency operation and therefore expensive,
+                                                                                    currently designating it as `copilot` provider is dangerous because: https://github.com/yetone/avante.nvim/issues/1048
+                                                                                    Of course, you can reduce the request frequency by increasing `suggestion.debounce`.
+                                                                                    A function is called for each suggestion with the current chat provider name and must return a provider name.
+                                                                                    By default, suggestions follow the current API provider or use auto_suggestions_acp_provider for ACP.
+        {auto_suggestions_acp_provider?}  (avante.ProviderName)                     API provider for inline code suggestions while an ACP agent handles chat requests.
+                                                                                    The default auto_suggestions_provider function reads this field when the current provider is in acp_providers.
+                                                                                    Set to an API provider name in providers (e.g. "ollama"); acp_providers configures the separate chat agents.
+                                                                                    Defaults to nil; when unset, ACP suggestions are skipped with a one-time warning.
+        {providers}                       (table<string,AvanteProvider>)           To add support for custom provider, follow the format below
+                                                                                   See https://github.com/avante-corp/avante.nvim/wiki#custom-providers for more details
+        {acp_providers}                   (table<string,AvanteACPProvider>)        Agent Client Protocol providers.  |avante-acp|
+        {provider?}                       (avante.ProviderName)
+                                                                                   Default provider on startup. An explicit :AvanteSwitchProvider --save choice takes precedence.
+                                                                                   If undefined, avante loads the last provider used.
+        {system_prompt?}                  (string|fun():string)
+                                                                                   System prompt
+        {override_prompt_dir}             (string|nil|fun():string)                 override_prompt_dir allows you to specify a directory containing your own custom prompt templates, which will override the built-in templates. This is useful if you want to maintain a set of custom prompts outside of your Neovim configuration.
+                                                                                   <lua
+                                                                                    -- Example: Override with prompts from a specific directory
+                                                                                    vim.g.avante = {
+                                                                                      override_prompt_dir = vim.fn.expand("~/.config/nvim/avante_prompts"),
+                                                                                    })
 
-                                                                                -- Example: Override with prompts from a function (dynamic directory)
-                                                                                vim.g.avante = {
-                                                                                  override_prompt_dir = function()
-                                                                                    -- Your logic to determine the prompt directory
-                                                                                    return vim.fn.expand("~/.config/nvim/my_dynamic_prompts")
-                                                                                  end,
-                                                                                })
-                                                                               <
-        {rules}                       (table)
-        {rag_service}                 (avante.Config.RagService)               RAG service configuration.
+                                                                                    -- Example: Override with prompts from a function (dynamic directory)
+                                                                                    vim.g.avante = {
+                                                                                      override_prompt_dir = function()
+                                                                                        -- Your logic to determine the prompt directory
+                                                                                        return vim.fn.expand("~/.config/nvim/my_dynamic_prompts")
+                                                                                      end,
+                                                                                    })
+                                                                                   <
+        {rules}                           (table)
+        {rag_service}                     (avante.Config.RagService)               RAG service configuration.
 
-        {web_search_engine}           (avante.Config.WebSearchEngine)          Web search configuration.
-        {behaviour}                   (avante.Config.Behaviour)                Behaviour and automation options.
-        {prompt_logger}               (avante.Config.PromptLogger)             Prompt logging options.
-        {history}                     (avante.Config.History)                  Chat history storage options.
-        {windows}                     (avante.Config.Windows)
-        {disabled_tools}              (string[])                               You can choose to disable tools by their names in case you want to avoid its usage (like Claude 3.7 overusing the python tool). For example: `{ "python" }`
-        {custom_tools}                (AvanteLLMTool[]|fun():AvanteLLMTool[])
+        {web_search_engine}               (avante.Config.WebSearchEngine)          Web search configuration.
+        {behaviour}                       (avante.Config.Behaviour)                Behaviour and automation options.
+        {prompt_logger}                   (avante.Config.PromptLogger)             Prompt logging options.
+        {history}                         (avante.Config.History)                  Chat history storage options.
+        {windows}                         (avante.Config.Windows)
+        {disabled_tools}                  (string[])                               You can choose to disable tools by their names in case you want to avoid its usage (like Claude 3.7 overusing the python tool). For example: `{ "python" }`
+        {custom_tools}                    (AvanteLLMTool[]|fun():AvanteLLMTool[])
 
 
 avante.Mode                                                        *avante.Mode*
@@ -3676,6 +3688,13 @@ M.get_config({provider_name})                      *avante-providers.get_config*
 
     Returns: ~
         (AvanteSupportedProvider)
+
+
+                                *avante-providers.get_auto_suggestions_provider*
+M.get_auto_suggestions_provider()
+
+    Returns: ~
+        (AvanteProviderFunctor|AvanteBedrockProviderFunctor|nil)
 
 
 M.get_memory_summary_provider()   *avante-providers.get_memory_summary_provider*
