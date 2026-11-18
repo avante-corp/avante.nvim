@@ -1359,15 +1359,13 @@ async fn run(input: Input, events: Events, mut cancelled: watch::Receiver<bool>)
             return;
         }
     };
+    let effect = EffectKind::Completion {
+        request: Arc::new(request),
+        stream: true,
+    };
     let Some(reply) = run_until_cancelled(
         &mut cancelled,
-        model.handle(
-            EffectKind::Completion {
-                request: Arc::new(request),
-                stream: true,
-            },
-            Dispatch::new(EffectId::from_raw(0), true),
-        ),
+        model.handle(effect, Dispatch::new(EffectId::from_raw(0), true)),
     )
     .await
     else {
@@ -1530,6 +1528,21 @@ async fn run(input: Input, events: Events, mut cancelled: watch::Receiver<bool>)
     }
 }
 
+fn check(input: Input) -> Result<Vec<String>, String> {
+    input.validate()?;
+    let request = completion_request(&input.provider, input.prompt)?;
+    let model = rig_compat::build_check_model(&input.provider)?;
+    let warnings = match model.check(&request) {
+        Ok(()) => Vec::new(),
+        Err(rig::completion::CheckError::Unsupported(refused)) => refused,
+        Err(error) => return Err(error.to_string()),
+    };
+    Ok(warnings
+        .into_iter()
+        .map(|warning| warning.to_string())
+        .collect())
+}
+
 fn start(input: Input) -> LuaResult<NativeRequest> {
     input.validate().map_err(LuaError::external)?;
     spawn_worker(move |events, cancelled| run(input, events, cancelled))
@@ -1584,6 +1597,13 @@ fn avante_llm(lua: &Lua) -> LuaResult<LuaTable> {
     exports.set(
         "start",
         lua.create_function(|lua, input: LuaValue| start(input_from_lua(lua, input)?))?,
+    )?;
+    exports.set(
+        "check",
+        lua.create_function(|lua, input: LuaValue| {
+            let warnings = check(input_from_lua(lua, input)?).map_err(LuaError::external)?;
+            lua.to_value(&warnings)
+        })?,
     )?;
     exports.set(
         "request_headers",
@@ -1993,67 +2013,108 @@ mod tests {
     }
 
     #[test]
-    fn openai_protocols_omit_temperature_for_models_that_forbid_sampling() {
-        for protocol in [
-            ProtocolInput::Openai,
-            ProtocolInput::Copilot,
-            ProtocolInput::Azure,
+    fn preflight_checks_vertex_and_chatgpt_without_credentials() {
+        for (protocol, model, params, option) in [
+            (
+                ProtocolInput::Vertex,
+                "gemini-2.5-flash",
+                json!({"verbosity": "high"}),
+                "verbosity",
+            ),
+            (
+                ProtocolInput::Openai,
+                "gpt-6.1-sol",
+                json!({"temperature": 0.5, "reasoning_effort": "medium"}),
+                "temperature",
+            ),
         ] {
-            for route in [RouteInput::Chat, RouteInput::Responses] {
-                for (model, temperature) in [
-                    ("gpt-5", None),
-                    ("gpt-5-2025-08-07", None),
-                    ("custom-chat-model", Some(0.5)),
-                ] {
-                    let mut provider = provider("private_openai", Some(route));
-                    provider.protocol = protocol;
-                    provider.model = model.to_owned();
-                    let mut prompt = prompt();
-                    prompt.additional_params.as_mut().unwrap()["top_p"] = json!(0.9);
-                    let request = completion_request(&provider, prompt).unwrap();
-                    assert_eq!(
-                        request.temperature, temperature,
-                        "{protocol:?} {route:?} {model}"
-                    );
-                    assert_eq!(request.options.top_p, temperature.map(|_| 0.9));
+            let mut provider = provider("preflight", Some(RouteInput::Responses));
+            provider.protocol = protocol;
+            provider.model = model.to_owned();
+            provider.api_key = None;
+            if matches!(protocol, ProtocolInput::Openai) {
+                provider.auth = Some(AuthInput::Chatgpt);
+                provider.auth_home = Some("/nonexistent/preflight-credentials".to_owned());
+            }
+            let mut prompt = prompt();
+            prompt.additional_params = Some(params);
+            let warnings = check(Input { provider, prompt }).unwrap();
+            assert!(
+                warnings.iter().any(|warning| warning.contains(option)),
+                "{protocol:?}: {warnings:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn openai_preflight_reports_sampling_rejections_through_the_model_builder() {
+        for (protocol, route, custom_top_p_rejected) in [
+            (ProtocolInput::Openai, RouteInput::Chat, false),
+            (ProtocolInput::Openai, RouteInput::Responses, false),
+            (ProtocolInput::Copilot, RouteInput::Chat, true),
+            (ProtocolInput::Copilot, RouteInput::Responses, false),
+            (ProtocolInput::Azure, RouteInput::Chat, false),
+            (ProtocolInput::Azure, RouteInput::Responses, true),
+        ] {
+            for (model, rejected) in [
+                ("gpt-5-2025-08-07", [true, true]),
+                ("custom-chat-model", [false, custom_top_p_rejected]),
+            ] {
+                let mut provider = provider("private_openai", Some(route));
+                provider.protocol = protocol;
+                provider.model = model.to_owned();
+                if matches!(protocol, ProtocolInput::Azure) {
+                    provider.deployment = Some("production-deployment".to_owned());
+                    provider.base_url = Some("https://example.test".to_owned());
+                    provider.api_version = Some("2025-04-01-preview".to_owned());
                 }
+                let mut prompt = prompt();
+                prompt.additional_params.as_mut().unwrap()["top_p"] = json!(0.9);
+                let warnings = check(Input { provider, prompt }).unwrap();
+                assert_eq!(
+                    ["`temperature` ", "`top_p` "]
+                        .map(|option| warnings.iter().any(|warning| warning.starts_with(option))),
+                    rejected,
+                    "{protocol:?} {route:?} {model}: {warnings:?}"
+                );
             }
         }
     }
 
     #[test]
-    fn claude_protocols_fit_sampling_to_the_provider_catalog() {
+    fn claude_preflight_checks_sampling_without_credentials() {
         for protocol in [ProtocolInput::Claude, ProtocolInput::Bedrock] {
-            for (claude_model, bedrock_model, temperature) in [
-                ("claude-opus-4-7", "anthropic.claude-opus-4-7", None),
-                ("claude-opus-4-8", "us.anthropic.claude-opus-4-8", None),
+            for (claude_model, bedrock_model, sampling_rejected) in [
+                ("claude-opus-4-8", "us.anthropic.claude-opus-4-8", true),
                 (
                     "us.anthropic.claude-opus-4-8-v1:0",
                     "us.anthropic.claude-opus-4-8-v1:0",
-                    Some(0.5),
+                    false,
                 ),
-                (
-                    "claude-haiku-4-5-20251001",
-                    "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-                    Some(0.5),
-                ),
-                (
-                    "claude-sonnet-4-6",
-                    "us.anthropic.claude-sonnet-4-6",
-                    Some(0.5),
-                ),
-                ("custom-claude", "custom-claude", Some(0.5)),
+                ("claude-sonnet-4-6", "us.anthropic.claude-sonnet-4-6", false),
+                ("custom-claude", "custom-claude", false),
             ] {
                 let mut provider = provider("anthropic", None);
                 provider.protocol = protocol;
+                provider.api_key = None;
                 let model = if matches!(protocol, ProtocolInput::Bedrock) {
                     bedrock_model
                 } else {
                     claude_model
                 };
                 provider.model = model.to_owned();
-                let request = completion_request(&provider, prompt()).unwrap();
-                assert_eq!(request.temperature, temperature, "{protocol:?} {model}");
+                if matches!(protocol, ProtocolInput::Bedrock) {
+                    provider.bedrock = Some(serde_json::from_value(json!({})).unwrap());
+                }
+                let mut prompt = prompt();
+                prompt.additional_params.as_mut().unwrap()["seed"] = json!(7);
+                let warnings = check(Input { provider, prompt }).unwrap();
+                assert_eq!(
+                    ["`temperature` ", "`seed` "]
+                        .map(|option| warnings.iter().any(|warning| warning.starts_with(option))),
+                    [sampling_rejected, true],
+                    "{protocol:?} {model}: {warnings:?}"
+                );
             }
         }
     }
@@ -2158,6 +2219,12 @@ mod tests {
     #[test]
     fn responses_requests_reasoning_summaries_without_overriding_explicit_choices() {
         for (model, route, params, expected) in [
+            (
+                "gpt-6.1-sol",
+                RouteInput::Responses,
+                json!({"reasoning_effort": "none"}),
+                Value::Null,
+            ),
             (
                 "gpt-5.6-sol",
                 RouteInput::Responses,

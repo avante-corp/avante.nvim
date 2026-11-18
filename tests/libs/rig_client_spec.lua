@@ -441,6 +441,38 @@ describe("Rig client adapter", function()
     assert.same("5m", ollama.extra_request_body.options.keep_alive)
   end)
 
+  for _, current_provider in ipairs({ "openai", "claude" }) do
+    it("checks the new provider and model when selecting from " .. current_provider, function()
+      local original_provider = rawget(Config, "provider")
+      rawset(Config, "provider", nil)
+      Config.override({ provider = current_provider })
+      configure_provider("openai", {
+        api_key_name = "",
+        model_names = { "gpt-6.1-sol" },
+        list_models = {},
+        setup = function() end,
+      })
+      configure_provider("claude", { api_key_name = "", list_models = false })
+      Config.providers = { openai = Config.providers.openai, claude = Config.providers.claude }
+      local get_stub = stub(require("avante"), "get")
+      local checked = {}
+      local check_stub = stub(RigClient, "check_provider").invokes(
+        function(provider) checked[#checked + 1] = { Config.provider, provider._name, provider.model } end
+      )
+      local selector_stub = stub(require("avante.ui.selector"), "new").invokes(function(_, opts)
+        return { open = function() opts.on_select({ "openai/gpt-6.1-sol" }) end }
+      end)
+      local ok, err = pcall(function() require("avante.model_selector").open(true) end)
+      selector_stub:revert()
+      check_stub:revert()
+      get_stub:revert()
+      rawset(Config, "provider", original_provider)
+
+      assert.is_true(ok, err)
+      assert.same({ { "openai", "openai", "gpt-6.1-sol" } }, checked)
+    end)
+  end
+
   it("updates streaming tool calls from partial argument events", function()
     local loaded_native = package.loaded.avante_llm
     local first_poll = true

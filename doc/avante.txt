@@ -3651,6 +3651,9 @@ avante.Providers                                              *avante.Providers*
 EnvironmentHandler                                          *EnvironmentHandler*
 
 
+M.check()                                               *avante-providers.check*
+
+
 M.setup()                                               *avante-providers.setup*
 
 
