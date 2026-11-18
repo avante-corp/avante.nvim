@@ -3057,7 +3057,7 @@ function Sidebar:reload_chat_history(filename, project_root)
     -- New sessions keep the current defaults; saved sessions restore their provider and latest turn settings.
     if not self.is_generating and history and Config.acp_providers[history.acp_provider] then
       Config.override({ provider = history.acp_provider })
-    elseif not self.is_generating and context then
+    elseif not self.is_generating and context and Config.providers[context.provider] then
       local params = vim.deepcopy(Providers[context.provider].extra_request_body or {})
       params.reasoning_effort = context.reasoning_effort
       -- An existing nested effort takes precedence when building requests.
