@@ -240,6 +240,7 @@ Common options:
        enable_token_counting = true,
        show_token_usage = false,
        auto_add_current_file = true,
+       add_dropped_files_to_context = true,
        auto_approve_tool_permissions = true,
        confirmation_ui_style = "inline_buttons",
        acp_follow_agent_locations = true,
@@ -407,6 +408,7 @@ avante.Config.Behaviour                                *avante.Config.Behaviour*
         {enable_fastapply}                    (boolean)           Enable the fast-apply model flow.
         {include_generated_by_commit_line?}   (boolean)           Controls if 'Generated-by: <provider/model>' line is added to git commit message
         {auto_add_current_file?}              (boolean)           Automatically add the current file when opening a new chat.
+        {add_dropped_files_to_context}        (boolean)           Add files pasted as paths in the input (e.g. dragged and dropped onto the terminal) to the selected files instead of inserting their path.
         {confirmation_ui_style?}              ()
 
 

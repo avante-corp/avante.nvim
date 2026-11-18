@@ -499,6 +499,7 @@ _See [config.lua#L9](./lua/avante/config.lua) for the up to date full default co
     enable_token_counting = true, -- Whether to enable token counting. Default to true.
     show_token_usage = false, -- Whether to show per-turn token usage summaries. Default to false.
     auto_add_current_file = true, -- Whether to automatically add the current file when opening a new chat. Default to true.
+    add_dropped_files_to_context = true, -- Add files dropped onto the terminal (pasted as paths in the input, e.g. with kitty) to the context. Default to true.
     auto_approve_tool_permissions = true, -- Default: auto-approve all tools (no prompts)
     -- Examples:
     -- auto_approve_tool_permissions = false,                -- Show permission prompts for all tools
