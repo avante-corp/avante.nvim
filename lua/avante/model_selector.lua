@@ -189,9 +189,6 @@ function M.open(all, timeout, no_cache, default_query)
       return
     end
 
-    -- Switch provider if needed
-    if choice.provider_name ~= Config.provider then require("avante.providers").refresh(choice.provider_name) end
-
     -- Update config with new model
     Config.override({
       providers = {
@@ -205,6 +202,11 @@ function M.open(all, timeout, no_cache, default_query)
 
     local provider_cfg = Providers[choice.provider_name]
     if provider_cfg then provider_cfg.model = choice.model end
+    if choice.provider_name ~= Config.provider then
+      Providers.refresh(choice.provider_name)
+    else
+      Providers.check()
+    end
 
     if Config.windows.sidebar_header.include_model then
       if sidebar and sidebar:is_open() then sidebar:render_result_header() end

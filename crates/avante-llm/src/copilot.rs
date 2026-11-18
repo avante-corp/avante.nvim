@@ -128,10 +128,11 @@ pub(super) async fn connect(
         .as_deref()
         .ok_or("missing Copilot credential directory")?;
     let context = context(home, events, &http, false).await?;
-    Ok(config(context, provider.route)?
+    let mut completion = config(context, provider.route)?
         .connect(http)
-        .completion(&provider.model)
-        .erase())
+        .completion(&provider.model);
+    completion.wire = super::rig_compat::with_openai_facts(completion.wire, &provider.model);
+    Ok(completion.erase())
 }
 
 fn client(timeout: Duration) -> Result<DynHttpClient, String> {

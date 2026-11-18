@@ -349,10 +349,13 @@ function Sidebar:open(opts)
       self:initialize()
       if opts.selection then self.code.selection = opts.selection end
       self:render(opts)
+      Providers.check()
       return self
     end
     self:focus()
   end
+
+  Providers.check()
 
   if not vim.g.avante_login or vim.g.avante_login == false then
     api.nvim_exec_autocmds("User", { pattern = Providers.env.REQUEST_LOGIN_PATTERN })

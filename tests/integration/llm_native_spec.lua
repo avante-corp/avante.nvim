@@ -376,6 +376,67 @@ describe("LLM native integration", function()
     end)
   end
 
+  for _, case in ipairs({
+    { name = "openai", model = "gpt-5", params = { temperature = 0.5 }, option = "temperature" },
+    { name = "claude", model = "claude-sonnet-4-6", params = { seed = 7 }, option = "seed" },
+  }) do
+    it("preflights " .. case.name .. " then sends without another warning", function()
+      local reply = case.name == "claude" and anthropic_reply({ { type = "text", text = "ok" } }, "end_turn")
+        or sse({ { choices = { { index = 0, delta = { content = "ok" }, finish_reason = "stop" } } } })
+          .. "data: [DONE]\n\n"
+      local endpoint, get_request = fake_openai(reply)
+      local header_calls = 0
+      configure_provider(case.name, {
+        model = case.model,
+        endpoint = endpoint,
+        api_key_name = "UNSET_PREFLIGHT_API_KEY",
+        use_response_api = false,
+        extra_request_body = case.params,
+        extra_headers = function(headers)
+          header_calls = header_calls + 1
+          return headers
+        end,
+      })
+      Config.provider = case.name
+      api_key_stub = stub(Providers[case.name], "parse_api_key").invokes(
+        function() error("preflight must not read credentials") end
+      )
+      local warnings = {}
+      local warn_stub = stub(require("avante.utils"), "warn").invokes(
+        function(message, opts) warnings[#warnings + 1] = { message = message, opts = opts } end
+      )
+      local original_login = vim.g.avante_login
+      vim.g.avante_login = true
+      local ok, err = pcall(function()
+        local sidebar = setmetatable({ code = {} }, { __index = require("avante.sidebar") })
+        function sidebar:is_open() return true end
+        function sidebar:focus() end
+        sidebar:open({})
+        assert.stub(api_key_stub).was_not_called()
+        assert.same(0, header_calls)
+        assert.is_nil(get_request())
+        assert.same(1, #warnings)
+        assert.matches(case.option, warnings[1].message, nil, true)
+        assert.matches(case.model, warnings[1].message, nil, true)
+        assert.matches("is not supported", warnings[1].message, nil, true)
+        assert.is_nil(warnings[1].opts)
+
+        api_key_stub:revert()
+        api_key_stub = stub(Providers[case.name], "parse_api_key").returns("test-key")
+        local _, reason = stream_reply(Providers[case.name], { { role = "user", content = "hello" } })
+        assert.same("complete", reason)
+        assert.same(1, header_calls)
+        local body = vim.json.decode(assert(get_request()):match("\r\n\r\n(.*)"))
+        assert.is_nil(body[case.option])
+        assert.same(1, #warnings)
+        assert.same(case.params, Providers[case.name].extra_request_body)
+      end)
+      warn_stub:revert()
+      vim.g.avante_login = original_login
+      assert.is_true(ok, err)
+    end)
+  end
+
   it("keeps completed text in history when a later Anthropic block fails", function()
     local endpoint = fake_openai(sse({
       {
