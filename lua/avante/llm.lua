@@ -1248,7 +1248,7 @@ end
 ---@param opts AvanteLLMStreamOptions
 ---@return table?
 function M._stream(opts)
-  if opts.acp_context or Api.is_acp_provider() then return M._stream_acp(opts) end
+  if opts.acp_context or (not opts.provider and Api.is_acp_provider()) then return M._stream_acp(opts) end
 
   local provider = opts.provider or Providers[Config.provider]
   opts.session_ctx = opts.session_ctx or {}
