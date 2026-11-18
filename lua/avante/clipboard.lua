@@ -56,4 +56,47 @@ function M.paste_image(line)
   return ImgClip.paste_image(opts, line)
 end
 
+---Turn one pasted line into a filesystem path, if it looks like one.
+---Handles `file://` URIs (as sent by terminals for drag and drop) and quoted paths.
+---@param line string
+---@return string?
+local function pasted_line_to_path(line)
+  line = vim.trim(line)
+  if line == "" then return nil end
+  local quote = line:sub(1, 1)
+  if (quote == "'" or quote == '"') and line:sub(-1) == quote and #line >= 2 then line = line:sub(2, -2) end
+  if line:match("^file://") then
+    local ok, fname = pcall(vim.uri_to_fname, line)
+    if not ok then return nil end
+    line = fname
+  end
+  line = vim.fn.expand(line)
+  if not vim.uv.fs_stat(line) then return nil end
+  return line
+end
+
+---Add pasted file paths to the sidebar's selected files.
+---This is what drag and dropping files onto a terminal (e.g. kitty) does: it
+---pastes the paths of the dropped files, one per line.
+---@param lines string[]
+---@return boolean true if every non-empty line was an existing path and was added
+function M.paste_files(lines)
+  local paths = {} ---@type string[]
+  for _, line in ipairs(lines) do
+    if vim.trim(line) ~= "" then
+      local path = pasted_line_to_path(line)
+      if not path then return false end
+      table.insert(paths, path)
+    end
+  end
+  if #paths == 0 then return false end
+
+  local sidebar = require("avante").get()
+  if not sidebar or not sidebar.file_selector then return false end
+  for _, path in ipairs(paths) do
+    sidebar.file_selector:add_selected_file(path)
+  end
+  return true
+end
+
 return M
