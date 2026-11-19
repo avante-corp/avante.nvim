@@ -363,9 +363,13 @@ end
 
 ---@return AvanteProviderFunctor | AvanteBedrockProviderFunctor | nil
 function M.get_auto_suggestions_provider()
-  local suggestion_provider_name = Config.auto_suggestions_provider
-  if type(suggestion_provider_name) == "function" then
-    suggestion_provider_name = suggestion_provider_name(Config.provider)
+  local configured_provider = Config.auto_suggestions_provider
+  ---@type avante.ProviderName|nil
+  local suggestion_provider_name
+  if type(configured_provider) == "function" then
+    suggestion_provider_name = configured_provider(Config.provider)
+  else
+    suggestion_provider_name = configured_provider
   end
   vim.validate("auto_suggestions_provider", suggestion_provider_name, "string")
   -- ACP sessions cannot serve suggestion requests, even when explicitly selected.
