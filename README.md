@@ -1125,9 +1125,11 @@ Providers that support subscription authentication can be signed in with `:Avant
 
 Avante.nvim supports the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/overview/introduction), enabling seamless integration with AI agents that follow this standardized communication protocol. ACP provides a unified way for AI agents to interact with development environments, offering enhanced capabilities for code editing, file operations, and tool execution.
 
-ACP protocol handling uses the [official Rust SDK][acp-rust-sdk], with a bounded stdio adapter in the native module. The required native module is included in release artifacts and is built with the other native dependencies when running `:AvanteBuild source=true`.
+ACP protocol handling and stdio process management use the [official Rust SDK][acp-rust-sdk]. The required native module is included in release artifacts and is built with the other native dependencies when running `:AvanteBuild source=true`.
 
-Cancellation also works while the agent connects or loads a session. During a prompt, Avante waits up to two seconds for cancellation to complete, then terminates an unresponsive connection. Reconnecting to the same provider preserves the saved session when the agent supports loading it. Incoming ACP messages larger than 8 MiB are rejected; when queued events fill the native buffer, reading pauses until Neovim catches up.
+Cancellation also works while the agent connects or loads a session. During a prompt, Avante waits up to two seconds for cancellation to complete, then terminates an unresponsive connection. Reconnecting to the same provider preserves the saved session when the agent supports loading it.
+
+Pending events are buffered without a capacity limit until Neovim consumes them; large outputs or slow consumption can increase memory usage.
 
 Avante provides a set of default providers (codex, gemini, claude-code,...), but users can also create their own providers. Providers are configured in the `acp_providers` section of your configuration:
 See `:h avante-acp` and [Custom Providers](https://github.com/yetone/avante.nvim/wiki/Custom-providers) for more information.

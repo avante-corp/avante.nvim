@@ -4,17 +4,19 @@ use super::{
     normalize_session_configuration,
 };
 use agent_client_protocol::schema::ProtocolVersion;
-use agent_client_protocol::schema::v1::{
-    AgentCapabilities, AuthMethod, AuthenticateRequest, CancelNotification, ClientCapabilities,
-    CloseSessionRequest, ContentBlock, FileSystemCapabilities, Implementation, InitializeRequest,
-    McpServer, PermissionOptionId, PromptRequest, ReadTextFileRequest, ReadTextFileResponse,
-    RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    SelectedPermissionOutcome, SessionNotification, SessionUpdate, SetSessionConfigOptionRequest,
-    SetSessionModeRequest, WriteTextFileRequest, WriteTextFileResponse,
-};
 use agent_client_protocol::util::MatchDispatch;
+use agent_client_protocol::v1::ConnectionTo;
+use agent_client_protocol::v1::schema::{
+    AgentCapabilities, AuthMethod, AuthenticateRequest, CancelNotification, ClientCapabilities,
+    ClientSessionCapabilities, CloseSessionRequest, ContentBlock, FileSystemCapabilities,
+    Implementation, InitializeRequest, McpServer, NoticeCapabilities, PermissionOptionId,
+    PromptRequest, ReadTextFileRequest, ReadTextFileResponse, RequestPermissionOutcome,
+    RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
+    SessionNotification, SessionUpdate, SetSessionConfigOptionRequest, SetSessionModeRequest,
+    WriteTextFileRequest, WriteTextFileResponse,
+};
 use agent_client_protocol::{
-    AcpAgent, AcpAgentConfig, Agent, ConnectionTo, Dispatch, JsonRpcRequest, Responder,
+    AcpAgent, AcpAgentConfig, Agent, Dispatch, JsonRpcRequest, RequestCancellationHandle, Responder,
 };
 use serde::Serialize;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -22,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::{Notify, mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot};
 
 const MAX_SESSION_LIST_PAGES: usize = 50;
 const CONTROL_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
@@ -40,6 +42,7 @@ struct SessionHandle {
     prompt_operation_id: Option<u64>,
     prompt_completion: Option<oneshot::Sender<()>>,
     prompt_reply: Option<oneshot::Receiver<()>>,
+    prompt_cancellation: Option<RequestCancellationHandle>,
     cancel_deadline: Option<tokio::time::Instant>,
     config_backend: Option<ConfigBackend>,
 }
@@ -53,6 +56,7 @@ impl SessionHandle {
             prompt_operation_id: None,
             prompt_completion: None,
             prompt_reply: None,
+            prompt_cancellation: None,
             cancel_deadline: None,
             config_backend: None,
         }
@@ -133,13 +137,9 @@ async fn run(
     events: Events,
 ) -> agent_client_protocol::Result<()> {
     let session_close_timeout = Duration::from_millis(config.session_close_timeout_ms);
-    push(
-        &events,
-        Event::StateChanged {
-            state: ConnectionState::Connecting,
-        },
-    )
-    .await;
+    events.push(Event::StateChanged {
+        state: ConnectionState::Connecting,
+    });
     let agent = AcpAgent::new(
         AcpAgentConfig::new(&config.command)
             .args(config.args.clone())
@@ -148,25 +148,21 @@ async fn run(
     let responders = Responders::default();
     let sessions = Sessions::default();
     let next_request_id = Arc::new(AtomicU64::new(1));
-    let received = Arc::new(Notify::new());
-    let agent = crate::transport::BoundedAgent {
-        agent,
-        received: Arc::clone(&received),
-    };
     let handler_events = Arc::clone(&events);
     let handler_responders = Arc::clone(&responders);
     let handler_sessions = Arc::clone(&sessions);
     let mut pending_commands = VecDeque::new();
-    agent_client_protocol::Client
-        .builder()
-        .on_receive_dispatch(async move |message: Dispatch, _cx| {
-            received.notify_one();
-            route_dispatch(message, &handler_events, &handler_responders, &handler_sessions, &next_request_id).await
+    let mut terminating = events.terminating.subscribe();
+    let connection = agent_client_protocol::Client
+        .v1()
+        .on_receive_dispatch(async move |message: agent_client_protocol::v1::Dispatch, _cx| {
+            route_dispatch(message.into_raw(), &handler_events, &handler_responders, &handler_sessions, &next_request_id).await
         }, agent_client_protocol::on_receive_dispatch!())
         .connect_with(agent, async move |connection| {
             let client_capabilities = ClientCapabilities::new().fs(FileSystemCapabilities::new()
                 .read_text_file(config.read_text_file)
-                .write_text_file(config.write_text_file));
+                .write_text_file(config.write_text_file))
+                .session(ClientSessionCapabilities::new().notices(NoticeCapabilities::new()));
             let initialize = InitializeRequest::new(ProtocolVersion::V1)
                 .client_capabilities(client_capabilities)
                 .client_info(client_implementation());
@@ -222,33 +218,22 @@ async fn run(
             }
 
             let capabilities = initialized.agent_capabilities;
-            push(
-                &events,
-                Event::Initialized {
-                    supports_load_session: capabilities.load_session,
-                    supports_list_sessions: capabilities.session_capabilities.list.is_some(),
-                },
-            )
-            .await;
-            push(
-                &events,
-                Event::StateChanged {
-                    state: ConnectionState::Ready,
-                },
-            )
-            .await;
+            events.push(Event::Initialized {
+                supports_load_session: capabilities.load_session,
+                supports_list_sessions: capabilities.session_capabilities.list.is_some(),
+            });
+            events.push(Event::StateChanged {
+                state: ConnectionState::Ready,
+            });
 
-            let mut terminating = events.terminating.subscribe();
             loop {
-                if *terminating.borrow() { break; }
                 let command = if let Some(command) = pending_commands.pop_front() {
                     command
                 } else {
                     let deadline = sessions.lock().map_err(|_| state_error())?
                         .values().filter_map(|session| session.cancel_deadline).min();
                     let command = tokio::select! {
-                        _ = terminating.wait_for(|terminating| *terminating) => break,
-                        command = wait_for_command_or_close(&mut commands, connection.incoming_closed()) => command?,
+                        command = wait_for_command_or_close(&mut commands, connection.incoming_closed()) => command,
                         () = async {
                             if let Some(deadline) = deadline {
                                 tokio::time::sleep_until(deadline).await;
@@ -298,8 +283,7 @@ async fn run(
                             &events,
                             &responders,
                             &sessions,
-                        )
-                        .await?
+                        )?
                         {
                             break;
                         }
@@ -307,20 +291,22 @@ async fn run(
                 }
             }
             Ok(())
-        })
-        .await
+        });
+    // Dropping the SDK connection cancels blocked I/O and kills its process group.
+    tokio::select! {
+        result = connection => result,
+        _ = terminating.wait_for(|terminating| *terminating) => Ok(()),
+    }
 }
 
 async fn wait_for_command_or_close(
     commands: &mut mpsc::UnboundedReceiver<Command>,
     incoming_closed: impl Future<Output = ()>,
-) -> agent_client_protocol::Result<Option<Command>> {
+) -> Option<Command> {
     tokio::select! {
-        command = commands.recv() => Ok(command),
-        () = incoming_closed => Err(agent_client_protocol::Error::new(
-            -32603,
-            "ACP agent connection closed",
-        )),
+        command = commands.recv() => command,
+        // Let the SDK collect the process exit status and stderr after stdout EOF.
+        () = incoming_closed => None,
     }
 }
 
@@ -371,7 +357,7 @@ where
         .prepare_request(request)
         .on_receiving_result(async move |result| {
             if send.send(()).is_ok() {
-                complete_operation(&events, operation_id, handle(result).await).await;
+                complete_operation(&events, operation_id, handle(result).await);
             }
             Ok(())
         })?;
@@ -430,7 +416,7 @@ fn abandon_restore(
     Ok(())
 }
 
-async fn dispatch(
+fn dispatch(
     command: Command,
     connection: &ConnectionTo<Agent>,
     capabilities: &AgentCapabilities,
@@ -448,7 +434,7 @@ async fn dispatch(
                 &request.mcp_servers,
                 capabilities,
             ) {
-                fail_operation(events, operation_id, error).await;
+                fail_operation(events, operation_id, error);
                 return Ok(true);
             }
             let connection = connection.clone();
@@ -488,7 +474,7 @@ async fn dispatch(
                 })
                 .await;
                 if let Err(error) = result {
-                    fail_operation(&events, operation_id, error).await;
+                    fail_operation(&events, operation_id, error);
                 }
                 Ok(())
             })?;
@@ -502,8 +488,7 @@ async fn dispatch(
                     events,
                     operation_id,
                     unsupported("agent does not support session/load"),
-                )
-                .await;
+                );
                 return Ok(true);
             }
             if let Err(error) = validate_session_setup(
@@ -511,7 +496,7 @@ async fn dispatch(
                 &request.mcp_servers,
                 capabilities,
             ) {
-                fail_operation(events, operation_id, error).await;
+                fail_operation(events, operation_id, error);
                 return Ok(true);
             }
             let connection = connection.clone();
@@ -557,7 +542,7 @@ async fn dispatch(
                 .await;
                 if let Err(error) = result {
                     abandon_restore(&sessions, &session_id, operation_id)?;
-                    fail_operation(&events, operation_id, error).await;
+                    fail_operation(&events, operation_id, error);
                 }
                 Ok(())
             })?;
@@ -571,8 +556,7 @@ async fn dispatch(
                     events,
                     operation_id,
                     unsupported("agent does not support session/resume"),
-                )
-                .await;
+                );
                 return Ok(true);
             }
             if let Err(error) = validate_session_setup(
@@ -580,7 +564,7 @@ async fn dispatch(
                 &request.mcp_servers,
                 capabilities,
             ) {
-                fail_operation(events, operation_id, error).await;
+                fail_operation(events, operation_id, error);
                 return Ok(true);
             }
             let connection = connection.clone();
@@ -627,7 +611,7 @@ async fn dispatch(
                     .await;
                 if let Err(error) = result {
                     abandon_restore(&sessions, &session_id, operation_id)?;
-                    fail_operation(&events, operation_id, error).await;
+                    fail_operation(&events, operation_id, error);
                 }
                 Ok(())
             })?;
@@ -641,8 +625,7 @@ async fn dispatch(
                     events,
                     operation_id,
                     unsupported("agent does not support session/list"),
-                )
-                .await;
+                );
                 return Ok(true);
             }
             let connection = connection.clone();
@@ -655,7 +638,7 @@ async fn dispatch(
                     list_all_sessions(&task_connection, request),
                 )
                 .await;
-                complete_operation(&events, operation_id, result).await;
+                complete_operation(&events, operation_id, result);
                 Ok(())
             })?;
         }
@@ -668,8 +651,7 @@ async fn dispatch(
                     events,
                     operation_id,
                     unsupported("agent does not support session/close"),
-                )
-                .await;
+                );
                 return Ok(true);
             }
             let session_id = request.session_id.to_string();
@@ -693,8 +675,7 @@ async fn dispatch(
                     events,
                     operation_id,
                     unsupported("agent does not support session/delete"),
-                )
-                .await;
+                );
                 return Ok(true);
             }
             let session_id = request.session_id.to_string();
@@ -737,7 +718,7 @@ async fn dispatch(
                             }),
                         )
                         .await;
-                        if let Err(error) = result { fail_operation(&events, operation_id, error).await; }
+                        if let Err(error) = result { fail_operation(&events, operation_id, error); }
                         Ok(())
                     })?;
                 }
@@ -748,8 +729,7 @@ async fn dispatch(
                             operation_id,
                             agent_client_protocol::Error::invalid_params()
                                 .data("session mode must be a string"),
-                        )
-                        .await;
+                        );
                         return Ok(true);
                     };
                     if config_id != "mode" {
@@ -758,8 +738,7 @@ async fn dispatch(
                             operation_id,
                             agent_client_protocol::Error::invalid_params()
                                 .data("legacy sessions only expose the mode option"),
-                        )
-                        .await;
+                        );
                         return Ok(true);
                     }
                     let request = SetSessionModeRequest::new(session_id, mode_id.clone());
@@ -788,7 +767,7 @@ async fn dispatch(
                         )
                         .await;
                         if let Err(error) = result {
-                            fail_operation(&events, operation_id, error).await;
+                            fail_operation(&events, operation_id, error);
                         }
                         Ok(())
                     })?;
@@ -798,8 +777,7 @@ async fn dispatch(
                         events,
                         operation_id,
                         unsupported("session does not expose configurable options"),
-                    )
-                    .await;
+                    );
                 }
             }
         }
@@ -808,7 +786,7 @@ async fn dispatch(
             request,
         } => {
             if let Err(error) = validate_prompt(&request, capabilities) {
-                fail_operation(events, operation_id, error).await;
+                fail_operation(events, operation_id, error);
                 return Ok(true);
             }
             let started = {
@@ -823,13 +801,15 @@ async fn dispatch(
                     }
                     Some(_) => Err(agent_client_protocol::Error::invalid_request()
                         .data("session already has an active prompt")),
-                    None => Err(agent_client_protocol::Error::resource_not_found(None)
-                        .data("Session not found")),
+                    None => Err(agent_client_protocol::Error::from(
+                        agent_client_protocol::v1::schema::Error::resource_not_found(None),
+                    )
+                    .data("Session not found")),
                 }
             };
             match started {
                 Ok(()) => spawn_prompt(connection, operation_id, request, sessions, events)?,
-                Err(error) => fail_operation(events, operation_id, error).await,
+                Err(error) => fail_operation(events, operation_id, error),
             }
         }
         Command::RespondPermission {
@@ -859,6 +839,9 @@ async fn dispatch(
                 && session.cancel_deadline.is_none()
             {
                 session.cancel_deadline = Some(tokio::time::Instant::now() + CANCEL_TIMEOUT);
+                if let Some(cancellation) = &session.prompt_cancellation {
+                    cancellation.cancel()?;
+                }
             }
             cancel_pending_permissions(responders, &session_id)?;
             connection.send_notification(CancelNotification::new(session_id))?;
@@ -897,7 +880,10 @@ async fn route_dispatch(
         return match dispatch {
             Dispatch::Response(result, router) => router.route_with_result(result),
             Dispatch::Request(_, responder) => responder.respond_with_error(
-                agent_client_protocol::Error::resource_not_found(None).data("Session not found"),
+                agent_client_protocol::Error::from(
+                    agent_client_protocol::v1::schema::Error::resource_not_found(None),
+                )
+                .data("Session not found"),
             ),
             Dispatch::Notification(_) => Ok(()),
         };
@@ -944,16 +930,12 @@ async fn route_dispatch(
                 ),
                 _ => (None, None),
             };
-            push(
-                &notification_events,
-                Event::SessionUpdate {
-                    notification: to_json(notification)?,
-                    replayed,
-                    config_options,
-                    config_value,
-                },
-            )
-            .await;
+            notification_events.push(Event::SessionUpdate {
+                notification: to_json(notification)?,
+                replayed,
+                config_options,
+                config_value,
+            });
             Ok(())
         })
         .await
@@ -981,14 +963,10 @@ async fn route_dispatch(
                         },
                     );
             }
-            push(
-                &permission_events,
-                Event::PermissionRequest {
-                    request_id,
-                    request: to_json(request)?,
-                },
-            )
-            .await;
+            permission_events.push(Event::PermissionRequest {
+                request_id,
+                request: to_json(request)?,
+            });
             Ok(())
         })
         .await
@@ -1015,14 +993,10 @@ async fn route_dispatch(
                     responder,
                 },
             );
-            push(
-                &read_events,
-                Event::ReadTextFileRequest {
-                    request_id,
-                    request: to_json(request)?,
-                },
-            )
-            .await;
+            read_events.push(Event::ReadTextFileRequest {
+                request_id,
+                request: to_json(request)?,
+            });
             Ok(())
         })
         .await
@@ -1042,14 +1016,10 @@ async fn route_dispatch(
                     responder,
                 },
             );
-            push(
-                &write_events,
-                Event::WriteTextFileRequest {
-                    request_id,
-                    request: to_json(request)?,
-                },
-            )
-            .await;
+            write_events.push(Event::WriteTextFileRequest {
+                request_id,
+                request: to_json(request)?,
+            });
             Ok(())
         })
         .await
@@ -1114,8 +1084,7 @@ where
                             &response_events,
                             prompt_id,
                             agent_client_protocol::Error::request_cancelled(),
-                        )
-                        .await;
+                        );
                     }
                     cancel_pending_session(&responders, &session_id)?;
                     to_json(response)
@@ -1124,7 +1093,7 @@ where
         )
         .await;
         if let Err(error) = result {
-            fail_operation(&events, operation_id, error).await;
+            fail_operation(&events, operation_id, error);
         }
         Ok(())
     })
@@ -1138,6 +1107,7 @@ fn spawn_prompt(
     events: &Events,
 ) -> agent_client_protocol::Result<()> {
     let session_id = request.session_id.to_string();
+    let request = connection.prepare_request(request);
     let (done, receive) = oneshot::channel();
     let (reply, replied) = oneshot::channel();
     {
@@ -1145,22 +1115,21 @@ fn spawn_prompt(
         let session = sessions.get_mut(&session_id).ok_or_else(state_error)?;
         session.prompt_completion = Some(done);
         session.prompt_reply = Some(replied);
+        session.prompt_cancellation = Some(request.cancellation_handle());
     }
 
     let states = Arc::clone(sessions);
     let id = session_id.clone();
     let response_events = Arc::clone(events);
     // Enqueue the prompt before dispatching the next command (which may cancel it).
-    connection
-        .prepare_request(request)
-        .on_receiving_result(async move |result| {
-            let _ = reply.send(());
-            if let Some(done) = finish_prompt(&states, &id, operation_id)? {
-                complete_operation(&response_events, operation_id, result.and_then(to_json)).await;
-                drop(done);
-            }
-            Ok(())
-        })?;
+    request.on_receiving_result(async move |result| {
+        let _ = reply.send(());
+        if let Some(done) = finish_prompt(&states, &id, operation_id)? {
+            complete_operation(&response_events, operation_id, result.and_then(to_json));
+            drop(done);
+        }
+        Ok(())
+    })?;
 
     let events = Arc::clone(events);
     let sessions = Arc::clone(sessions);
@@ -1174,8 +1143,7 @@ fn spawn_prompt(
                 &events,
                 operation_id,
                 agent_client_protocol::Error::new(TIMEOUT_ERROR_CODE, "session/prompt timed out"),
-            )
-            .await;
+            );
         }
         Ok(())
     })
@@ -1192,6 +1160,7 @@ fn finish_prompt(
         session.prompt_operation_id = None;
         session.cancel_deadline = None;
         session.prompt_reply = None;
+        session.prompt_cancellation = None;
         return Ok(session.prompt_completion.take());
     }
     Ok(None)
@@ -1199,7 +1168,7 @@ fn finish_prompt(
 
 async fn list_all_sessions(
     connection: &ConnectionTo<Agent>,
-    initial: agent_client_protocol::schema::v1::ListSessionsRequest,
+    initial: agent_client_protocol::v1::schema::ListSessionsRequest,
 ) -> agent_client_protocol::Result<serde_json::Value> {
     let cwd = initial.cwd;
     let mut cursor = initial.cursor;
@@ -1207,7 +1176,7 @@ async fn list_all_sessions(
     let mut seen = HashSet::new();
 
     for _ in 0..MAX_SESSION_LIST_PAGES {
-        let request = agent_client_protocol::schema::v1::ListSessionsRequest::new()
+        let request = agent_client_protocol::v1::schema::ListSessionsRequest::new()
             .cwd(cwd.clone())
             .cursor(cursor.take());
         let response = connection.send_request(request).block_task().await?;
@@ -1495,39 +1464,31 @@ async fn shutdown_sessions(
     let _ = stop_all_sessions(sessions);
 }
 
-async fn complete_operation(
+fn complete_operation(
     events: &Events,
     operation_id: u64,
     result: agent_client_protocol::Result<serde_json::Value>,
 ) {
     match result {
         Ok(result) => {
-            push(
-                events,
-                Event::OperationCompleted {
-                    operation_id,
-                    result,
-                },
-            )
-            .await;
+            events.push(Event::OperationCompleted {
+                operation_id,
+                result,
+            });
         }
-        Err(error) => fail_operation(events, operation_id, error).await,
+        Err(error) => fail_operation(events, operation_id, error),
     }
 }
 
-async fn fail_operation(events: &Events, operation_id: u64, error: agent_client_protocol::Error) {
+fn fail_operation(events: &Events, operation_id: u64, error: agent_client_protocol::Error) {
     if i32::from(error.code) == TIMEOUT_ERROR_CODE {
         events.terminate(error);
         return;
     }
-    push(
-        events,
-        Event::OperationFailed {
-            operation_id,
-            error: error.into(),
-        },
-    )
-    .await;
+    events.push(Event::OperationFailed {
+        operation_id,
+        error: error.into(),
+    });
 }
 
 fn unsupported(message: impl Into<String>) -> agent_client_protocol::Error {
@@ -1543,14 +1504,10 @@ fn to_json(value: impl Serialize) -> agent_client_protocol::Result<serde_json::V
         .map_err(|error| agent_client_protocol::Error::new(-32603, error.to_string()))
 }
 
-async fn push(events: &Events, event: Event) {
-    events.push(event).await;
-}
-
 #[cfg(test)]
 mod tests {
     use super::{ClientConfig, Command, ConnectionState, Event, EventQueue};
-    use agent_client_protocol::schema::v1::{
+    use agent_client_protocol::v1::schema::{
         AgentCapabilities, CloseSessionRequest, ListSessionsRequest, LoadSessionRequest,
         NewSessionRequest, PromptCapabilities, PromptRequest, SessionConfigOptionValue,
     };
@@ -2217,13 +2174,92 @@ mod tests {
     }
 
     #[test]
+    fn stdio_worker_cancels_an_ordered_prompt_through_the_sdk_handle() {
+        let agent = TestAgent::start("request-cancel", "request-cancel", None, false, false);
+        agent.wait_ready();
+        agent.load(1);
+        agent.prompt(2, "wait for request cancellation");
+        wait_for_event(&agent.events, "pending prompt update", |event| {
+            matches!(
+                event,
+                Event::SessionUpdate {
+                    replayed: false,
+                    ..
+                }
+            )
+        });
+        agent
+            .commands
+            .send(Command::Cancel {
+                session_id: "s1".to_string(),
+            })
+            .unwrap();
+        wait_for_event(&agent.events, "SDK request cancellation", |event| {
+            matches!(event, Event::OperationCompleted { operation_id: 2, result }
+                if result["stopReason"] == "cancelled")
+                || matches!(event, Event::FatalError { .. })
+        });
+        assert!(
+            !agent
+                .events
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|event| matches!(event, Event::FatalError { .. })),
+            "request cancellation must settle the prompt without disconnecting"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&agent.scenario_marker).unwrap(),
+            "request cancelled"
+        );
+        agent.stop();
+        agent.cleanup();
+    }
+
+    #[test]
+    fn stdio_worker_keeps_the_connection_after_invalid_utf8() {
+        let agent = TestAgent::start("invalid-utf8", "invalid-utf8", None, false, false);
+        agent.wait_ready();
+        agent.load(1);
+        for operation_id in [2, 3] {
+            agent.prompt(operation_id, "continue after a malformed line");
+            wait_for_event(
+                &agent.events,
+                "prompt completion after invalid UTF-8",
+                |event| {
+                    matches!(event, Event::OperationCompleted { operation_id: id, result }
+                    if *id == operation_id && result["stopReason"] == "end_turn")
+                        || matches!(event, Event::FatalError { .. })
+                },
+            );
+            assert!(
+                !agent
+                    .events
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|event| { matches!(event, Event::FatalError { .. }) }),
+                "invalid UTF-8 must not terminate the connection"
+            );
+        }
+        agent.stop();
+        agent.cleanup();
+    }
+
+    #[test]
     fn stdio_worker_reports_an_agent_that_exits_during_a_prompt() {
         let agent = TestAgent::start("agent-exit", "exit-on-prompt", None, false, false);
         agent.wait_ready();
         agent.load(1);
         agent.prompt(2, "exit now");
-        wait_for_event(&agent.events, "fatal error", |event| {
-            matches!(event, Event::FatalError { .. })
+        wait_for_event(&agent.events, "failed prompt", |event| {
+            matches!(
+                event,
+                Event::OperationFailed {
+                    operation_id: 2,
+                    ..
+                }
+            )
         });
         wait_for_event(&agent.events, "disconnected state", |event| {
             matches!(
@@ -2555,14 +2591,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn command_wait_fails_when_the_agent_connection_closes() {
+    async fn command_wait_finishes_when_the_agent_connection_closes() {
         let (_sender, mut commands) = tokio::sync::mpsc::unbounded_channel();
 
-        let error = super::wait_for_command_or_close(&mut commands, std::future::ready(()))
-            .await
-            .unwrap_err();
-
-        assert!(error.to_string().contains("connection closed"));
+        assert!(
+            super::wait_for_command_or_close(&mut commands, std::future::ready(()))
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -2607,7 +2643,7 @@ mod tests {
 
     #[test]
     fn additional_directories_require_agent_support() {
-        let request = agent_client_protocol::schema::v1::NewSessionRequest::new("/tmp")
+        let request = agent_client_protocol::v1::schema::NewSessionRequest::new("/tmp")
             .additional_directories(vec!["/shared".into()]);
 
         let error = super::validate_session_setup(
@@ -2655,8 +2691,8 @@ mod tests {
     }
 
     #[test]
-    fn stdio_worker_stops_with_a_full_replay_queue_without_polling() {
-        let agent = TestAgent::start("full-replay-stop", "large-replay", None, false, false);
+    fn stdio_worker_stops_with_buffered_replay_without_polling() {
+        let agent = TestAgent::start("buffered-replay-stop", "large-replay", None, false, false);
         agent.wait_ready();
         agent
             .commands
@@ -2666,20 +2702,24 @@ mod tests {
             })
             .unwrap();
         let deadline = Instant::now() + Duration::from_secs(10);
-        while agent.events.sender.capacity() != 0 {
-            assert!(
-                Instant::now() < deadline,
-                "replay did not fill the event queue"
-            );
+        while agent.events.receiver.lock().unwrap().len() <= crate::EVENTS_PER_POLL {
+            assert!(Instant::now() < deadline, "replay was not buffered");
             std::thread::sleep(Duration::from_millis(1));
         }
         agent.commands.send(Command::Stop).unwrap();
-        let deadline = Instant::now() + Duration::from_secs(2);
+        let deadline = Instant::now() + Duration::from_secs(6);
         while agent.events.terminal.lock().unwrap().is_empty() {
             assert!(Instant::now() < deadline, "shutdown waited for Lua to poll");
             std::thread::sleep(Duration::from_millis(1));
         }
-        let events = agent.events.drain().unwrap();
+        let mut events = Vec::new();
+        loop {
+            let batch = agent.events.drain().unwrap();
+            if batch.is_empty() {
+                break;
+            }
+            events.extend(batch);
+        }
         assert!(
             !events
                 .iter()
@@ -2694,146 +2734,77 @@ mod tests {
         agent.cleanup();
     }
 
-    #[tokio::test]
-    async fn event_queue_waits_for_capacity_without_losing_events() {
-        use futures::FutureExt;
-
-        let queue = Arc::new(crate::EventQueue::new());
-        for operation_id in 0..crate::MAX_PENDING_EVENTS as u64 {
-            queue
-                .push(Event::OperationCompleted {
-                    operation_id,
-                    result: serde_json::Value::Null,
-                })
-                .await;
+    #[test]
+    fn event_queue_buffers_without_polling_and_drains_in_order() {
+        let queue = crate::EventQueue::new();
+        let count = crate::EVENTS_PER_POLL * 2 + 1;
+        for operation_id in 0..count as u64 {
+            queue.push(Event::OperationCompleted {
+                operation_id,
+                result: serde_json::Value::Null,
+            });
         }
-        let pending = queue.push(Event::StateChanged {
+        queue.finish(None);
+        for offset in [0, crate::EVENTS_PER_POLL] {
+            let events = queue.drain().unwrap();
+            assert_eq!(events.len(), crate::EVENTS_PER_POLL);
+            for (index, event) in events.into_iter().enumerate() {
+                assert!(
+                    matches!(event, Event::OperationCompleted { operation_id, .. }
+                    if operation_id == (offset + index) as u64)
+                );
+            }
+        }
+        let events = queue.drain().unwrap();
+        assert!(matches!(events.as_slice(), [
+            Event::OperationCompleted { operation_id, .. },
+            Event::StateChanged { state: ConnectionState::Disconnected },
+        ] if *operation_id == count as u64 - 1));
+        assert!(queue.drain().unwrap().is_empty());
+    }
+
+    #[test]
+    fn timeout_retires_connection_with_buffered_events() {
+        let queue = Arc::new(crate::EventQueue::new());
+        queue.push(Event::StateChanged {
             state: ConnectionState::Ready,
         });
-        tokio::pin!(pending);
-        assert!(pending.as_mut().now_or_never().is_none());
-        assert_eq!(queue.sender.capacity(), 0);
-
-        let events = queue.drain().unwrap();
-        assert_eq!(events.len(), crate::MAX_PENDING_EVENTS);
-        for (index, event) in events.into_iter().enumerate() {
-            assert!(
-                matches!(event, Event::OperationCompleted { operation_id, .. } if operation_id == index as u64)
-            );
-        }
-        pending.await;
-        let events = queue.drain().unwrap();
-        assert_eq!(events.len(), 1);
-        assert!(matches!(
-            events.first(),
-            Some(Event::StateChanged {
-                state: ConnectionState::Ready
-            })
-        ));
-    }
-
-    #[tokio::test]
-    async fn large_events_apply_backpressure_before_the_event_count_limit() {
-        use futures::FutureExt;
-
-        let queue = crate::EventQueue::new();
-        let payload = "x".repeat(crate::MAX_PENDING_EVENT_BYTES / 2);
-        queue
-            .push(Event::OperationCompleted {
-                operation_id: 1,
-                result: serde_json::json!({ "text": payload }),
-            })
-            .await;
-        let pending = queue.push(Event::OperationCompleted {
-            operation_id: 2,
-            result: serde_json::json!({ "text": payload }),
-        });
-        tokio::pin!(pending);
-        assert!(pending.as_mut().now_or_never().is_none());
-        assert_eq!(queue.drain().unwrap().len(), 1);
-        pending.await;
-        assert!(matches!(
-            queue.drain().unwrap().as_slice(),
-            [Event::OperationCompleted {
-                operation_id: 2,
-                ..
-            }]
-        ));
-    }
-
-    #[tokio::test]
-    async fn timeout_retires_connection_even_when_event_queue_is_full() {
-        let queue = Arc::new(crate::EventQueue::new());
-        for _ in 0..crate::MAX_PENDING_EVENTS {
-            queue
-                .push(Event::StateChanged {
-                    state: ConnectionState::Ready,
-                })
-                .await;
-        }
-        assert_eq!(queue.sender.capacity(), 0);
-
-        tokio::time::timeout(
-            Duration::from_millis(100),
-            super::fail_operation(
-                &queue,
-                42,
-                agent_client_protocol::Error::new(
-                    crate::TIMEOUT_ERROR_CODE,
-                    "session/prompt timed out",
-                ),
+        super::fail_operation(
+            &queue,
+            42,
+            agent_client_protocol::Error::new(
+                crate::TIMEOUT_ERROR_CODE,
+                "session/prompt timed out",
             ),
-        )
-        .await
-        .expect("request timeout must terminate without waiting for Lua to drain events");
-
+        );
         assert!(*queue.terminating.borrow());
-        assert!(*queue.stopping.borrow());
-        assert!(queue.drain().unwrap().iter().any(|event| {
-            matches!(event, Event::FatalError { error }
-                if matches!(error.kind, crate::ErrorKind::Timeout)
-                    && error.message == "session/prompt timed out")
-        }));
+        assert!(queue.stopping.load(std::sync::atomic::Ordering::Relaxed));
+        assert!(matches!(queue.drain().unwrap().as_slice(), [
+            Event::StateChanged { state: ConnectionState::Ready },
+            Event::FatalError { error },
+        ] if matches!(error.kind, crate::ErrorKind::Timeout)
+            && error.message == "session/prompt timed out"));
     }
 
-    #[tokio::test]
-    async fn stopping_unblocks_a_full_event_queue_and_preserves_terminal_events() {
-        use futures::FutureExt;
-
+    #[test]
+    fn stopping_preserves_buffered_and_terminal_events() {
         let queue = crate::EventQueue::new();
-        for _ in 0..crate::MAX_PENDING_EVENTS {
-            queue
-                .push(Event::StateChanged {
-                    state: ConnectionState::Ready,
-                })
-                .await;
-        }
-        let pending = queue.push(Event::StateChanged {
+        queue.push(Event::StateChanged {
             state: ConnectionState::Ready,
         });
-        tokio::pin!(pending);
-        assert!(pending.as_mut().now_or_never().is_none());
         queue.stop();
-        tokio::time::timeout(Duration::from_secs(1), pending)
-            .await
-            .unwrap();
+        queue.push(Event::StateChanged {
+            state: ConnectionState::Connecting,
+        });
         queue.finish(Some(agent_client_protocol::Error::new(
             -32603,
             "original failure",
         )));
-
-        let events = queue.drain().unwrap();
-        assert_eq!(events.len(), crate::MAX_PENDING_EVENTS + 2);
-        assert!(matches!(
-            events.get(crate::MAX_PENDING_EVENTS),
-            Some(Event::FatalError { error }) if error.message == "original failure"
-        ));
-        assert!(matches!(
-            events.last(),
-            Some(Event::StateChanged {
-                state: ConnectionState::Disconnected
-            })
-        ));
+        assert!(matches!(queue.drain().unwrap().as_slice(), [
+            Event::StateChanged { state: ConnectionState::Ready },
+            Event::FatalError { error },
+            Event::StateChanged { state: ConnectionState::Disconnected },
+        ] if error.message == "original failure"));
         assert!(queue.drain().unwrap().is_empty());
     }
 }

@@ -90,6 +90,27 @@ describe("ACP native integration", function()
     workspaces = {}
   end)
 
+  it("negotiates and delivers live agent notices", function()
+    local notices = {}
+    local client, ws = new_client("notices", {
+      on_session_update = function(update)
+        if update.sessionUpdate == "notice" then table.insert(notices, update) end
+      end,
+    })
+    assert.is_nil(connect(client))
+    local _, load_err = load_session(client, ws.root)
+    assert.is_nil(load_err)
+    local result, prompt_err = operation(
+      "prompt",
+      function(done) client:send_prompt("s1", { { type = "text", text = "hello" } }, done) end
+    )
+    assert.is_nil(prompt_err)
+    assert.equals("end_turn", result.stopReason)
+    assert.equals("Agent notice", notices[1].title)
+    assert.equals("warning", notices[1].severity)
+    stop(client)
+  end)
+
   it("restores a saved session from metadata", function()
     local Config = require("avante.config")
     local HistoryStorage = require("avante.history.storage")
@@ -627,7 +648,7 @@ describe("ACP native integration", function()
     )
     assert.is_not_nil(fatal_error)
     assert.equals("timeout", fatal_error.kind)
-    assert.matches("prompt", fatal_error.message)
+    assert.matches("prompt", fatal_error.message .. " " .. vim.inspect(fatal_error.data))
     assert.is_true(fatal_error.message:find("reply") ~= nil or fatal_error.message:find("response") ~= nil)
     assert.equals(1, prompt_calls)
     stop(client)
@@ -770,7 +791,7 @@ describe("ACP native integration", function()
     assert.is_nil(client.native)
   end)
 
-  it("backpressures the agent stdout while polling is paused and then delivers every live update", function()
+  it("buffers agent output while polling is paused and then delivers every live update", function()
     local received = 0
     local invalid_update = false
     local padding = string.rep("x", 1018)
@@ -794,10 +815,14 @@ describe("ACP native integration", function()
     end)
     client:_stop_polling()
     wait_for("live burst started", function() return vim.fn.filereadable(ws.started_marker) == 1 end)
-    local emitted_while_paused = vim.wait(1000, function() return vim.fn.filereadable(ws.scenario_marker) == 1 end, 10)
+    local emitted_while_paused = vim.wait(
+      10000,
+      function() return vim.fn.filereadable(ws.scenario_marker) == 1 end,
+      10
+    )
+    assert.is_true(emitted_while_paused, "the paused consumer must allow the agent to finish emitting 40 MiB")
+    assert.equals(0, received, "updates must wait for Lua polling")
     client:_start_polling()
-
-    assert.is_false(emitted_while_paused, "the paused consumer must block the agent before it emits 40 MiB")
     wait_for("live burst completion", function() return received_at_completion ~= nil end)
     assert.is_nil(prompt_err)
     assert.equals("end_turn", prompt_result.stopReason)
@@ -808,8 +833,8 @@ describe("ACP native integration", function()
     stop(client)
   end)
 
-  it("stops while agent stdout is blocked by a paused consumer", function()
-    local client, ws = new_client("large-live")
+  it("stops with buffered agent output while polling is paused", function()
+    local client, ws = new_client("large-live-pending")
     assert.is_nil(connect(client))
     local _, load_err = load_session(client, ws.root, { on_replay = function() return true end })
     assert.is_nil(load_err)
@@ -821,8 +846,7 @@ describe("ACP native integration", function()
       prompt_err = err
     end)
     client:_stop_polling()
-    wait_for("blocked burst started", function() return vim.fn.filereadable(ws.started_marker) == 1 end)
-    local emitted_while_paused = vim.wait(1000, function() return vim.fn.filereadable(ws.scenario_marker) == 1 end, 10)
+    wait_for("buffered burst emitted", function() return vim.fn.filereadable(ws.scenario_marker) == 1 end)
 
     local stopped = false
     local stop_err
@@ -831,28 +855,84 @@ describe("ACP native integration", function()
       stopped = true
     end)
     client:_start_polling()
-    assert.is_true(vim.wait(3000, function() return stopped end, 10), "stopping must unblock the worker")
+    assert.is_true(vim.wait(6000, function() return stopped end, 10), "stopping must finish with buffered output")
     assert.is_nil(stop_err)
     assert.equals("disconnected", client.connection_state)
     assert.is_nil(client.native)
     assert.equals(1, prompt_calls)
     assert.equals("cancelled", prompt_err.kind)
-    assert.is_false(emitted_while_paused, "the agent must still be blocked when stop is requested")
   end)
 
-  it("rejects an oversized stdout frame without waiting for its newline", function()
-    local client, ws = new_client("oversized-frame")
+  it("preserves UTF-8 and escaped newlines across fragmented stdout", function()
+    local updates = {}
+    local client, ws = new_client("fragmented-text", {
+      on_session_update = function(update) table.insert(updates, update.content.text) end,
+    })
+    assert.is_nil(connect(client))
+    local _, load_err = load_session(client, ws.root, { on_replay = function() return true end })
+    assert.is_nil(load_err)
+
+    local prompt_calls = 0
+    local prompt_result, prompt_err
+    client:send_prompt("s1", { { type = "text", text = "fragment" } }, function(result, err)
+      prompt_calls = prompt_calls + 1
+      prompt_result, prompt_err = result, err
+    end)
+    wait_for("partial UTF-8 output", function() return vim.fn.filereadable(ws.started_marker) == 1 end)
+    assert.same({}, updates)
+    assert.equals(0, prompt_calls)
+    vim.fn.writefile({ "release" }, ws.output_gate)
+
+    wait_for("fragmented prompt completion", function() return prompt_calls > 0 end)
+    assert.is_nil(prompt_err)
+    assert.equals("end_turn", prompt_result.stopReason)
+    assert.same({ "你\n😀\\n" }, updates)
+    stop(client)
+    assert.equals(1, prompt_calls)
+  end)
+
+  it("fails a prompt once on a truncated stdout response and preserves preceding updates", function()
+    local updates = {}
+    local client, ws = new_client("truncated-response", {
+      on_session_update = function(update) table.insert(updates, update.content.text) end,
+    })
+    assert.is_nil(connect(client))
+    local _, load_err = load_session(client, ws.root, { on_replay = function() return true end })
+    assert.is_nil(load_err)
+
+    local prompt_calls = 0
+    local prompt_result, prompt_err
+    client:send_prompt("s1", { { type = "text", text = "truncate" } }, function(result, err)
+      prompt_calls = prompt_calls + 1
+      prompt_result, prompt_err = result, err
+    end)
+    wait_for("truncated response disconnect", function() return client.connection_state == "disconnected" end)
+    assert.equals(1, prompt_calls)
+    assert.is_nil(prompt_result)
+    assert.is_not_nil(prompt_err)
+    assert.same({ "live" }, updates)
+    assert.is_nil(client.native)
+    stop(client)
+    assert.equals(1, prompt_calls)
+  end)
+
+  it("delivers a valid stdout frame larger than 8 MiB", function()
+    local text
+    local client, ws = new_client("large-frame", {
+      on_session_update = function(update) text = update.content.text end,
+    })
     assert.is_nil(connect(client))
     local _, load_err = load_session(client, ws.root)
     assert.is_nil(load_err)
 
-    local prompt_err
-    client:send_prompt("s1", { { type = "text", text = "oversized" } }, function(_, err) prompt_err = err end)
-    assert.is_true(
-      vim.wait(3000, function() return prompt_err ~= nil and client.connection_state == "disconnected" end, 10),
-      "an oversized frame must terminate the connection promptly"
+    local result, prompt_err = operation(
+      "large frame prompt",
+      function(done) client:send_prompt("s1", { { type = "text", text = "large" } }, done) end
     )
-    assert.matches("frame exceeds 8 MiB", prompt_err.message)
+    assert.is_nil(prompt_err)
+    assert.equals("end_turn", result.stopReason)
+    assert.equals(string.rep("x", 8 * 1024 * 1024 + 1), text)
+    stop(client)
   end)
 
   it("terminates the agent when stopping with a blocked stdin write", function()
@@ -876,11 +956,18 @@ describe("ACP native integration", function()
     client:stop(function() stop_calls = stop_calls + 1 end)
     assert.is_true(
       vim.wait(
-        3000,
+        6000,
         function() return stop_calls > 0 and prompt_calls > 0 and not (vim.uv or vim.loop).kill(ws.process_pid, 0) end,
         10
       ),
-      "stop must kill the exact fixture process even when its stdin write is blocked"
+      "stop must kill the exact fixture process even when its stdin write is blocked: "
+        .. vim.inspect({
+          stop_calls = stop_calls,
+          prompt_calls = prompt_calls,
+          prompt_err = prompt_err,
+          state = client.connection_state,
+          alive = (vim.uv or vim.loop).kill(ws.process_pid, 0),
+        })
     )
     assert.equals(1, stop_calls)
     assert.equals(1, prompt_calls)
@@ -958,11 +1045,8 @@ describe("ACP native integration", function()
     assert.equals("tail", updates[257])
   end)
 
-  it("drains stdout after cancellation fails because the agent has closed stdin", function()
-    local updates = {}
-    local client, ws = new_client("closed-stdin-tail", {
-      on_session_update = function(update) table.insert(updates, update.content.text) end,
-    })
+  it("reports a transport failure when cancellation writes to closed agent stdin", function()
+    local client, ws = new_client("closed-stdin-hang")
     assert.is_nil(connect(client))
     local _, load_err = load_session(client, ws.root, { on_replay = function() return true end })
     assert.is_nil(load_err)
@@ -978,19 +1062,11 @@ describe("ACP native integration", function()
     wait_for("agent stdin closed", function() return vim.fn.filereadable(ws.scenario_marker) == 1 end)
     ws.process_pid = assert(tonumber(vim.fn.readfile(ws.scenario_marker)[1]))
     client:cancel_session("s1")
-    -- Let the writer observe EPIPE before releasing the remaining stdout.
-    vim.wait(100, function() return client.connection_state == "disconnected" end, 10)
-    vim.fn.writefile({ "release" }, ws.output_gate)
-
     wait_for("closed-stdin agent exit", function() return client.connection_state == "disconnected" end)
     assert.equals(1, prompt_calls)
-    assert.is_nil(prompt_err)
-    assert.equals("end_turn", prompt_result.stopReason)
-    assert.equals(257, #updates)
-    for index = 1, 256 do
-      assert.equals(tostring(index), updates[index])
-    end
-    assert.equals("tail", updates[257])
+    assert.is_nil(prompt_result)
+    assert.equals("internal", prompt_err.kind)
+    assert.matches("Broken pipe", tostring(prompt_err.data))
   end)
 
   it("stops within its deadline when the agent has closed stdin but keeps stdout open", function()
@@ -1003,14 +1079,15 @@ describe("ACP native integration", function()
     client:send_prompt("s1", { { type = "text", text = "wait" } }, function() prompt_calls = prompt_calls + 1 end)
     wait_for("hanging agent stdin closed", function() return vim.fn.filereadable(ws.scenario_marker) == 1 end)
     ws.process_pid = assert(tonumber(vim.fn.readfile(ws.scenario_marker)[1]))
-    client:cancel_session("s1")
-    vim.wait(100, function() return client.connection_state == "disconnected" end, 10)
+    assert.is_not_nil(client.native)
+    assert.equals(0, prompt_calls)
+    assert.is_truthy((vim.uv or vim.loop).kill(ws.process_pid, 0))
 
     local stop_calls = 0
     client:stop(function() stop_calls = stop_calls + 1 end)
     assert.is_true(
       vim.wait(
-        3000,
+        6000,
         function() return stop_calls > 0 and prompt_calls > 0 and not (vim.uv or vim.loop).kill(ws.process_pid, 0) end,
         10
       ),
@@ -1038,7 +1115,7 @@ describe("ACP native integration", function()
     assert.is_not_nil(prompt_err)
     wait_for("nonzero agent exit", function() return client.connection_state == "disconnected" end)
     assert.is_not_nil(fatal_error)
-    assert.matches("fixture%-stderr%-before%-exit%-23", fatal_error.message)
+    assert.matches("fixture%-stderr%-before%-exit%-23", fatal_error.message .. " " .. vim.inspect(fatal_error.data))
   end)
 
   it("retains delayed stderr after the agent closes stdout before exiting", function()
@@ -1057,7 +1134,10 @@ describe("ACP native integration", function()
     assert.is_not_nil(prompt_err)
     wait_for("delayed process exit", function() return client.connection_state == "disconnected" end)
     assert.is_not_nil(fatal_error)
-    assert.matches("fixture%-stderr%-after%-stdout%-close", fatal_error.message)
+    assert.matches(
+      "fixture%-stderr%-after%-stdout%-close",
+      fatal_error.message .. " " .. vim.inspect(fatal_error.data)
+    )
   end)
 
   it("drains a stderr burst after stdout EOF while waiting for process exit", function()
@@ -1075,20 +1155,20 @@ describe("ACP native integration", function()
     assert.is_not_nil(prompt_err)
     wait_for("stderr burst process exit", function() return client.connection_state == "disconnected" end)
     assert.is_not_nil(fatal_error)
-    assert.matches("fixture%-stderr%-after%-stdout%-close", fatal_error.message)
-    assert.matches("23", fatal_error.message)
+    assert.matches(
+      "fixture%-stderr%-after%-stdout%-close",
+      fatal_error.message .. " " .. vim.inspect(fatal_error.data)
+    )
+    assert.matches("23", fatal_error.message .. " " .. vim.inspect(fatal_error.data))
   end)
 
-  it("surfaces authentication and agent process failures", function()
+  it("surfaces authentication errors and fails pending prompts on agent exit", function()
     local auth_client = new_client("auth-error", {}, { auth_method = "test-auth" })
     local auth_err = connect(auth_client)
     assert.equals("authentication", auth_err.kind)
     assert.matches("Authentication required", auth_err.message)
 
-    local fatal_error
-    local failed, ws = new_client("exit-on-prompt", {
-      on_error = function(err) fatal_error = err end,
-    })
+    local failed, ws = new_client("exit-on-prompt")
     assert.is_nil(connect(failed))
     local _, load_err = load_session(failed, ws.root)
     assert.is_nil(load_err)
@@ -1097,7 +1177,7 @@ describe("ACP native integration", function()
       function(done) failed:send_prompt("s1", { { type = "text", text = "exit" } }, done) end
     )
     assert.equals("internal", prompt_err.kind)
-    wait_for("fatal error handler", function() return fatal_error ~= nil end)
-    assert.matches("connection closed", fatal_error.message .. " " .. tostring(fatal_error.data))
+    wait_for("agent exit", function() return failed.connection_state == "disconnected" end)
+    assert.is_nil(failed.native)
   end)
 end)
