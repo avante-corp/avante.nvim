@@ -102,7 +102,7 @@ describe("ACPClient native adapter", function()
     local client, native = ready_client()
     client.config.reconnect = true
     local replacement = { start = function() end, stop = stub() }
-    client._native_module = { api_version = 3, new = function() return replacement end }
+    client._native_module = { new = function() return replacement end }
     client._start_polling = function() end
     client._stop_polling = function() end
     local defer_stub = stub(vim, "defer_fn")
@@ -155,7 +155,7 @@ describe("ACPClient native adapter", function()
     local client = ready_client()
     client.connection_state = "connecting"
     local replacement = { start = function() end, stop = stub(), prompt = function() return { operationId = 1 } end }
-    client._native_module = { api_version = 3, new = function() return replacement end }
+    client._native_module = { new = function() return replacement end }
     client._start_polling = function() end
     local fatal = { kind = "internal", message = "old connection failed" }
     local connect_error, completed, operation_error
@@ -258,7 +258,7 @@ describe("ACPClient native adapter", function()
     end
     function replacement:stop() end
     function replacement:poll() return {} end
-    client._native_module = { api_version = 3, new = function() return replacement end }
+    client._native_module = { new = function() return replacement end }
     client._start_polling = function() end
     client._stop_polling = function() end
     local defer_stub = stub(vim, "defer_fn").invokes(function(fn) fn() end)
@@ -337,7 +337,7 @@ describe("ACPClient native adapter", function()
     local defer_stub = stub(vim, "defer_fn").invokes(function(fn) table.insert(timers, fn) end)
     local starts = 0
     local replacement = { start = function() starts = starts + 1 end }
-    client._native_module = { api_version = 3, new = function() return replacement end }
+    client._native_module = { new = function() return replacement end }
     client._start_polling = function() end
 
     client:_handle_event({ type = "state_changed", state = "disconnected" })
@@ -563,7 +563,7 @@ describe("ACPClient native adapter", function()
     assert.has_no_error(function() respond("allow") end)
   end)
 
-  it("keeps the UI watchdog beyond Rust's session shutdown deadline", function()
+  it("keeps the UI watchdog beyond session shutdown and SDK process cleanup", function()
     local client = ready_client()
     client.config.session_close_timeout = 500
     local watchdog_delay
@@ -572,7 +572,21 @@ describe("ACPClient native adapter", function()
     client:stop()
 
     defer_stub:revert()
-    assert.equals(1500, watchdog_delay)
+    assert.equals(4500, watchdog_delay)
+  end)
+
+  it("force stops the native connection when the stop watchdog expires", function()
+    local client, native = ready_client()
+    local watchdog
+    local stop_err
+    local defer_stub = stub(vim, "defer_fn").invokes(function(fn) watchdog = fn end)
+    client:stop(function(err) stop_err = err end)
+    watchdog()
+    defer_stub:revert()
+
+    assert.equals("force_stop", native.calls[#native.calls].method)
+    assert.equals("timeout", stop_err.kind)
+    assert.is_nil(client.native)
   end)
 
   it("force stops the native worker and disposes the client immediately", function()
@@ -641,7 +655,7 @@ describe("ACPClient native adapter", function()
     it("preserves a replacement started by the " .. callback_kind .. " callback while stopping", function()
       local client = ready_client()
       local replacement = { start = function() end, stop = stub(), prompt = function() return { operationId = 1 } end }
-      client._native_module = { api_version = 3, new = function() return replacement end }
+      client._native_module = { new = function() return replacement end }
       client._start_polling = function() end
       local completed, failure
       local function reconnect()
@@ -675,7 +689,7 @@ describe("ACPClient native adapter", function()
     local timers = {}
     local defer_stub = stub(vim, "defer_fn").invokes(function(fn) table.insert(timers, fn) end)
     local replacement = { start = function() end, stop = function() end }
-    client._native_module = { api_version = 3, new = function() return replacement end }
+    client._native_module = { new = function() return replacement end }
     client._start_polling = function() end
 
     client:stop()
@@ -717,7 +731,7 @@ describe("ACPClient native adapter", function()
     local native_client = {}
     function native_client:start() started = true end
     local client = ACPClient:new({ command = "agent", args = {}, handlers = {} })
-    client._native_module = { api_version = 3, new = function() return native_client end }
+    client._native_module = { new = function() return native_client end }
     client._start_polling = function() end
 
     client:connect(function(err)
@@ -733,31 +747,17 @@ describe("ACPClient native adapter", function()
     assert.is_true(client:supports_list_sessions())
   end)
 
-  it("rejects an incompatible native module before starting it", function()
-    local client = ACPClient:new({ command = "agent", args = {}, handlers = {} })
-    client._native_module = { api_version = 1, new = function() error("must not start") end }
-    client._start_polling = function() end
-    local actual
-
-    client:connect(function(err) actual = err end)
-
-    assert.equals("error", client.connection_state)
-    assert.equals("internal", actual.kind)
-    assert.matches("Incompatible avante_acp native module", actual.message)
-    assert.matches("rebuild or reinstall", actual.message)
-  end)
-
   for _, retry_from in ipairs({ "state", "connection" }) do
     it("preserves a retry from the " .. retry_from .. " callback after synchronous connect failure", function()
       local client = ACPClient:new({ command = "agent", handlers = {} })
-      client._native_module = { api_version = 1 }
+      client._native_module = { new = function() error("native constructor failed") end }
       client._start_polling = function() end
       local disposed = 0
       client.on_dispose = function() disposed = disposed + 1 end
       local replacement = { start = function() end, force_stop = function() end }
       local retried, retry_error, original_error
       local function retry()
-        client._native_module = { api_version = 3, new = function() return replacement end }
+        client._native_module = { new = function() return replacement end }
         client:connect(function(err)
           retried, retry_error = true, err
         end)

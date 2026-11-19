@@ -10,15 +10,10 @@ version.workspace = true
 
 [dependencies]
 agent-client-protocol.workspace = true
-async-process = "2"
-futures.workspace = true
 mlua.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
-
-[target.'cfg(unix)'.dependencies]
-rustix = { version = "1", default-features = false, features = ["std", "process"] }
 
 [lints]
 workspace = true

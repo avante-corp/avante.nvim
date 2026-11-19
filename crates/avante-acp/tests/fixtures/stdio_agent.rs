@@ -82,6 +82,33 @@ fn main() {
 
     for line in stdin.lock().lines() {
         let line = line.expect("stdin must be readable");
+        if scenario == "notices" && line.contains("\"method\":\"initialize\"") {
+            assert!(line.contains("\"notices\":{}"));
+            assert!(!line.contains("\"compaction\""));
+        }
+        if scenario == "request-cancel" {
+            if line.contains("\"method\":\"session/prompt\"") {
+                pending_prompt_id = Some(request_id(&line).to_string());
+                numbered_updates(&mut stdout, 1);
+                stdout
+                    .flush()
+                    .expect("pending prompt update must be flushed");
+                continue;
+            }
+            if line.contains("\"method\":\"$/cancel_request\"") {
+                let id = pending_prompt_id
+                    .take()
+                    .expect("only a pending prompt may be cancelled");
+                assert!(line.contains(&format!("\"requestId\":{id}")));
+                std::fs::write(
+                    std::env::var_os("AVANTE_ACP_TEST_SCENARIO_MARKER").unwrap(),
+                    "request cancelled",
+                )
+                .unwrap();
+                respond(&mut stdout, &id, r#"{"stopReason":"cancelled"}"#);
+                continue;
+            }
+        }
         if scenario == "prompt-cancel-order"
             && (line.contains("\"method\":\"session/prompt\"")
                 || line.contains("\"method\":\"session/cancel\""))
@@ -203,21 +230,31 @@ fn main() {
                 continue;
             }
         }
-        if scenario == "large-live" && line.contains("\"method\":\"session/prompt\"") {
+        if matches!(scenario.as_str(), "large-live" | "large-live-pending")
+            && line.contains("\"method\":\"session/prompt\"")
+        {
             std::fs::write(
                 std::env::var_os("AVANTE_ACP_TEST_STARTED_MARKER")
                     .expect("started marker path must be configured"),
                 "burst",
             )
             .expect("started marker must be writable");
-            kilobyte_updates(&mut stdout, 40_000);
+            let count = if scenario == "large-live-pending" {
+                2048
+            } else {
+                40_000
+            };
+            kilobyte_updates(&mut stdout, count);
             stdout.flush().expect("live burst must be flushed");
             std::fs::write(
                 std::env::var_os("AVANTE_ACP_TEST_SCENARIO_MARKER")
                     .expect("scenario marker path must be configured"),
-                "40000",
+                count.to_string(),
             )
             .expect("scenario marker must be writable");
+            if scenario == "large-live-pending" {
+                continue;
+            }
             respond(
                 &mut stdout,
                 request_id(&line),
@@ -225,16 +262,52 @@ fn main() {
             );
             continue;
         }
-        if scenario == "oversized-frame" && line.contains("\"method\":\"session/prompt\"") {
+        if scenario == "fragmented-text" && line.contains("\"method\":\"session/prompt\"") {
+            let message = format!(
+                r#"{{"jsonrpc":"2.0","method":"session/update","params":{{"sessionId":"s1","update":{{"sessionUpdate":"agent_message_chunk","content":{{"type":"text","text":{}}}}}}}}}"#,
+                json_string("你\n😀\\n")
+            );
+            let split = message.find('你').unwrap() + 1;
             stdout
-                .write_all(&vec![b'x'; 8 * 1024 * 1024 + 1])
-                .expect("oversized frame must be writable");
-            stdout.flush().expect("oversized frame must be flushed");
+                .write_all(&message.as_bytes()[..split])
+                .expect("partial UTF-8 must be writable");
+            stdout.flush().expect("partial UTF-8 must be flushed");
+            std::fs::write(
+                std::env::var_os("AVANTE_ACP_TEST_STARTED_MARKER").unwrap(),
+                "partial",
+            )
+            .unwrap();
+            let gate = std::env::var_os("AVANTE_ACP_TEST_OUTPUT_GATE").unwrap();
+            while !std::path::Path::new(&gate).exists() {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            stdout
+                .write_all(&message.as_bytes()[split..])
+                .expect("remaining UTF-8 must be writable");
+            send(&mut stdout, "");
+            respond(
+                &mut stdout,
+                request_id(&line),
+                r#"{"stopReason":"end_turn"}"#,
+            );
             continue;
         }
-        if matches!(scenario.as_str(), "closed-stdin-tail" | "closed-stdin-hang")
-            && line.contains("\"method\":\"session/prompt\"")
-        {
+        if scenario == "large-frame" && line.contains("\"method\":\"session/prompt\"") {
+            let text = "x".repeat(8 * 1024 * 1024 + 1);
+            send(
+                &mut stdout,
+                &format!(
+                    r#"{{"jsonrpc":"2.0","method":"session/update","params":{{"sessionId":"s1","update":{{"sessionUpdate":"agent_message_chunk","content":{{"type":"text","text":"{text}"}}}}}}}}"#
+                ),
+            );
+            respond(
+                &mut stdout,
+                request_id(&line),
+                r#"{"stopReason":"end_turn"}"#,
+            );
+            continue;
+        }
+        if scenario == "closed-stdin-hang" && line.contains("\"method\":\"session/prompt\"") {
             #[cfg(unix)]
             {
                 use std::os::fd::{FromRawFd, OwnedFd};
@@ -247,20 +320,11 @@ fn main() {
                 std::process::id().to_string(),
             )
             .expect("scenario marker must be writable");
-            if scenario == "closed-stdin-hang" {
-                loop {
-                    std::thread::sleep(std::time::Duration::from_secs(60));
-                }
-            }
-            let gate = std::env::var_os("AVANTE_ACP_TEST_OUTPUT_GATE")
-                .expect("output gate path must be configured");
-            while !std::path::Path::new(&gate).exists() {
-                std::thread::sleep(std::time::Duration::from_millis(1));
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(60));
             }
         }
-        if matches!(scenario.as_str(), "clean-exit-tail" | "closed-stdin-tail")
-            && line.contains("\"method\":\"session/prompt\"")
-        {
+        if scenario == "clean-exit-tail" && line.contains("\"method\":\"session/prompt\"") {
             let mut batch = Vec::new();
             numbered_updates(&mut batch, 256);
             respond(
@@ -603,7 +667,8 @@ fn main() {
                 send(
                     &mut stdout,
                     &format!(
-                        r#"[{{"jsonrpc":"2.0","id":{},"result":{{"configOptions":[{{"id":"thinking","name":"Thinking","type":"boolean","currentValue":false}}]}}}},{{"jsonrpc":"2.0","method":"session/update","params":{{"sessionId":"s1","update":{{"sessionUpdate":"config_option_update","configOptions":[{{"id":"thinking","name":"Thinking","type":"boolean","currentValue":true}}]}}}}}}]"#,
+                        r#"{{"jsonrpc":"2.0","id":{},"result":{{"configOptions":[{{"id":"thinking","name":"Thinking","type":"boolean","currentValue":false}}]}}}}
+{{"jsonrpc":"2.0","method":"session/update","params":{{"sessionId":"s1","update":{{"sessionUpdate":"config_option_update","configOptions":[{{"id":"thinking","name":"Thinking","type":"boolean","currentValue":true}}]}}}}}}"#,
                         request_id(&line),
                     ),
                 );
@@ -611,11 +676,32 @@ fn main() {
             }
             r#"{"configOptions":[{"id":"thinking","name":"Thinking","category":"thought_level","type":"boolean","currentValue":false}]}"#
         } else if line.contains("\"method\":\"session/prompt\"") {
+            if scenario == "notices" {
+                send(
+                    &mut stdout,
+                    r#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"notice","severity":"warning","title":"Agent notice"}}}"#,
+                );
+            }
+            if scenario == "invalid-utf8" {
+                stdout
+                    .write_all(b"\xff\n")
+                    .expect("invalid line must be writable");
+            }
             stdout
                 .write_all(
                     b"{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"live\"}}}}\n",
                 )
             .expect("live update must be writable");
+            if scenario == "truncated-response" {
+                write!(
+                    stdout,
+                    r#"{{"jsonrpc":"2.0","id":{},"result":{{"stopReason":"end_"#,
+                    request_id(&line),
+                )
+                .expect("truncated response must be writable");
+                stdout.flush().expect("truncated response must be flushed");
+                return;
+            }
             r#"{"stopReason":"end_turn"}"#
         } else if line.contains("\"method\":\"session/close\"") {
             std::fs::write(

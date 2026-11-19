@@ -13,7 +13,7 @@ avante-tokenizers = { path = "crates/avante-tokenizers" }
 avante-templates = { path = "crates/avante-templates" }
 avante-repo-map = { path = "crates/avante-repo-map" }
 avante-html2md = { path = "crates/avante-html2md" }
-agent-client-protocol = { version = "=3.1.0", features = ["process"] }
+agent-client-protocol = { version = "=5.4.0", features = ["process"] }
 aws-config = "1"
 aws-sdk-bedrockruntime = { version = "1.124.0", default-features = false, features = ["rt-tokio", "default-https-client"] }
 aws-smithy-http-client = { version = "1", features = ["rustls-aws-lc"] }

@@ -1,7 +1,6 @@
-mod transport;
 mod worker;
 
-use agent_client_protocol::schema::v1::{
+use agent_client_protocol::v1::schema::{
     CloseSessionRequest, ContentBlock, DeleteSessionRequest, ListSessionsRequest,
     LoadSessionRequest, McpServer, NewSessionRequest, PromptRequest, ResumeSessionRequest,
     SessionConfigKind, SessionConfigOption, SessionConfigOptionCategory, SessionConfigOptionValue,
@@ -12,14 +11,12 @@ use mlua::{LuaSerdeExt, UserData, UserDataMethods};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch};
+use tokio::sync::{mpsc, watch};
 
-const NATIVE_API_VERSION: u32 = 3;
 const DEFAULT_SESSION_CLOSE_TIMEOUT_MS: u64 = 500;
-const MAX_PENDING_EVENTS: usize = 1_024;
-const MAX_PENDING_EVENT_BYTES: usize = 8 * 1024 * 1024;
+const EVENTS_PER_POLL: usize = 1_024;
 const TIMEOUT_ERROR_CODE: i32 = -32001;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -408,14 +405,13 @@ impl From<agent_client_protocol::Error> for ClientError {
             ErrorKind::SessionNotFound
         } else {
             match error.code {
-                ErrorCode::InvalidRequest | ErrorCode::ParseError => ErrorKind::InvalidRequest,
-                ErrorCode::InvalidParams => ErrorKind::InvalidInput,
-                ErrorCode::MethodNotFound => ErrorKind::Unsupported,
-                ErrorCode::ResourceNotFound => ErrorKind::NotFound,
-                ErrorCode::RequestCancelled => ErrorKind::Cancelled,
-                ErrorCode::AuthRequired => ErrorKind::Authentication,
-                ErrorCode::Other(code) if code == TIMEOUT_ERROR_CODE => ErrorKind::Timeout,
-                ErrorCode::InternalError | ErrorCode::Other(_) => ErrorKind::Internal,
+                ErrorCode::INVALID_REQUEST | ErrorCode::PARSE_ERROR => ErrorKind::InvalidRequest,
+                ErrorCode::INVALID_PARAMS => ErrorKind::InvalidInput,
+                ErrorCode::METHOD_NOT_FOUND => ErrorKind::Unsupported,
+                ErrorCode::RESOURCE_NOT_FOUND => ErrorKind::NotFound,
+                ErrorCode::REQUEST_CANCELLED => ErrorKind::Cancelled,
+                ErrorCode::AUTH_REQUIRED => ErrorKind::Authentication,
+                code if i32::from(code) == TIMEOUT_ERROR_CODE => ErrorKind::Timeout,
                 _ => ErrorKind::Internal,
             }
         };
@@ -433,7 +429,9 @@ fn protocol_error(kind: &str, message: String) -> agent_client_protocol::Error {
         "invalid_request" => agent_client_protocol::Error::invalid_request(),
         "invalid_input" => agent_client_protocol::Error::invalid_params(),
         "unsupported" => agent_client_protocol::Error::method_not_found(),
-        "not_found" | "session_not_found" => agent_client_protocol::Error::resource_not_found(None),
+        "not_found" | "session_not_found" => agent_client_protocol::Error::from(
+            agent_client_protocol::v1::schema::Error::resource_not_found(None),
+        ),
         "cancelled" => agent_client_protocol::Error::request_cancelled(),
         "authentication" => agent_client_protocol::Error::auth_required(),
         _ => agent_client_protocol::Error::internal_error(),
@@ -492,10 +490,9 @@ enum Event {
 }
 
 struct EventQueue {
-    sender: mpsc::Sender<(Event, OwnedSemaphorePermit)>,
-    receiver: Mutex<mpsc::Receiver<(Event, OwnedSemaphorePermit)>>,
-    bytes: Arc<Semaphore>,
-    stopping: watch::Sender<bool>,
+    sender: mpsc::UnboundedSender<Event>,
+    receiver: Mutex<mpsc::UnboundedReceiver<Event>>,
+    stopping: AtomicBool,
     terminating: watch::Sender<bool>,
     terminal: Mutex<Vec<Event>>,
     #[cfg(test)]
@@ -504,12 +501,11 @@ struct EventQueue {
 
 impl EventQueue {
     fn new() -> Self {
-        let (sender, receiver) = mpsc::channel(MAX_PENDING_EVENTS);
+        let (sender, receiver) = mpsc::unbounded_channel();
         Self {
             sender,
             receiver: Mutex::new(receiver),
-            bytes: Arc::new(Semaphore::new(MAX_PENDING_EVENT_BYTES)),
-            stopping: watch::channel(false).0,
+            stopping: AtomicBool::new(false),
             terminating: watch::channel(false).0,
             terminal: Mutex::new(Vec::new()),
             #[cfg(test)]
@@ -517,23 +513,14 @@ impl EventQueue {
         }
     }
 
-    async fn push(&self, event: Event) {
-        let mut stopping = self.stopping.subscribe();
-        let size = serde_json::to_vec(&event).map_or(MAX_PENDING_EVENT_BYTES, |value| value.len());
-        let size = u32::try_from(size.min(MAX_PENDING_EVENT_BYTES)).expect("event budget fits u32");
-        tokio::select! {
-            biased;
-            _ = stopping.wait_for(|stopping| *stopping) => {},
-            () = async {
-                if let Ok(permit) = Arc::clone(&self.bytes).acquire_many_owned(size).await {
-                    let _ = self.sender.send((event, permit)).await;
-                }
-            } => {},
+    fn push(&self, event: Event) {
+        if !self.stopping.load(Ordering::Relaxed) {
+            let _ = self.sender.send(event);
         }
     }
 
     fn stop(&self) {
-        self.stopping.send_replace(true);
+        self.stopping.store(true, Ordering::Relaxed);
     }
 
     fn terminate(&self, error: agent_client_protocol::Error) {
@@ -541,7 +528,7 @@ impl EventQueue {
             .terminal
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if !self.stopping.send_replace(true) {
+        if !self.stopping.swap(true, Ordering::Relaxed) {
             terminal.push(Event::FatalError {
                 error: error.into(),
             });
@@ -569,8 +556,8 @@ impl EventQueue {
         // Observe worker completion before draining its final queued events.
         let mut terminal = self.terminal.lock().map_err(|_| client_lock_error())?;
         let mut events = Vec::new();
-        while events.len() < MAX_PENDING_EVENTS {
-            let Ok((event, _permit)) = receiver.try_recv() else {
+        while events.len() < EVENTS_PER_POLL {
+            let Ok(event) = receiver.try_recv() else {
                 break;
             };
             events.push(event);
@@ -619,7 +606,12 @@ impl NativeClient {
     }
 
     fn send(&self, command: Command) -> LuaResult<()> {
-        let stopping = matches!(&command, Command::Stop | Command::ForceStop);
+        if matches!(&command, Command::ForceStop) {
+            self.events.stop();
+            self.events.terminating.send_replace(true);
+            return Ok(());
+        }
+        let stopping = matches!(&command, Command::Stop);
         self.commands
             .lock()
             .map_err(|_| client_lock_error())?
@@ -655,6 +647,7 @@ impl NativeClient {
 impl Drop for NativeClient {
     fn drop(&mut self) {
         self.events.stop();
+        self.events.terminating.send_replace(true);
     }
 }
 
@@ -858,7 +851,6 @@ impl UserData for NativeClient {
 #[mlua::lua_module]
 fn avante_acp(lua: &Lua) -> LuaResult<LuaTable> {
     let exports = lua.create_table()?;
-    exports.set("api_version", NATIVE_API_VERSION)?;
     exports.set(
         "new",
         lua.create_function(|lua, value: LuaValue| {
@@ -872,7 +864,7 @@ fn avante_acp(lua: &Lua) -> LuaResult<LuaTable> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_client_protocol::schema::v1::{
+    use agent_client_protocol::v1::schema::{
         SessionConfigOption, SessionConfigOptionCategory, SessionConfigSelectOption, SessionMode,
         SessionModeState,
     };
@@ -883,7 +875,9 @@ mod tests {
             agent_client_protocol::Error::internal_error()
                 .data(serde_json::json!({ "details": "Session not found: abc" })),
         );
-        let not_found = ClientError::from(agent_client_protocol::Error::resource_not_found(None));
+        let not_found = ClientError::from(agent_client_protocol::Error::from(
+            agent_client_protocol::v1::schema::Error::resource_not_found(None),
+        ));
         let invalid = ClientError::from(agent_client_protocol::Error::invalid_params());
 
         assert_eq!(missing.kind, ErrorKind::SessionNotFound);
@@ -907,11 +901,11 @@ mod tests {
 
         assert_eq!(
             protocol_error("unsupported", "missing handler".to_string()).code,
-            ErrorCode::MethodNotFound
+            ErrorCode::METHOD_NOT_FOUND
         );
         assert_eq!(
             protocol_error("not_found", "missing file".to_string()).code,
-            ErrorCode::ResourceNotFound
+            ErrorCode::RESOURCE_NOT_FOUND
         );
     }
 

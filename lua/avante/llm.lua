@@ -730,6 +730,16 @@ function M._stream_acp(opts)
           if opts.on_acp_config_change then opts.on_acp_config_change() end
         end,
         on_session_update = function(update)
+          if update.sessionUpdate == "notice" then
+            ---@cast update {severity: "info"|"warning"|"error", title: string, description?: string}
+            local notify = ({ info = Utils.info, warning = Utils.warn, error = Utils.error })[update.severity]
+              or Utils.info
+            local message = update.title
+            if update.description and update.description ~= "" then message = message .. "\n" .. update.description end
+            notify(message)
+            return
+          end
+
           -- Replayed updates from session/load duplicate content already in
           -- the chat history; rendering them would re-append old messages and
           -- navigate the editor to files edited in the loaded session.

@@ -421,14 +421,14 @@ describe("llm._continue_stream_acp", function()
   end
 
   for _, importing in ipairs({ false, true }) do
-    for _, failure in ipairs({ "version", "start" }) do
+    for _, failure in ipairs({ "constructor", "start" }) do
       it("reports a native " .. failure .. " failure to " .. (importing and "the import" or "on_stop"), function()
         Config.provider = "test-acp"
         Config.acp_providers = { ["test-acp"] = { command = "agent", args = {} } }
         local client = ACPClient:new({ command = "agent", handlers = {} })
         client._native_module = {
-          api_version = failure == "version" and 1 or 3,
           new = function()
+            if failure == "constructor" then error("native constructor failed") end
             return { start = function() error("native start failed") end }
           end,
         }
@@ -453,7 +453,7 @@ describe("llm._continue_stream_acp", function()
         assert.equals(importing and 1 or 0, #failed)
         local err = importing and failed[1] or stopped[1].error
         assert.equals("internal", err.kind)
-        assert.matches(failure == "version" and "Incompatible avante_acp" or "native start failed", err.message)
+        assert.matches(failure == "constructor" and "native constructor failed" or "native start failed", err.message)
         assert.is_true(opts.acp_request.finished)
         assert.is_nil(opts.acp_request.cancel_autocmd)
         assert.is_nil(client.on_dispose)
@@ -522,7 +522,7 @@ describe("llm._continue_stream_acp", function()
       new_session = function() return { operationId = 1 } end,
       prompt = function() return { operationId = 2 } end,
     }
-    client._native_module = { api_version = 3, new = function() return native end }
+    client._native_module = { new = function() return native end }
     client._start_polling = function() end
     acp_new_stub = stub(ACPClient, "new").invokes(function(_, config)
       client.config.handlers = config.handlers

@@ -96,7 +96,7 @@ describe("ACP stream handlers", function()
             return { operationId = operation_id }
           end,
         }
-        value._native_module = { api_version = 3, new = function() return native end }
+        value._native_module = { new = function() return native end }
         return true
       end,
     }, extra or {})
@@ -114,6 +114,51 @@ describe("ACP stream handlers", function()
     { optionId = "deny-all", name = "Deny always", kind = "reject_always" },
   }
   local tool = { toolCallId = "call1", title = "Write settings", kind = "edit", status = "pending" }
+
+  it("presents live agent notices including during session load without adding chat messages", function()
+    local owner = sidebar()
+    local notifications, chunks = {}, {}
+    for _, level in ipairs({ "info", "warn", "error" }) do
+      local severity = level
+      table.insert(
+        render_stubs,
+        stub(Utils, level).invokes(function(message) table.insert(notifications, { severity, message }) end)
+      )
+    end
+    local client = start_request(owner, { on_chunk = function(chunk) table.insert(chunks, chunk) end })
+    for _, severity in ipairs({ "info", "warning", "error" }) do
+      client.config.handlers.on_session_update({
+        sessionUpdate = "notice",
+        severity = severity,
+        title = "Agent notice",
+        description = "Details",
+      })
+    end
+    client:_handle_event({
+      type = "session_update",
+      replayed = true,
+      notification = {
+        sessionId = "s1",
+        update = { sessionUpdate = "notice", severity = "warning", title = "Load warning" },
+      },
+    })
+    client:_handle_event({
+      type = "session_update",
+      replayed = true,
+      notification = {
+        sessionId = "s1",
+        update = { sessionUpdate = "agent_message_chunk", content = { type = "text", text = "Old reply" } },
+      },
+    })
+    assert.same({
+      { "info", "Agent notice\nDetails" },
+      { "warn", "Agent notice\nDetails" },
+      { "error", "Agent notice\nDetails" },
+      { "warn", "Load warning" },
+    }, notifications)
+    assert.same({}, chunks)
+    assert.same({}, owner.chat_history.messages)
+  end)
 
   for _, selected in ipairs({ "approve-123", "approve-alternative", "approve-all", "deny-456", "deny-all" }) do
     it("returns the selected ACP permission ID unchanged: " .. selected, function()
@@ -320,7 +365,7 @@ describe("ACP stream handlers", function()
             return { operationId = 2 }
           end,
         }
-        value._native_module = { api_version = 3, new = function() return native end }
+        value._native_module = { new = function() return native end }
       end
       return true
     end
@@ -429,7 +474,7 @@ describe("ACP stream handlers", function()
         on_save_acp_client = function(value)
           if not client then table.insert(clients, value) end
           client = value
-          value._native_module = { api_version = 3, new = function() return native end }
+          value._native_module = { new = function() return native end }
           return true
         end,
       })
@@ -468,7 +513,7 @@ describe("ACP stream handlers", function()
       on_save_acp_client = function(value)
         if not client then table.insert(clients, value) end
         client = value
-        value._native_module = { api_version = 3, new = function() return native end }
+        value._native_module = { new = function() return native end }
         return true
       end,
     })

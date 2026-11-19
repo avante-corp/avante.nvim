@@ -157,7 +157,6 @@
 ---@field update_request_context? fun(opts: AvanteLLMStreamOptions)
 local ACPClient = {}
 ACPClient.__index = ACPClient
-local NATIVE_API_VERSION = 3
 
 local function create_error(kind, message, data) return { kind = kind, message = message, data = data } end
 
@@ -678,15 +677,6 @@ function ACPClient:connect(callback)
   set_connection_state(self, "connecting")
   local ok, err = pcall(function()
     local native = self._native_module or load_native()
-    if native.api_version ~= NATIVE_API_VERSION then
-      error(
-        string.format(
-          "Incompatible avante_acp native module (expected API %d, got %s); rebuild or reinstall Avante's native libraries",
-          NATIVE_API_VERSION,
-          tostring(native.api_version or "missing")
-        )
-      )
-    end
     self.native_generation = self.native_generation + 1
     self.session_commands = {}
     self.native = native.new(native_config(self))
@@ -726,9 +716,10 @@ function ACPClient:stop(callback)
   local generation = self.native_generation
   vim.defer_fn(function()
     if self.is_stopping and self.native_generation == generation then
+      pcall(self.native.force_stop, self.native)
       finish_stop(self, create_error("timeout", "Timed out stopping ACP client"))
     end
-  end, self.config.session_close_timeout + 1000)
+  end, self.config.session_close_timeout + 4000) -- SDK stdin drain, exit grace, and termination grace.
 end
 
 function ACPClient:force_stop()

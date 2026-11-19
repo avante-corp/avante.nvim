@@ -336,8 +336,9 @@ the agent has two seconds to acknowledge cancellation before its connection is
 terminated. Reconnecting to the same provider loads the saved session when the
 agent supports session loading.
 
-The native stdio adapter rejects incoming ACP messages larger than 8 MiB. Slow
-event consumption pauses reading from the agent until Neovim catches up.
+ACP protocol handling and stdio process management use the official Rust SDK.
+Pending events are buffered without a capacity limit until Neovim consumes them;
+large outputs or slow consumption can increase memory usage.
 
 You can also set avante options via `vim.g.avante`.
 
