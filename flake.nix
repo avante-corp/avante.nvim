@@ -118,7 +118,7 @@
             };
 
             cargoDepsName = "avante";
-            cargoHash = "sha256-TaSguoiqkjjogLLg9DDkiNbm7oTLFY14XV4xzdelRhY=";
+            cargoHash = "sha256-n9RzT/1PrXcmDRwyrtgI29JmeihiqhtB2XkDEnMW7u8=";
             cargoBuildFlags = [ "--package" pname ];
             nativeBuildInputs = [ pkgs.pkg-config pkgs.perl ];
             buildInputs = [ pkgs.openssl ];
