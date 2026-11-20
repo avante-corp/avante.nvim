@@ -26,7 +26,7 @@ describe("Utils.is_text", function()
   end)
 end)
 
-describe("Utils.is_binary_file", function()
+describe("Utils.file_kind", function()
   local path
   before_each(function() path = vim.fn.tempname() end)
   after_each(function() vim.fn.delete(path) end)
@@ -39,16 +39,23 @@ describe("Utils.is_binary_file", function()
 
   it("detects binary content", function()
     write("%PDF-1.7\n\0\255")
-    assert.is_true(Utils.is_binary_file(path))
+    assert.equals("binary", Utils.file_kind(path))
   end)
 
   it("treats text files as text", function()
     write("local x = 'é'\n")
-    assert.is_false(Utils.is_binary_file(path))
+    assert.equals("text", Utils.file_kind(path))
   end)
 
-  it("treats missing files and terminals as not binary", function()
-    assert.is_false(Utils.is_binary_file(path .. ".missing"))
-    assert.is_false(Utils.is_binary_file("term://foo"))
+  it("recognizes images from their magic bytes, whatever the name", function()
+    for _, magic in ipairs({ "\137PNG\r\n\26\n", "\255\216\255\224", "GIF89a", "RIFF\0\0\0\0WEBPVP8 " }) do
+      write(magic .. "\0\255 rest")
+      assert.equals("image", Utils.file_kind(path))
+    end
+  end)
+
+  it("treats missing files and terminals as text, leaving errors to the reader", function()
+    assert.equals("text", Utils.file_kind(path .. ".missing"))
+    assert.equals("text", Utils.file_kind("term://foo"))
   end)
 end)

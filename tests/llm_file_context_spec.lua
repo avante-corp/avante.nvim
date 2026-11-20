@@ -157,6 +157,25 @@ describe("selected file context", function()
       end)
     end
 
+    for _, mode in ipairs({ "agentic", "legacy" }) do
+      it("that are images are sent as image content in " .. mode .. " mode", function()
+        local image = root .. "/shot.png"
+        local file = assert(io.open(image, "wb"))
+        file:write("\137PNG\r\n\26\n\0\0\0\rIHDR\255")
+        file:close()
+
+        local prompt = generate({
+          mode = mode,
+          selected_filepaths = { "main.cpp", "shot.png", "shot.png" },
+          prompt_opts = { system_prompt = "Test instructions", image_paths = { "/pasted.png" } },
+        })
+
+        assert.same({ "/pasted.png", image }, prompt.image_paths)
+        assert.is_nil(context(prompt):find("shot.png", 1, true))
+        assert.stub(Utils.warn).was_not_called()
+      end)
+    end
+
     it("loaded in a buffer are skipped too", function()
       buffer = vim.fn.bufadd(filepath)
       vim.fn.bufload(buffer)

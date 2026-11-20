@@ -1210,20 +1210,20 @@ fn append_images(messages: &mut Vec<Message>, paths: &[String]) -> Result<(), St
     let mut images = Vec::with_capacity(paths.len());
     for path in paths {
         let bytes = std::fs::read(path).map_err(|error| format!("read image {path}: {error}"))?;
-        let mime = match Path::new(path)
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .map(str::to_ascii_lowercase)
-            .as_deref()
-        {
-            Some("jpg" | "jpeg") => Some(ImageMediaType::JPEG),
-            Some("gif") => Some(ImageMediaType::GIF),
-            Some("webp") => Some(ImageMediaType::WEBP),
-            Some("heic") => Some(ImageMediaType::HEIC),
-            Some("heif") => Some(ImageMediaType::HEIF),
-            Some("svg") => Some(ImageMediaType::SVG),
-            _ => Some(ImageMediaType::PNG),
-        };
+        // The bytes are authoritative: a misnamed file must not be sent with the wrong type.
+        let mime = ImageMediaType::sniff(&bytes).or_else(|| {
+            match Path::new(path)
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .map(str::to_ascii_lowercase)
+                .as_deref()
+            {
+                Some("heic") => Some(ImageMediaType::HEIC),
+                Some("heif") => Some(ImageMediaType::HEIF),
+                Some("svg") => Some(ImageMediaType::SVG),
+                _ => Some(ImageMediaType::PNG),
+            }
+        });
         images.push(UserContent::image_base64(
             base64::engine::general_purpose::STANDARD.encode(bytes),
             mime,
@@ -1707,6 +1707,28 @@ mod tests {
                 "reasoning_context": {"mode": "preserve"}
             })),
         }
+    }
+
+    fn temp_file(name: &str, bytes: &[u8]) -> String {
+        let dir = std::env::temp_dir().join(format!("avante-llm-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(name);
+        std::fs::write(&path, bytes).unwrap();
+        path.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn append_images_trusts_bytes_over_extension() {
+        let path = temp_file("photo.png", b"\xff\xd8\xff\xe0 jpeg");
+        let mut messages = vec![Message::user("look")];
+        append_images(&mut messages, &[path]).unwrap();
+        let Message::User { content } = &messages[0] else {
+            panic!("expected a user message")
+        };
+        let UserContent::Image(image) = content.last().unwrap() else {
+            panic!("expected an image, got {content:?}")
+        };
+        assert_eq!(image.media_type, Some(ImageMediaType::JPEG));
     }
 
     pub(super) fn provider(name: &str, route: Option<RouteInput>) -> ProviderInput {

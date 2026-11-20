@@ -1472,17 +1472,29 @@ function M.is_text(str, allow_truncated)
   return true
 end
 
----Whether the file at `filepath` looks binary, judging from its first bytes.
----Returns false when the file cannot be read, so callers report the read error themselves.
+---@alias avante.FileKind "text"|"image"|"binary"
+
+---Classify the file at `filepath` from its first bytes.
+---Images are those every image-taking provider reads: PNG, JPEG, GIF and WebP.
+---Returns "text" when the file cannot be read, so callers report the read error themselves.
 ---@param filepath string absolute path
----@return boolean
-function M.is_binary_file(filepath)
-  if filepath:sub(1, 7) == "term://" then return false end
+---@return avante.FileKind
+function M.file_kind(filepath)
+  if filepath:sub(1, 7) == "term://" then return "text" end
   local file = io.open(filepath, "rb")
-  if not file then return false end
+  if not file then return "text" end
   local head = file:read(8192) or ""
   file:close()
-  return not M.is_text(head, true)
+  if
+    head:sub(1, 8) == "\137PNG\r\n\26\n"
+    or head:sub(1, 3) == "\255\216\255"
+    or head:sub(1, 6) == "GIF87a"
+    or head:sub(1, 6) == "GIF89a"
+    or (head:sub(1, 4) == "RIFF" and head:sub(9, 12) == "WEBP")
+  then
+    return "image"
+  end
+  return M.is_text(head, true) and "text" or "binary"
 end
 
 ---Check if an icon plugin is installed
