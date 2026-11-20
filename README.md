@@ -183,6 +183,7 @@ Avante.nvim consists of lua code + rust libraries for the backend.
       -- Make sure to set this up properly if you have lazy=true
       'MeanderingProgrammer/render-markdown.nvim',
       opts = {
+        -- see .#render-markdown.nvim-configuration on how to configure
         file_types = {
           "markdown",
           "markdown.Avante" -- until a fix for https://github.com/MeanderingProgrammer/render-markdown.nvim/issues/715 is found
@@ -652,6 +653,18 @@ To create a customized selector provider, you can specify a customized function 
         end,
       }
 ```
+
+### render-markdown.nvim Configuration
+
+[render-markdown.nvim][render-markdown] is a recommended (albeit optional) dependency that helps makes Avante's output nicer.
+
+```lua
+local opts = { } -- Your render-markdown.nvim config
+vim.tbl_extend('force', opts, require'avante.config'.render_markdown_avante_config())
+require('render-markdown').setup(opts)
+
+```
+
 
 ### Input Provider Configuration
 
@@ -1554,3 +1567,4 @@ avante.nvim is licensed under the Apache 2.0 License. For more details, please r
 
 
 [acp-rust-sdk]: https://github.com/agentclientprotocol/rust-sdk
+[render-markdown]: https://github.com/MeanderingProgrammer/render-markdown.nvim
