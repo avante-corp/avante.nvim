@@ -20,6 +20,26 @@ local api = vim.api
 
 require("avante.commands").setup()
 
+-- Dropping files onto the terminal (e.g. kitty) pastes their paths: add them to the context
+-- instead of inserting the text. Installed before the image override so that dropped images
+-- keep being handled by img-clip.nvim.
+vim.paste = (function(overridden)
+  ---@param lines string[]
+  ---@param phase -1|1|2|3
+  ---@return boolean?
+  return function(lines, phase)
+    if
+      phase == -1
+      and vim.tbl_get(Config, "behaviour", "add_dropped_files_to_context")
+      and vim.bo.filetype == "AvanteInput"
+      and require("avante.clipboard").paste_files(lines)
+    then
+      return true
+    end
+    return overridden(lines, phase)
+  end
+end)(vim.paste)
+
 if Config.support_paste_image() then
   vim.paste = (function(overridden)
     ---@param lines string[]

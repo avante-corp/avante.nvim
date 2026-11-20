@@ -60,6 +60,7 @@
 ---       enable_token_counting = true,
 ---       show_token_usage = false,
 ---       auto_add_current_file = true,
+---       add_dropped_files_to_context = true,
 ---       auto_approve_tool_permissions = true,
 ---       confirmation_ui_style = "inline_buttons",
 ---       acp_follow_agent_locations = true,
@@ -224,6 +225,7 @@ end
 ---@field enable_fastapply boolean Enable the fast-apply model flow.
 ---@field include_generated_by_commit_line? boolean Controls if 'Generated-by: <provider/model>' line is added to git commit message
 ---@field auto_add_current_file? boolean Automatically add the current file when opening a new chat.
+---@field add_dropped_files_to_context? boolean Add files pasted as paths in the input (e.g. dragged and dropped onto the terminal) to the selected files instead of inserting their path.
 ---@field confirmation_ui_style? "popup"|"inline_buttons" Tool permission confirmation UI style.
 --- popup is the original yes,all,no in a floating window
 --- inline_buttons is the new inline buttons in the sidebar
@@ -700,6 +702,7 @@ M._defaults = {
     enable_fastapply = false,
     include_generated_by_commit_line = false,
     auto_add_current_file = true,
+    add_dropped_files_to_context = true,
     confirmation_ui_style = "inline_buttons",
     acp_follow_agent_locations = true,
   },
