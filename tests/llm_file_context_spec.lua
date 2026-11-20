@@ -135,6 +135,40 @@ describe("selected file context", function()
     assert.matches(disk_content, context(prompt), nil, true)
   end)
 
+  describe("binary files", function()
+    local pdf_path
+    before_each(function()
+      pdf_path = root .. "/doc.pdf"
+      local file = assert(io.open(pdf_path, "wb"))
+      file:write("%PDF-1.7\n%\226\227\207\211\n1 0 obj\n<< /Length 4 >>\nstream\n\0\255\254\128\nendstream\n")
+      file:close()
+      stubs[#stubs + 1] = stub(Utils, "warn")
+    end)
+
+    for _, mode in ipairs({ "agentic", "legacy" }) do
+      it("are skipped with a warning instead of breaking the render in " .. mode .. " mode", function()
+        local prompt = generate({ mode = mode, selected_filepaths = { "main.cpp", "doc.pdf" } })
+
+        assert.matches("main.cpp", context(prompt), nil, true)
+        assert.is_nil(context(prompt):find("doc.pdf", 1, true))
+        assert.stub(Utils.warn).was_called_with("Not sending binary file to the model: doc.pdf", { once = true })
+      end)
+    end
+
+    it("loaded in a buffer are skipped too", function()
+      buffer = vim.fn.bufadd(filepath)
+      vim.fn.bufload(buffer)
+      vim.api.nvim_buf_set_lines(buffer, 0, -1, false, { "bad \255 byte" })
+
+      local prompt = generate({ mode = "legacy" })
+
+      for _, message in ipairs(prompt.messages) do
+        assert.is_nil(tostring(message.content):find("bad \255 byte", 1, true))
+      end
+      assert.stub(Utils.warn).was_called_with("Not sending binary file to the model: main.cpp", { once = true })
+    end)
+  end)
+
   it("reads unsaved buffer contents when the model calls view", function()
     local Helpers = require("avante.llm_tools.helpers")
     stubs[#stubs + 1] = stub(Helpers, "has_permission_to_access", function() return true end)

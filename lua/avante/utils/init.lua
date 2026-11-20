@@ -1429,6 +1429,62 @@ function M.read_file_from_buf_or_disk(filepath)
   end
 end
 
+---Whether `str` is valid UTF-8 text without NUL bytes.
+---Strings failing this cannot be sent to the prompt templates or to providers as text.
+---@param str string
+---@param allow_truncated? boolean accept a multi-byte sequence cut off at the end, for prefixes of larger content
+---@return boolean
+function M.is_text(str, allow_truncated)
+  if str:find("%z") then return false end
+  -- Fast path: plain ASCII.
+  if not str:find("[\128-\255]") then return true end
+  local byte = string.byte
+  local i, len = 1, #str
+  while i <= len do
+    local c = byte(str, i)
+    local n
+    if c < 0x80 then
+      n = 0
+    elseif c >= 0xC2 and c <= 0xDF then
+      n = 1
+    elseif c >= 0xE0 and c <= 0xEF then
+      n = 2
+    elseif c >= 0xF0 and c <= 0xF4 then
+      n = 3
+    else
+      return false
+    end
+    if i + n > len then return allow_truncated == true end
+    for j = i + 1, i + n do
+      local cc = byte(str, j)
+      if cc < 0x80 or cc > 0xBF then return false end
+    end
+    if n == 2 then
+      local c2 = byte(str, i + 1)
+      -- Reject overlong encodings and UTF-16 surrogates.
+      if (c == 0xE0 and c2 < 0xA0) or (c == 0xED and c2 > 0x9F) then return false end
+    elseif n == 3 then
+      local c2 = byte(str, i + 1)
+      if (c == 0xF0 and c2 < 0x90) or (c == 0xF4 and c2 > 0x8F) then return false end
+    end
+    i = i + n + 1
+  end
+  return true
+end
+
+---Whether the file at `filepath` looks binary, judging from its first bytes.
+---Returns false when the file cannot be read, so callers report the read error themselves.
+---@param filepath string absolute path
+---@return boolean
+function M.is_binary_file(filepath)
+  if filepath:sub(1, 7) == "term://" then return false end
+  local file = io.open(filepath, "rb")
+  if not file then return false end
+  local head = file:read(8192) or ""
+  file:close()
+  return not M.is_text(head, true)
+end
+
 ---Check if an icon plugin is installed
 ---@return boolean
 function M.icons_enabled() return M.has("nvim-web-devicons") or M.has("mini.icons") or M.has("mini.nvim") end
