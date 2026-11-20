@@ -1472,7 +1472,7 @@ function M.is_text(str, allow_truncated)
   return true
 end
 
----@alias avante.FileKind "text"|"image"|"binary"
+---@alias avante.FileKind "text"|"image"|"pdf"|"binary"
 
 ---Classify the file at `filepath` from its first bytes.
 ---Images are those every image-taking provider reads: PNG, JPEG, GIF and WebP.
@@ -1494,7 +1494,31 @@ function M.file_kind(filepath)
   then
     return "image"
   end
+  if head:sub(1, 5) == "%PDF-" then return "pdf" end
   return M.is_text(head, true) and "text" or "binary"
+end
+
+---@type table<string, { mtime: integer, size: integer, text: string }>
+local pdf_text_cache = {}
+
+---Extract the text of a PDF with `pdftotext` (poppler), cached per file version.
+---@param filepath string absolute path
+---@return string|nil text
+---@return string|nil error
+function M.pdf_to_text(filepath)
+  local stat = vim.uv.fs_stat(filepath)
+  if not stat then return nil, "cannot stat " .. filepath end
+  local cached = pdf_text_cache[filepath]
+  if cached and cached.mtime == stat.mtime.sec and cached.size == stat.size then return cached.text end
+  if vim.fn.executable("pdftotext") == 0 then
+    return nil, "pdftotext is not installed (it ships with poppler-utils)"
+  end
+  local result = vim.system({ "pdftotext", "-layout", "-enc", "UTF-8", filepath, "-" }, { text = true }):wait(10000)
+  if result.code ~= 0 then return nil, "pdftotext failed: " .. vim.trim(result.stderr or "") end
+  local text = result.stdout or ""
+  if not M.is_text(text) then return nil, "pdftotext produced invalid UTF-8" end
+  pdf_text_cache[filepath] = { mtime = stat.mtime.sec, size = stat.size, text = text }
+  return text
 end
 
 ---Check if an icon plugin is installed

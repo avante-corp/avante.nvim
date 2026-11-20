@@ -104,6 +104,7 @@ local M = {}
 ---@field systemPrompt string
 ---@field messages AvanteLLMMessage[]
 ---@field imagePaths? string[]
+---@field documentPaths? string[]
 ---@field tools avante.llm.NativeToolInput[]
 ---@field additionalParams table<string, any> Provider-specific JSON parameters
 
@@ -306,6 +307,7 @@ function M._build_request(provider, prompt_opts, session_ctx, checking)
       systemPrompt = prompt_opts.system_prompt,
       messages = prompt_opts.messages,
       imagePaths = prompt_opts.image_paths,
+      documentPaths = prompt_opts.document_paths,
       tools = tools,
       additionalParams = vim.tbl_isempty(additional_params) and vim.empty_dict() or additional_params,
     },

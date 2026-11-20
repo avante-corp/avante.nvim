@@ -1249,6 +1249,25 @@ See `:h avante-tools` for an exhaustive documentation.
 
 See `:h avante-custom-tools`.
 
+### Attaching images and PDFs
+
+Selected files are sent as text, except:
+
+- **Images** (PNG, JPEG, GIF, WebP) are sent as image content, so pick a model that accepts images.
+- **PDFs** are sent as documents to providers whose API reads them: `claude`, `gemini`, `vertex`, `bedrock`, `azure`, and `openai` on `api.openai.com` or `openrouter.ai`. For other providers, such as `ollama` or a local OpenAI-compatible server, the text is extracted with `pdftotext` (from poppler-utils) instead. Set `support_pdf` on a provider to override the default:
+
+  ```lua
+  providers = {
+    ["llama-cpp"] = {
+      __inherited_from = "openai",
+      endpoint = "http://localhost:8080/v1",
+      support_pdf = false, -- extract the text locally (the default for this endpoint)
+    },
+  }
+  ```
+
+- **Other binary files** are not sent; Avante warns once per file.
+
 ### Disable Tools
 
 Avante enables tools by default, but some LLM models do not support tools. You can disable tools by setting `disable_tools = true` for the provider. For example:

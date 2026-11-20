@@ -316,6 +316,10 @@ function M.generate_prompts(opts)
   if opts.prompt_opts and opts.prompt_opts.image_paths then
     image_paths = vim.list_extend(image_paths, opts.prompt_opts.image_paths)
   end
+  local document_paths = {}
+  if opts.prompt_opts and opts.prompt_opts.document_paths then
+    document_paths = vim.list_extend(document_paths, opts.prompt_opts.document_paths)
+  end
 
   Path.prompts.initialize(Path.prompts.get_templates_dir(project_root), project_root)
 
@@ -332,8 +336,10 @@ function M.generate_prompts(opts)
   ---@type "chat"|"responses"|nil
   local resolved_api_route = opts.session_ctx and opts.session_ctx.resolved_api_route or nil
   local use_file_paths = false
+  ---@type AvanteProviderFunctor?
+  local provider
   if not is_acp_provider then
-    local provider = opts.provider or Providers[Config.provider]
+    provider = opts.provider or Providers[Config.provider]
     model_name = provider.model or "unknown"
     if resolved_api_route == nil then resolved_api_route = Providers.resolve_api_route(provider, opts.prompt_opts) end
     context_window = provider.context_window
@@ -357,6 +363,16 @@ function M.generate_prompts(opts)
       if kind == "image" then
         -- Sent as image content next to the user message rather than as prompt text.
         if not vim.tbl_contains(image_paths, path) then table.insert(image_paths, path) end
+      elseif kind == "pdf" and Providers.support_pdf(provider) then
+        if not vim.tbl_contains(document_paths, path) then table.insert(document_paths, path) end
+      elseif kind == "pdf" then
+        -- The provider cannot read PDFs: inline their text, even in agentic mode, since `view` cannot read them.
+        local text, err = Utils.pdf_to_text(path)
+        if text then
+          table.insert(selected_files, { path = filepath, content = text, file_type = "text" })
+        else
+          Utils.warn("Not sending PDF " .. filepath .. " to the model: " .. err, { once = true })
+        end
       elseif kind == "binary" then
         skip_binary(filepath)
       elseif use_file_paths and filepath:sub(1, 7) ~= "term://" and LLMToolHelpers.has_permission_to_access(path) then
@@ -549,6 +565,7 @@ function M.generate_prompts(opts)
     instructions = opts.instructions,
     messages = messages,
     image_paths = image_paths,
+    document_paths = document_paths,
     tools = tools,
     pending_compaction_history_messages = pending_compaction_history_messages,
   }

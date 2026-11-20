@@ -140,6 +140,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field instructions? string Additional instructions appended to the request messages
 ---@field messages AvanteLLMMessage[]
 ---@field image_paths? string[]
+---@field document_paths? string[] PDFs sent as document content
 ---@field tools? AvanteLLMTool[] Available tools
 ---@field pending_compaction_history_messages? AvanteLLMMessage[] messages that might need to get compacted
 ---
@@ -171,6 +172,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field use_response_api? boolean | fun(provider: AvanteDefaultBaseProvider, ctx?: AvantePromptOptions): boolean
 ---@field _use_response_api_resolver? fun(provider: AvanteDefaultBaseProvider, ctx?: AvantePromptOptions): boolean
 ---@field support_previous_response_id? boolean Use Responses API response IDs for tool-result continuations
+---@field support_pdf? boolean Send attached PDFs as documents; when false their text is extracted with `pdftotext`. Defaults by protocol and endpoint
 ---
 ---
 ---@class AvanteSupportedProvider: AvanteDefaultBaseProvider

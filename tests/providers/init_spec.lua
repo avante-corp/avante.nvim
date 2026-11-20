@@ -378,3 +378,33 @@ describe("providers", function()
     assert.matches("__inherited_from", err, nil, true)
   end)
 end)
+
+describe("providers.support_pdf", function()
+  local support_pdf
+  before_each(function() support_pdf = require("avante.providers").support_pdf end)
+
+  it("defaults by protocol", function()
+    for _, protocol in ipairs({ "claude", "gemini", "vertex", "bedrock", "azure" }) do
+      assert.is_true(support_pdf({ _protocol = protocol }), protocol)
+    end
+    for _, protocol in ipairs({ "ollama", "cohere", "copilot" }) do
+      assert.is_false(support_pdf({ _protocol = protocol }), protocol)
+    end
+    assert.is_false(support_pdf(nil))
+  end)
+
+  it("only trusts OpenAI-compatible endpoints known to read files", function()
+    assert.is_true(support_pdf({ _protocol = "openai", endpoint = "https://api.openai.com/v1" }))
+    assert.is_true(support_pdf({ _protocol = "openai", endpoint = "https://openrouter.ai/api/v1" }))
+    assert.is_false(support_pdf({ _protocol = "openai", endpoint = "http://localhost:8080/v1" }))
+    assert.is_false(support_pdf({ _protocol = "openai" }))
+    assert.is_false(
+      support_pdf({ _protocol = "openai", endpoint = "https://api.openai.com/v1", auth_type = "subscription" })
+    )
+  end)
+
+  it("lets the provider override the default", function()
+    assert.is_true(support_pdf({ _protocol = "openai", endpoint = "http://localhost:8080/v1", support_pdf = true }))
+    assert.is_false(support_pdf({ _protocol = "claude", support_pdf = false }))
+  end)
+end)
