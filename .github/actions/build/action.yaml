@@ -38,7 +38,7 @@ runs:
 
     - uses: actions/checkout@v7.0.1
 
-    - uses: dtolnay/rust-toolchain@1.99.0
+    - uses: dtolnay/rust-toolchain@1.100.0
       with:
         targets: ${{ inputs.rust_target }}
 

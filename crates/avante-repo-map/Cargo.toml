@@ -8,12 +8,8 @@ rust-version.workspace = true
 license.workspace = true
 version.workspace = true
 
-[build-dependencies]
-cc="*"
-
 [dependencies]
 mlua = { workspace = true }
-minijinja = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 tree-sitter = "0.23"
 tree-sitter-language = "0.1"

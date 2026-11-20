@@ -31,7 +31,7 @@ docker run \
 
   yum install -y perl-IPC-Cmd perl-Time-Piece openssl-devel
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-    sh -s -- -y --profile minimal --default-toolchain 1.99.0
+    sh -s -- -y --profile minimal --default-toolchain 1.100.0
 
   . /root/.cargo/env && make "$1"
 EOF
