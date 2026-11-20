@@ -455,7 +455,6 @@ M._defaults = {
   providers = {
     ---@type AvanteSupportedProvider
     openai = {
-      dialect = "openai",
       endpoint = "https://api.openai.com/v1",
       model = "gpt-6-luna",
       context_window = 128000, -- Context window used to trigger local compaction
@@ -512,7 +511,6 @@ M._defaults = {
     ---@type AvanteSupportedProvider
     deepseek = {
       __inherited_from = "openai",
-      dialect = "deepseek",
       endpoint = "https://api.deepseek.com",
       model = "deepseek-flash",
       context_window = 1048576,
@@ -577,7 +575,6 @@ M._defaults = {
     },
     openrouter = {
       __inherited_from = "openai",
-      dialect = "openrouter",
       support_previous_response_id = false,
       endpoint = "https://openrouter.ai/api/v1",
       api_key_name = "OPENROUTER_API_KEY",
@@ -586,7 +583,6 @@ M._defaults = {
     ---@type AvanteSupportedProvider
     ["claude-haiku"] = {
       __inherited_from = "claude",
-      endpoint = "https://api.anthropic.com",
       model = "claude-haiku-4-5-20251001",
       extra_request_body = {
         max_tokens = 8192,
@@ -595,7 +591,6 @@ M._defaults = {
     ---@type AvanteSupportedProvider
     ["claude-opus"] = {
       __inherited_from = "claude",
-      endpoint = "https://api.anthropic.com",
       model = "claude-opus-4-8",
       extra_request_body = {
         max_tokens = 20480,
@@ -621,7 +616,6 @@ M._defaults = {
     },
     moonshot = {
       __inherited_from = "openai",
-      dialect = "moonshot",
       support_previous_response_id = false,
       endpoint = "https://api.moonshot.ai/v1",
       model = "kimi-k3",
@@ -633,14 +627,12 @@ M._defaults = {
     },
     xai = {
       __inherited_from = "openai",
-      dialect = "xai",
       endpoint = "https://api.x.ai/v1",
       model = "grok-4.7",
       api_key_name = "XAI_API_KEY",
     },
-    glm = {
+    zai = {
       __inherited_from = "openai",
-      dialect = "zai",
       endpoint = "https://open.bigmodel.cn/api/coding/paas/v4",
       model = "GLM-4.7",
       api_key_name = "GLM_API_KEY",
@@ -653,7 +645,6 @@ M._defaults = {
     },
     mistral = {
       __inherited_from = "openai",
-      dialect = "mistral",
       support_previous_response_id = false,
       endpoint = "https://api.mistral.ai/v1",
       model = "mistral-large-latest",

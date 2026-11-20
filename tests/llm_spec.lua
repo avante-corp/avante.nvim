@@ -200,7 +200,7 @@ describe("generate_prompts", function()
     local provider = {
       _name = "openai",
       _protocol = "openai",
-      dialect = "openai",
+      _dialect = "openai",
       endpoint = "https://api.openai.com/v1",
       model = "gpt-mock",
       context_window = 1000,

@@ -10,6 +10,7 @@ local Config = require("avante.config")
 Config.setup({})
 local Llm = require("avante.llm")
 local RigClient = require("avante.libs.rig_client")
+local Providers = require("avante.providers")
 local History = require("avante.history")
 local uv = vim.uv or vim.loop
 
@@ -60,6 +61,10 @@ describe("LLM native integration", function()
     test_cwd = nil
     Config.behaviour.use_cwd_as_project_root = original_use_cwd_as_project_root
     Config.history.storage_path = original_history_storage_path
+    Config.providers.inherited_deepseek = nil
+    rawset(Providers, "inherited_deepseek", nil)
+    Config.providers.nested_deepseek = nil
+    rawset(Providers, "nested_deepseek", nil)
   end)
 
   for _, name in ipairs({ "claude", "chatgpt", "copilot" }) do
@@ -1263,7 +1268,7 @@ describe("LLM native integration", function()
     assert.matches('"content":"hello"', get_request(), nil, true)
   end)
 
-  it("replays DeepSeek reasoning, tool calls, and results on the second request", function()
+  it("replays DeepSeek reasoning, tool calls, and results through an inheritance chain", function()
     local endpoint, get_request = fake_openai({
       table.concat({
         'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1,"model":"deepseek-flash","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"plan"},"finish_reason":null}]}\n\n',
@@ -1281,17 +1286,16 @@ describe("LLM native integration", function()
     local tool_calls = 0
     local stopped
     Config.mode = "legacy"
-    local provider = {
-      _name = "deepseek",
-      _protocol = "openai",
-      dialect = "deepseek",
+    Config.providers.inherited_deepseek = {
+      __inherited_from = "deepseek",
       endpoint = endpoint,
       model = "deepseek-flash",
       use_response_api = false,
       parse_api_key = function() return "test-key" end,
     }
+    Config.providers.nested_deepseek = { __inherited_from = "inherited_deepseek" }
     local request = Llm._stream({
-      provider = provider,
+      provider = Providers.nested_deepseek,
       prompt_opts = {
         system_prompt = "Be concise.",
         messages = { { role = "user", content = "hello" } },
@@ -1430,7 +1434,7 @@ describe("LLM native integration", function()
     local request = RigClient.start({
       _name = "openai",
       _protocol = "openai",
-      dialect = "openai",
+      _dialect = "openai",
       endpoint = endpoint,
       model = "test-model",
       use_response_api = true,

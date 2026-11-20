@@ -146,10 +146,10 @@ vim.g.avante_login = vim.g.avante_login
 ---@alias AvanteNativeLLMProtocol "openai" | "claude" | "azure" | "gemini" | "vertex" | "cohere" | "ollama" | "bedrock" | "copilot"
 ---
 ---@class AvanteDefaultBaseProvider: table<string, any>
----@field _name? string Internal provider registry name
+---@field _name? string Internal name from the providers configuration table
 ---@field _protocol? AvanteNativeLLMProtocol Internal native protocol name
+---@field _dialect? string Internal Rig OpenAI-compatible provider dialect
 ---@field endpoint? string Endpoint (e.g. "https://api.mistral.ai/v1")
----@field dialect? string Rig dialect for an OpenAI-compatible provider
 ---@field extra_request_body? table<string, any>
 ---@field model? string
 ---@field deployment? string Azure deployment name
@@ -174,7 +174,7 @@ vim.g.avante_login = vim.g.avante_login
 ---
 ---
 ---@class AvanteSupportedProvider: AvanteDefaultBaseProvider
----@field __inherited_from? string
+---@field __inherited_from? string Direct parent provider; inheritance chains must end at a built-in provider
 ---@field display_name? string
 ---
 ---@class avante.LLMTokenUsage
