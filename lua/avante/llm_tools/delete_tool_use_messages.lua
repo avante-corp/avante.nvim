@@ -19,9 +19,6 @@ M.param = {
       type = "string",
     },
   },
-  usage = {
-    tool_use_id = "The tool use id",
-  },
 }
 
 ---@type AvanteLLMToolReturn[]

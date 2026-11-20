@@ -38,10 +38,6 @@ M.param = {
       type = "string",
     },
   },
-  usage = {
-    path = "File path here",
-    the_content = "File content here",
-  },
 }
 
 ---@type AvanteLLMToolReturn[]
