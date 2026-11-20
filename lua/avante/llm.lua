@@ -334,13 +334,19 @@ function M.generate_prompts(opts)
   end
 
   local selected_files = opts.selected_files or {}
+  -- Binary files cannot be rendered into the text prompt; skip them instead of failing the whole render.
+  local function skip_binary(filepath)
+    Utils.warn("Not sending binary file to the model: " .. filepath, { once = true })
+  end
   if opts.selected_filepaths then
     for _, filepath in ipairs(opts.selected_filepaths) do
       local path = vim.fn.isabsolutepath(filepath) == 0
           and filepath:sub(1, 7) ~= "term://"
           and vim.fs.joinpath(project_root, filepath)
         or filepath
-      if use_file_paths and filepath:sub(1, 7) ~= "term://" and LLMToolHelpers.has_permission_to_access(path) then
+      if Utils.is_binary_file(path) then
+        skip_binary(filepath)
+      elseif use_file_paths and filepath:sub(1, 7) ~= "term://" and LLMToolHelpers.has_permission_to_access(path) then
         table.insert(selected_files, { path = filepath, file_type = Utils.get_filetype(filepath) })
       else
         local lines, error = Utils.read_file_from_buf_or_disk(path)
@@ -348,8 +354,12 @@ function M.generate_prompts(opts)
           Utils.error("error reading file: " .. error)
         else
           local content = table.concat(lines or {}, "\n")
-          local filetype = Utils.get_filetype(filepath)
-          table.insert(selected_files, { path = filepath, content = content, file_type = filetype })
+          if Utils.is_text(content) then
+            local filetype = Utils.get_filetype(filepath)
+            table.insert(selected_files, { path = filepath, content = content, file_type = filetype })
+          else
+            skip_binary(filepath)
+          end
         end
       end
     end
