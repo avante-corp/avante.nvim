@@ -108,7 +108,8 @@ end
 ---@param all? boolean Loop over all providers if true
 ---@param timeout? integer Timeout in milliseconds for listing models
 ---@param no_cache? boolean Skip cached model lists for this invocation
-function M.open(all, timeout, no_cache)
+---@param default_query? string Initial query entered in the selector
+function M.open(all, timeout, no_cache, default_query)
   M.list_models_invoked = {}
   M.list_models_returned = {}
   ---@type avante.ModelSelectorEntry[]
@@ -216,6 +217,7 @@ function M.open(all, timeout, no_cache)
     title = "Select Avante Model: ",
     items = items,
     default_item_id = default_item and default_item.name or nil,
+    default_query = default_query,
     provider = Config.selector.provider,
     provider_opts = Config.selector.provider_opts,
     on_select = on_select,

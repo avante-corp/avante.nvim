@@ -117,10 +117,11 @@
 ---         Deprecated alias for :Avante toggle. Shows a deprecation warning.
 ---
 ---                                                     *:AvanteModels*
---- :AvanteModels [--all] [--no-cache] [timeout]
+--- :AvanteModels [--all] [--no-cache] [--timeout {ms}] [query]
 ---         Show the model list, optionally querying all providers and overriding
 ---         the model-list timeout in milliseconds. Use --no-cache to fetch fresh
----         model lists instead of using cached results. See |avante-api.select_model|
+---         model lists instead of using cached results. The optional query
+---         prefills the selector input. See |avante-api.select_model|
 ---         Use :AvanteModels --help for generated help.
 ---
 ---                                                     *:AvanteACPModels*
@@ -207,7 +208,8 @@ function M.setup()
   local models = cmdparse.ParameterParser.new({ name = "AvanteModels", help = "Show available models" })
   models:add_parameter({ name = "--all", action = "store_true", help = "Query all configured providers" })
   models:add_parameter({ name = "--no-cache", action = "store_true", help = "Fetch fresh model lists" })
-  models:add_parameter({ name = "timeout", required = false, help = "Model-list timeout in milliseconds" })
+  models:add_parameter({ name = "--timeout", help = "Model-list timeout in milliseconds" })
+  models:add_parameter({ name = "query", required = false, help = "Initial query entered in the selector" })
   models:set_execute(function(data)
     ---@type integer?
     local timeout
@@ -219,7 +221,12 @@ function M.setup()
       end
     end
     -- cmdparse keeps the dash in flag names: `--no-cache` lands in namespace["no-cache"].
-    require("avante.model_selector").open(data.namespace.all == true, timeout, data.namespace["no-cache"] == true)
+    require("avante.model_selector").open(
+      data.namespace.all == true,
+      timeout,
+      data.namespace["no-cache"] == true,
+      data.namespace.query
+    )
   end)
   cmdparse.create_user_command(models, nil, { desc = "avante: show models" })
 
