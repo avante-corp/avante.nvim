@@ -353,7 +353,11 @@ function M.generate_prompts(opts)
           and filepath:sub(1, 7) ~= "term://"
           and vim.fs.joinpath(project_root, filepath)
         or filepath
-      if Utils.is_binary_file(path) then
+      local kind = Utils.file_kind(path)
+      if kind == "image" then
+        -- Sent as image content next to the user message rather than as prompt text.
+        if not vim.tbl_contains(image_paths, path) then table.insert(image_paths, path) end
+      elseif kind == "binary" then
         skip_binary(filepath)
       elseif use_file_paths and filepath:sub(1, 7) ~= "term://" and LLMToolHelpers.has_permission_to_access(path) then
         table.insert(selected_files, { path = filepath, file_type = Utils.get_filetype(filepath) })

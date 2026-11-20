@@ -3169,15 +3169,22 @@ M.is_text({str}, {allow_truncated?})                      *avante-utils.is_text*
         (boolean)
 
 
-M.is_binary_file({filepath})                       *avante-utils.is_binary_file*
-    Whether the file at `filepath` looks binary, judging from its first bytes.
-    Returns false when the file cannot be read, so callers report the read error themselves.
+avante.FileKind                                                *avante.FileKind*
+
+    Type: ~
+        
+
+
+M.file_kind({filepath})                                 *avante-utils.file_kind*
+    Classify the file at `filepath` from its first bytes.
+    Images are those every image-taking provider reads: PNG, JPEG, GIF and WebP.
+    Returns "text" when the file cannot be read, so callers report the read error themselves.
 
     Parameters: ~
         {filepath}  (string)  absolute path
 
     Returns: ~
-        (boolean)
+        (avante.FileKind)
 
 
 M.icons_enabled()                                   *avante-utils.icons_enabled*
