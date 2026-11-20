@@ -1034,7 +1034,7 @@ The following key bindings are available for use with `avante.nvim`:
 | `:AvanteSwitchProvider [--save] [--acp {true|false}] [filter]`   | Switch AI provider; `--save` persists the choice, `--acp true` (default) includes ACP providers; `--acp false` hides them, and `filter` prefills the selector input                                           |                                                     |
 | `:AvanteShowRepoMap`               | Show repo map for project's structure                                                                       |                                                     |
 | `:Avante toggle`                   | Toggle the Avante sidebar (`:AvanteToggle` is a deprecated alias)                                             |                                                     |
-| `:AvanteModels [--all] [--no-cache] [timeout]` | Show model list; `--no-cache` fetches fresh lists, and `timeout` overrides the list timeout in milliseconds |                                                     |
+| `:AvanteModels [--all] [--no-cache] [--timeout ms] [query]` | Show model list; `--no-cache` fetches fresh lists, `--timeout` overrides the list timeout in milliseconds, and `query` prefills the selector |                                                     |
 | `:AvanteSwitchSelectorProvider`    | Switch avante selector provider (e.g. native, telescope, fzf_lua, mini_pick, snacks)                        |                                                     |
 
 

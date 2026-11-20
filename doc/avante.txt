@@ -923,10 +923,11 @@ Commands (:AvanteAsk,...)                                      *avante-commands*
          Deprecated alias for :Avante toggle. Shows a deprecation warning.
 
                                                      *:AvanteModels*
- :AvanteModels [--all] [--no-cache] [timeout]
+ :AvanteModels [--all] [--no-cache] [--timeout {ms}] [query]
          Show the model list, optionally querying all providers and overriding
          the model-list timeout in milliseconds. Use --no-cache to fetch fresh
-         model lists instead of using cached results. See |avante-api.select_model|
+         model lists instead of using cached results. The optional query
+         prefills the selector input. See |avante-api.select_model|
          Use :AvanteModels --help for generated help.
 
                                                      *:AvanteACPModels*
