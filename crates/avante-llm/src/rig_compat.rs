@@ -29,10 +29,28 @@ fn trim_suffix(value: &str, suffix: &str) -> String {
         .to_owned()
 }
 
+pub(super) fn with_openai_facts(wire: OpenAiWire, model: &str) -> OpenAiWire {
+    let vendor = wire.provider().dialect.name;
+    let facts = ModelFacts::default();
+    if matches!(vendor, "copilot" | "azure.openai")
+        && let Some(spec) = facts.for_model(OPENAI.name, model)
+    {
+        // These gateways share OpenAI model limits but have separate catalog vendors.
+        let mut spec = spec.clone();
+        spec.provider = rig::providers::registry::ProviderId::catalog(vendor)
+            .expect("known OpenAI gateway vendor");
+        model.clone_into(&mut spec.id);
+        return wire.with_facts(ModelFacts::new(spec));
+    }
+    wire
+}
+
 pub(super) fn configure_openai(provider: &ProviderInput) -> OpenAIConfig {
     let api_key = provider.api_key.clone().unwrap_or_default();
     let dialect = if matches!(provider.protocol, ProtocolInput::Copilot) {
         &rig::providers::copilot::wire::DIALECT
+    } else if matches!(provider.auth, Some(AuthInput::Chatgpt)) {
+        &rig::providers::chatgpt::DIALECT
     } else {
         by_name(provider.dialect.as_deref().unwrap_or("openai"))
             .expect("OpenAI dialect was validated")
@@ -54,6 +72,34 @@ pub(super) fn configure_openai(provider: &ProviderInput) -> OpenAIConfig {
         config = config.with_auth(Auth::OptionalBearer);
     }
     config
+}
+
+#[derive(Clone)]
+struct CheckOnly;
+
+impl<W: Wire> Transport<W> for CheckOnly {
+    fn send(&self, _payload: W::Payload, _exchange: Exchange) -> Opening<W::Frame> {
+        Opening::failed(ProviderError::request(
+            "Provider preflight cannot send requests",
+        ))
+    }
+}
+
+pub(super) fn build_check_model(provider: &ProviderInput) -> Result<DynModel<Completion>, String> {
+    match provider.protocol {
+        ProtocolInput::Bedrock => Ok(Model::new(
+            rig_bedrock::completion::Converse::new(&provider.model),
+            CheckOnly,
+        )
+        .erase()),
+        ProtocolInput::Vertex => {
+            Ok(Model::new(GenerateContent::new(&provider.model), CheckOnly).erase())
+        }
+        _ => build_http_model(
+            provider,
+            super::build_http(provider, &super::Events::default())?,
+        ),
+    }
 }
 
 pub(super) fn build_http_model(
@@ -117,10 +163,11 @@ pub(super) fn build_http_model(
             }
             Ok(config.connect(http).native_completion(model).erase())
         }
-        ProtocolInput::Copilot => Ok(configure_openai(provider)
-            .connect(http)
-            .completion(model)
-            .erase()),
+        ProtocolInput::Copilot => {
+            let mut completion = configure_openai(provider).connect(http).completion(model);
+            completion.wire = with_openai_facts(completion.wire, model);
+            Ok(completion.erase())
+        }
         ProtocolInput::Azure => {
             let deployment = provider
                 .deployment
@@ -147,8 +194,11 @@ pub(super) fn build_http_model(
             if matches!(provider.auth, Some(AuthInput::Bearer)) {
                 config = config.with_auth(Auth::Bearer);
             }
-            if matches!(provider.route, Some(RouteInput::Responses)) {
-                let completion = config.connect(http).completion(model);
+            let responses = matches!(provider.route, Some(RouteInput::Responses));
+            let request_model = if responses { model } else { deployment };
+            let mut completion = config.connect(http).completion(request_model);
+            completion.wire = with_openai_facts(completion.wire, model);
+            if responses {
                 return Ok(Model::new(
                     completion.wire,
                     AzureResponsesTransport {
@@ -159,7 +209,7 @@ pub(super) fn build_http_model(
                 )
                 .erase());
             }
-            Ok(config.connect(http).completion(deployment).erase())
+            Ok(completion.erase())
         }
         ProtocolInput::Openai => Ok(configure_openai(provider)
             .connect(http)
@@ -335,6 +385,34 @@ fn take_u64(params: &mut Map<String, Value>, keys: &[&str]) -> Result<Option<u64
     Ok(result)
 }
 
+fn take_option<T: serde::de::DeserializeOwned>(
+    params: &mut Map<String, Value>,
+    key: &str,
+) -> Result<Option<T>, String> {
+    params
+        .shift_remove(key)
+        .map(|value| serde_json::from_value(value).map_err(|error| format!("{key}: {error}")))
+        .transpose()
+}
+
+fn take_portable_enum<T: serde::de::DeserializeOwned>(
+    params: &mut Map<String, Value>,
+    key: &str,
+) -> Result<Option<T>, String> {
+    let Some(value) = params.get(key) else {
+        return Ok(None);
+    };
+    if !value.is_string() {
+        return Err(format!("{key} must be a string"));
+    }
+    // Preserve provider-specific spellings, such as Claude's `standard_only` tier.
+    let Ok(option) = serde_json::from_value(value.clone()) else {
+        return Ok(None);
+    };
+    params.shift_remove(key);
+    Ok(Some(option))
+}
+
 pub(super) fn apply_generation_params(
     provider: &ProviderInput,
     request: &mut CompletionRequest,
@@ -352,6 +430,19 @@ pub(super) fn apply_generation_params(
     if let Some(Value::Object(mut params)) = additional_params {
         request.temperature = take_f64(&mut params, "temperature")?;
         request.options.top_p = take_f64(&mut params, "top_p")?;
+        request.options.seed = take_option(&mut params, "seed")?;
+        request.options.parallel_tool_calls = take_option(&mut params, "parallel_tool_calls")?;
+        request.options.service_tier = take_portable_enum(&mut params, "service_tier")?;
+        request.options.verbosity = take_portable_enum(&mut params, "verbosity")?;
+        request.options.cache = take_portable_enum(&mut params, "cache")?;
+        if let Some(stop) = params.shift_remove("stop") {
+            let stop = match stop {
+                Value::String(_) => Value::Array(vec![stop]),
+                other => other,
+            };
+            request.options.stop =
+                serde_json::from_value(stop).map_err(|error| format!("stop: {error}"))?;
+        }
         let explicit_completion_cap = matches!(provider.protocol, ProtocolInput::Azure)
             && !matches!(provider.route, Some(RouteInput::Responses))
             && params.contains_key("max_completion_tokens");
@@ -396,11 +487,9 @@ pub(super) fn apply_generation_params(
             request.options.reasoning = Some(reasoning);
         }
         if matches!(provider.auth, Some(AuthInput::Chatgpt)) {
-            request.options.cache_key = match params.shift_remove("prompt_cache_key") {
-                Some(Value::String(key)) => Some(key),
-                Some(_) => return Err("prompt_cache_key must be a string".to_owned()),
-                None => None,
-            };
+            if let Some(key) = take_option(&mut params, "prompt_cache_key")? {
+                request.options.cache_key = Some(key);
+            }
             params.shift_remove("previous_response_id");
             params.shift_remove("conversation");
         }
@@ -409,20 +498,6 @@ pub(super) fn apply_generation_params(
         }
     } else if additional_params.is_some() {
         return Err("additionalParams must be a JSON object".to_owned());
-    }
-    let vendor = match provider.protocol {
-        ProtocolInput::Openai if matches!(provider.auth, Some(AuthInput::Chatgpt)) => "chatgpt",
-        ProtocolInput::Openai => provider.dialect.as_deref().unwrap_or(OPENAI.name),
-        ProtocolInput::Azure | ProtocolInput::Copilot => OPENAI.name,
-        ProtocolInput::Claude => rig::providers::anthropic::PROVIDER_NAME,
-        ProtocolInput::Gemini => rig::providers::gemini::PROVIDER_NAME,
-        ProtocolInput::Vertex => "vertexai",
-        ProtocolInput::Cohere => rig::providers::cohere::PROVIDER_NAME,
-        ProtocolInput::Ollama => rig::providers::ollama::PROVIDER_NAME,
-        ProtocolInput::Bedrock => rig_bedrock::completion::PROVIDER_NAME,
-    };
-    if let Some(model) = facts.for_model(vendor, &provider.model) {
-        model.fit(request);
     }
     let reasoning_off = matches!(request.options.reasoning, Some(Reasoning::Off))
         || request

@@ -141,8 +141,9 @@ end
 
 ---@param provider AvanteProviderFunctor
 ---@param provider_conf AvanteDefaultBaseProvider
+---@param checking? boolean
 ---@return avante.llm.NativeBedrockInput
-local function bedrock_config(provider, provider_conf)
+local function bedrock_config(provider, provider_conf, checking)
   local region = provider_conf.aws_region
   if not region or region == "" then
     region = Utils.environment.parse("AWS_REGION") or Utils.environment.parse("AWS_DEFAULT_REGION")
@@ -150,7 +151,8 @@ local function bedrock_config(provider, provider_conf)
 
   ---@type string?, string?, string?, string?
   local access_key_id, secret_access_key, session_token, bearer_token
-  local credential = provider.parse_api_key() or Utils.environment.parse("AWS_BEARER_TOKEN_BEDROCK")
+  local credential = not checking and (provider.parse_api_key() or Utils.environment.parse("AWS_BEARER_TOKEN_BEDROCK"))
+    or nil
   if credential and credential:find(",", 1, true) then
     local parts = vim.split(credential, ",", { plain = true })
     access_key_id, secret_access_key, region, session_token = parts[1], parts[2], parts[3], parts[4]
@@ -200,17 +202,20 @@ end
 ---@param provider AvanteProviderFunctor
 ---@param prompt_opts AvantePromptOptions
 ---@param session_ctx? avante.SessionContext
+---@param checking? boolean
 ---@return avante.llm.NativeRequestInput
-function M._build_request(provider, prompt_opts, session_ctx)
+function M._build_request(provider, prompt_opts, session_ctx, checking)
   local protocol = assert(provider._protocol or provider._name, "Provider protocol is not set")
   local provider_conf, additional_params = Providers.parse_config(provider)
   local chatgpt = protocol == "openai" and provider_conf.auth_type == "subscription"
   local name = provider._name or protocol
-  local credential = provider_credential(provider, protocol)
+  local credential = not checking and provider_credential(provider, protocol) or nil
   local route = nil
   if protocol == "openai" or protocol == "azure" or protocol == "copilot" then
     route = session_ctx and session_ctx.resolved_api_route or nil
-    if route == nil then route = Providers.resolve_api_route(provider_conf, prompt_opts, protocol) end
+    if route == nil then
+      route = Providers.resolve_api_route(provider_conf, not checking and prompt_opts or nil, protocol)
+    end
   end
   if chatgpt then
     route = "responses"
@@ -286,11 +291,11 @@ function M._build_request(provider, prompt_opts, session_ctx)
       authHome = auth_home,
       route = route,
       apiVersion = rawget(provider_conf, "api_version"),
-      promptCaching = provider.support_prompt_caching == true,
+      promptCaching = provider.support_prompt_caching == true and additional_params.cache ~= "none",
       headers = headers,
       proxy = provider_conf.proxy,
       allowInsecure = provider_conf.allow_insecure == true,
-      bedrock = protocol == "bedrock" and bedrock_config(provider, provider_conf) or nil,
+      bedrock = protocol == "bedrock" and bedrock_config(provider, provider_conf, checking) or nil,
       vertex = protocol == "vertex" and vim.tbl_extend("force", vim.empty_dict(), {
         projectId = rawget(provider_conf, "project_id") or vim.env.GOOGLE_CLOUD_PROJECT,
         location = rawget(provider_conf, "location") or vim.env.GOOGLE_CLOUD_LOCATION,
@@ -305,7 +310,7 @@ function M._build_request(provider, prompt_opts, session_ctx)
       additionalParams = vim.tbl_isempty(additional_params) and vim.empty_dict() or additional_params,
     },
   }
-  if type(provider.extra_headers) == "function" then
+  if not checking and type(provider.extra_headers) == "function" then
     local native, err = load_native()
     if not native then error(err, 0) end
     input.provider.headers = Utils.tbl_override(native.request_headers(input), provider.extra_headers)
@@ -313,6 +318,26 @@ function M._build_request(provider, prompt_opts, session_ctx)
     input.provider.replaceHeaders = true
   end
   return input
+end
+
+---@param provider AvanteProviderFunctor
+---@return nil
+function M.check_provider(provider)
+  local native, err = load_native()
+  if not native then return Utils.warn(tostring(err)) end
+  ---@type boolean, string[]
+  local ok, warnings = pcall(
+    function()
+      return native.check(M._build_request(provider, {
+        system_prompt = "Check provider settings.",
+        messages = { { role = "user", content = "Check provider settings." } },
+      }, nil, true))
+    end
+  )
+  if not ok then return Utils.warn(tostring(warnings)) end
+  for _, message in ipairs(warnings) do
+    Utils.warn(message)
+  end
 end
 
 function M.claude_home() return vim.fn.stdpath("data") .. "/avante/claude-cloak" end

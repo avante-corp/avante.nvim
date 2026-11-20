@@ -10,6 +10,7 @@ local Config = require("avante.config")
 Config.setup({})
 local Llm = require("avante.llm")
 local RigClient = require("avante.libs.rig_client")
+local Providers = require("avante.providers")
 local History = require("avante.history")
 local uv = vim.uv or vim.loop
 
@@ -23,8 +24,21 @@ describe("LLM native integration", function()
   local test_cwd
   local original_aws_env
   local original_proxy_env
+  local api_key_stub
+
+  local function configure_provider(name, opts)
+    Config.providers[name] = opts
+    rawset(Providers, name, nil)
+  end
 
   before_each(function()
+    api_key_stub = nil
+    Config.providers = nil
+    Config.setup({})
+    Config.providers = vim.deepcopy(Config.providers)
+    for name in pairs(Config.providers) do
+      rawset(Providers, name, nil)
+    end
     clients = {}
     original_mode = Config.mode
     original_use_cwd_as_project_root = Config.behaviour.use_cwd_as_project_root
@@ -43,13 +57,21 @@ describe("LLM native integration", function()
   end)
 
   after_each(function()
+    if api_key_stub then api_key_stub:revert() end
+    for name in pairs(Config.providers) do
+      rawset(Providers, name, nil)
+    end
+    Config.providers = nil
+    Config.setup({})
+    Config.mode = original_mode
+    Config.behaviour.use_cwd_as_project_root = original_use_cwd_as_project_root
+    Config.history.storage_path = original_history_storage_path
     for name, value in pairs(original_proxy_env) do
       vim.env[name] = value or nil
     end
     for name, value in pairs(original_aws_env or {}) do
       vim.env[name] = value or nil
     end
-    Config.mode = original_mode
     for _, client in ipairs(clients) do
       if not client:is_closing() then client:close() end
     end
@@ -58,8 +80,6 @@ describe("LLM native integration", function()
     vim.fn.chdir(original_cwd)
     vim.fn.delete(test_cwd, "rf")
     test_cwd = nil
-    Config.behaviour.use_cwd_as_project_root = original_use_cwd_as_project_root
-    Config.history.storage_path = original_history_storage_path
   end)
 
   for _, name in ipairs({ "claude", "chatgpt", "copilot" }) do
@@ -82,13 +102,16 @@ describe("LLM native integration", function()
   for _, name in ipairs({ "chatgpt", "copilot" }) do
     it("requires explicit " .. name .. " login before inference", function()
       local protocol = name == "chatgpt" and "openai" or "copilot"
-      local input = RigClient._build_request({
-        _name = protocol,
-        _protocol = protocol,
+      configure_provider(protocol, {
         auth_type = "subscription",
         model = "gpt-6.1-sol",
-        parse_api_key = function() error("must not read an API key") end,
-      }, { system_prompt = "system", messages = { { role = "user", content = "hello" } } })
+      })
+      api_key_stub = stub(Providers[protocol], "parse_api_key")
+      local input = RigClient._build_request(
+        Providers[protocol],
+        { system_prompt = "system", messages = { { role = "user", content = "hello" } } }
+      )
+      assert.stub(api_key_stub).was_not_called()
       input.provider.authHome = test_cwd .. "/missing-" .. name
       local request = require("avante_llm").start(input)
       local terminal
@@ -185,14 +208,12 @@ describe("LLM native integration", function()
     end))
     local secret = "test-gemini-secret-must-not-appear"
     local stopped
-    local request = RigClient.start({
-      _name = "gemini",
-      _protocol = "gemini",
+    configure_provider("gemini", {
       model = "gemini-2.5-flash",
       endpoint = "http://127.0.0.1:" .. server:getsockname().port .. "/v1beta/models",
-      api_key_name = "TEST_KEY",
-      parse_api_key = function() return secret end,
-    }, {
+      api_key_name = "cmd:echo " .. secret,
+    })
+    local request = RigClient.start(Providers.gemini, {
       system_prompt = "Be concise.",
       messages = { { role = "user", content = "hello" } },
     }, {
@@ -217,12 +238,12 @@ describe("LLM native integration", function()
         headers = case.headers,
       })
       local stopped
-      local request = RigClient.start({
-        _name = "openai",
-        _protocol = "openai",
+      configure_provider("openai", {
+        api_key_name = "cmd:echo test-key",
         model = "custom-chat-model",
         endpoint = endpoint,
-      }, {
+      })
+      local request = RigClient.start(Providers.openai, {
         system_prompt = "Be concise.",
         messages = { { role = "user", content = "hello" } },
       }, {
@@ -260,13 +281,12 @@ describe("LLM native integration", function()
       end)
     end))
     local stops = {}
-    local request = RigClient.start({
-      _name = "openai",
-      _protocol = "openai",
+    configure_provider("openai", {
       model = "test-model",
       endpoint = "http://127.0.0.1:" .. server:getsockname().port .. "/v1",
-      parse_api_key = function() return "test-token" end,
-    }, {
+      api_key_name = "cmd:echo test-token",
+    })
+    local request = RigClient.start(Providers.openai, {
       system_prompt = "Be concise.",
       messages = { { role = "user", content = "hello" } },
     }, {
@@ -335,6 +355,88 @@ describe("LLM native integration", function()
     return History.get_history_messages({ messages = history }), stopped.reason
   end
 
+  for _, cache in ipairs({ "default", "none" }) do
+    it("honors Claude's " .. cache .. " cache setting in the request body", function()
+      local endpoint, get_request = fake_openai(anthropic_reply({ { type = "text", text = "ok" } }, "end_turn"))
+      configure_provider("claude", {
+        api_key_name = "cmd:echo test-key",
+        endpoint = endpoint,
+        model = "claude-sonnet-4-6",
+        extra_request_body = { max_tokens = 128, cache = cache ~= "default" and cache or nil },
+      })
+      stream_reply(Providers.claude, { { role = "user", content = "hello" } })
+      local body = vim.json.decode(assert(get_request()):match("\r\n\r\n(.*)"))
+      for _, block in ipairs({ body.system[1], body.messages[1].content[1], body.tools[1] }) do
+        if cache == "none" then
+          assert.is_nil(block.cache_control)
+        else
+          assert.same({ type = "ephemeral" }, block.cache_control)
+        end
+      end
+    end)
+  end
+
+  for _, case in ipairs({
+    { name = "openai", model = "gpt-5", params = { temperature = 0.5 }, option = "temperature" },
+    { name = "claude", model = "claude-sonnet-4-6", params = { seed = 7 }, option = "seed" },
+  }) do
+    it("preflights " .. case.name .. " then sends without another warning", function()
+      local reply = case.name == "claude" and anthropic_reply({ { type = "text", text = "ok" } }, "end_turn")
+        or sse({ { choices = { { index = 0, delta = { content = "ok" }, finish_reason = "stop" } } } })
+          .. "data: [DONE]\n\n"
+      local endpoint, get_request = fake_openai(reply)
+      local header_calls = 0
+      configure_provider(case.name, {
+        model = case.model,
+        endpoint = endpoint,
+        api_key_name = "UNSET_PREFLIGHT_API_KEY",
+        use_response_api = false,
+        extra_request_body = case.params,
+        extra_headers = function(headers)
+          header_calls = header_calls + 1
+          return headers
+        end,
+      })
+      Config.provider = case.name
+      api_key_stub = stub(Providers[case.name], "parse_api_key").invokes(
+        function() error("preflight must not read credentials") end
+      )
+      local warnings = {}
+      local warn_stub = stub(require("avante.utils"), "warn").invokes(
+        function(message, opts) warnings[#warnings + 1] = { message = message, opts = opts } end
+      )
+      local original_login = vim.g.avante_login
+      vim.g.avante_login = true
+      local ok, err = pcall(function()
+        local sidebar = setmetatable({ code = {} }, { __index = require("avante.sidebar") })
+        function sidebar:is_open() return true end
+        function sidebar:focus() end
+        sidebar:open({})
+        assert.stub(api_key_stub).was_not_called()
+        assert.same(0, header_calls)
+        assert.is_nil(get_request())
+        assert.same(1, #warnings)
+        assert.matches(case.option, warnings[1].message, nil, true)
+        assert.matches(case.model, warnings[1].message, nil, true)
+        assert.matches("is not supported", warnings[1].message, nil, true)
+        assert.is_nil(warnings[1].opts)
+
+        api_key_stub:revert()
+        api_key_stub = stub(Providers[case.name], "parse_api_key").returns("test-key")
+        local _, reason = stream_reply(Providers[case.name], { { role = "user", content = "hello" } })
+        assert.same("complete", reason)
+        assert.same(1, header_calls)
+        local body = vim.json.decode(assert(get_request()):match("\r\n\r\n(.*)"))
+        assert.is_nil(body[case.option])
+        assert.same(1, #warnings)
+        assert.same(case.params, Providers[case.name].extra_request_body)
+      end)
+      warn_stub:revert()
+      vim.g.avante_login = original_login
+      assert.is_true(ok, err)
+    end)
+  end
+
   it("keeps completed text in history when a later Anthropic block fails", function()
     local endpoint = fake_openai(sse({
       {
@@ -349,7 +451,12 @@ describe("LLM native integration", function()
       { type = "error", error = { type = "overloaded_error", message = "stream failed" } },
     }))
     local history, stopped = {}, nil
-    RigClient.start({ _name = "claude", _protocol = "claude", model = "claude-sonnet-4-5", endpoint = endpoint }, {
+    configure_provider("claude", {
+      api_key_name = "cmd:echo test-key",
+      model = "claude-sonnet-4-5",
+      endpoint = endpoint,
+    })
+    RigClient.start(Providers.claude, {
       system_prompt = "Be concise.",
       messages = { { role = "user", content = "hello" } },
     }, {
@@ -392,20 +499,45 @@ describe("LLM native integration", function()
       local endpoint, get_request = fake_openai(sse({
         { candidates = { { content = { role = "model", parts = { { text = "ok" } } }, finishReason = "STOP" } } },
       }))
-      stream_reply({
-        _name = "gemini",
-        _protocol = "gemini",
+      configure_provider("gemini", {
         model = "gemini-2.5-flash",
         endpoint = endpoint:gsub("/v1$", "") .. case.endpoint,
-        api_key_name = "TEST_KEY",
-        parse_api_key = function() return "test-key" end,
-      }, { { role = "user", content = "hello" } })
+        api_key_name = "cmd:echo test-key",
+      })
+      stream_reply(Providers.gemini, { { role = "user", content = "hello" } })
       local request = assert(get_request())
       local request_path = request:match("^POST ([^ ]+) HTTP/")
       assert.same(case.path .. "/gemini-2.5-flash:streamGenerateContent?alt=sse", request_path)
       assert.is_not_nil(request:lower():find("x-goog-api-key: test-key", 1, true))
     end)
   end
+
+  it("maps portable generation options into Gemini's request body", function()
+    local endpoint, get_request = fake_openai(sse({
+      { candidates = { { content = { role = "model", parts = { { text = "ok" } } }, finishReason = "STOP" } } },
+    }))
+    configure_provider("gemini", {
+      model = "gemini-2.5-flash",
+      endpoint = endpoint:gsub("/v1$", ""),
+      api_key_name = "cmd:echo test-key",
+      extra_request_body = {
+        seed = 7,
+        stop = "END",
+        service_tier = "flex",
+        verbosity = "high",
+        generationConfig = { topK = 12 },
+      },
+    })
+    stream_reply(Providers.gemini, { { role = "user", content = "hello" } })
+    local body = vim.json.decode(assert(get_request()):match("\r\n\r\n(.*)"))
+    assert.same(7, body.generationConfig.seed)
+    assert.same({ "END" }, body.generationConfig.stopSequences)
+    assert.same(12, body.generationConfig.topK)
+    assert.same("flex", body.serviceTier)
+    for _, key in ipairs({ "seed", "stop", "service_tier", "verbosity" }) do
+      assert.is_nil(body[key])
+    end
+  end)
 
   it("preserves null tool arguments through streaming, saved history, and replay", function()
     local arguments_json = '{"query":"rust","include_pattern":null,"values":[null,"middle",null],"options":{}}'
@@ -435,7 +567,12 @@ describe("LLM native integration", function()
       }) .. "data: [DONE]\n\n",
       chat_reply(),
     })
-    local provider = { _name = "openai", _protocol = "openai", model = "custom-chat-model", endpoint = endpoint }
+    configure_provider("openai", {
+      api_key_name = "cmd:echo test-key",
+      model = "custom-chat-model",
+      endpoint = endpoint,
+    })
+    local provider = Providers.openai
     local history = {
       filename = "null-arguments.json",
       title = "Conversation before the tool call",
@@ -513,15 +650,16 @@ describe("LLM native integration", function()
 
   it("keeps Azure deployment routing separate from reasoning model parameters", function()
     local endpoint, get_request = fake_openai(chat_reply())
-    stream_reply({
-      _name = "private_azure",
-      _protocol = "azure",
+    configure_provider("private_azure", {
+      api_key_name = "cmd:echo test-key",
+      __inherited_from = "azure",
       endpoint = endpoint,
       model = "gpt-6-luna",
       deployment = "production-deployment",
       api_version = "2025-04-01-preview",
       extra_request_body = { max_completion_tokens = 128, reasoning_effort = "low" },
-    }, { { role = "user", content = "hello" } })
+    })
+    stream_reply(Providers.private_azure, { { role = "user", content = "hello" } })
     local raw = get_request()
     assert.matches("/deployments/production-deployment/chat/completions", raw, nil, true)
     local body = vim.json.decode(raw:match("\r\n\r\n(.*)"))
@@ -561,9 +699,12 @@ describe("LLM native integration", function()
   }) do
     it("maps provider defaults to the wire for " .. vim.inspect(case), function()
       local endpoint, get_request = fake_openai(case.responses and azure_responses_reply() or chat_reply())
-      local provider = vim.deepcopy(require("avante.providers")[case.name])
+      Config.providers[case.name] = vim.tbl_extend("force", Config.providers[case.name], {
+        api_key_name = "cmd:echo test-key",
+      })
+      rawset(Providers, case.name, nil)
+      local provider = Providers[case.name]
       provider.endpoint = provider.endpoint:gsub("^https?://[^/]+", endpoint:gsub("/v1$", ""))
-      provider.parse_api_key = function() return "test-key" end
       if case.model then provider.model = case.model end
       if case.route ~= nil then provider.use_response_api = case.route end
       if case.effort then provider.extra_request_body.reasoning_effort = case.effort end
@@ -620,16 +761,17 @@ describe("LLM native integration", function()
   }) do
     it("routes " .. case.name, function()
       local endpoint, get_request = fake_openai(azure_responses_reply())
-      stream_reply({
-        _name = "private_azure",
-        _protocol = "azure",
+      configure_provider("private_azure", {
+        api_key_name = "cmd:echo test-key",
+        __inherited_from = "azure",
         endpoint = endpoint:gsub("/v1$", "") .. case.endpoint_suffix,
         model = "gpt-6-luna",
         deployment = "production-deployment",
         api_version = case.api_version,
         use_response_api = true,
         extra_request_body = { max_completion_tokens = 128, reasoning_effort = "low" },
-      }, { { role = "user", content = "hello" } })
+      })
+      stream_reply(Providers.private_azure, { { role = "user", content = "hello" } })
       local raw = get_request()
       assert.same("POST " .. case.path .. " HTTP/1.1", raw:match("^[^\r\n]+"))
       local body = vim.json.decode(raw:match("\r\n\r\n(.*)"))
@@ -647,16 +789,17 @@ describe("LLM native integration", function()
   }) do
     it("applies " .. case.model .. " capabilities to Azure Responses with a deployment alias", function()
       local endpoint, get_request = fake_openai(azure_responses_reply())
-      stream_reply({
-        _name = "private_azure",
-        _protocol = "azure",
+      configure_provider("private_azure", {
+        api_key_name = "cmd:echo test-key",
+        __inherited_from = "azure",
         endpoint = endpoint:gsub("/v1$", ""),
         model = case.model,
         deployment = "production-deployment",
         api_version = "2025-04-01-preview",
         use_response_api = true,
         extra_request_body = vim.deepcopy(Config.providers.azure.extra_request_body),
-      }, { { role = "user", content = "hello" } })
+      })
+      stream_reply(Providers.private_azure, { { role = "user", content = "hello" } })
       local raw = get_request()
       local body = vim.json.decode(raw:match("\r\n\r\n(.*)"))
       assert.same("production-deployment", body.model)
@@ -670,16 +813,20 @@ describe("LLM native integration", function()
   end
 
   it("rejects the default Azure Chat API version for Responses before sending a request", function()
-    local input = RigClient._build_request({
-      _name = "private_azure",
-      _protocol = "azure",
+    configure_provider("private_azure", {
+      api_key_name = "cmd:echo test-key",
+      __inherited_from = "azure",
       endpoint = "http://127.0.0.1:1",
       model = "custom-chat-model",
       deployment = "production-deployment",
       api_version = Config.providers.azure.api_version,
       use_response_api = true,
       extra_request_body = vim.deepcopy(Config.providers.azure.extra_request_body),
-    }, { system_prompt = "Be concise.", messages = { { role = "user", content = "hello" } } })
+    })
+    local input = RigClient._build_request(
+      Providers.private_azure,
+      { system_prompt = "Be concise.", messages = { { role = "user", content = "hello" } } }
+    )
     local native = require("avante_llm")
     local ok, error = pcall(native.request_headers, input)
     assert.is_false(ok)
@@ -703,9 +850,12 @@ describe("LLM native integration", function()
   }) do
     it("applies Claude sampling rules to " .. (case.model or case.name), function()
       local endpoint, get_request = fake_openai(anthropic_reply({ { type = "text", text = "ok" } }, "end_turn"))
-      local provider = vim.deepcopy(require("avante.providers")[case.name])
+      Config.providers[case.name] = vim.tbl_extend("force", Config.providers[case.name], {
+        api_key_name = "cmd:echo test-key",
+      })
+      rawset(Providers, case.name, nil)
+      local provider = Providers[case.name]
       provider.endpoint = endpoint
-      provider.parse_api_key = function() return "test-key" end
       if case.model then provider.model = case.model end
       stream_reply(provider, { { role = "user", content = "hello" } })
       local body = vim.json.decode(get_request():match("\r\n\r\n(.*)"))
@@ -750,16 +900,14 @@ describe("LLM native integration", function()
       vim.fn.writefile({}, vim.env.AWS_CONFIG_FILE)
       local endpoint, get_request = fake_openai("")
       local stopped
-      local request = RigClient.start({
-        _name = "bedrock",
-        _protocol = "bedrock",
+      configure_provider("bedrock", {
         model = "anthropic.claude-sonnet-4-6",
         endpoint = endpoint:gsub("/v1$", ""),
         aws_region = "us-east-1",
         aws_profile = case.profile,
-        parse_api_key = function() return nil end,
         extra_request_body = { max_tokens = 128 },
-      }, {
+      })
+      local request = RigClient.start(Providers.bedrock, {
         system_prompt = "Be concise.",
         messages = { { role = "user", content = "hello" } },
       }, {
@@ -782,13 +930,10 @@ describe("LLM native integration", function()
       local endpoint, get_request = fake_openai(
         protocol == "claude" and anthropic_reply({ { type = "text", text = "ok" } }, "end_turn") or chat_reply()
       )
-      stream_reply({
-        _name = protocol,
-        _protocol = protocol,
+      configure_provider(protocol, {
         endpoint = endpoint,
         model = "test-model",
-        api_key_name = "TEST_KEY",
-        parse_api_key = function() return "default-key" end,
+        api_key_name = "cmd:echo default-key",
         extra_request_body = { max_tokens = 128 },
         extra_headers = {
           Authorization = "Bearer override-key",
@@ -796,7 +941,8 @@ describe("LLM native integration", function()
           ["anthropic-version"] = "2023-01-01",
           ["x-gateway-tenant"] = "test-tenant",
         },
-      }, { { role = "user", content = "hello" } })
+      })
+      stream_reply(Providers[protocol], { { role = "user", content = "hello" } })
       local raw = get_request():lower()
       assert.matches("authorization: bearer override-key\r\n", raw, nil, true)
       assert.matches("x-api-key: override-key\r\n", raw, nil, true)
@@ -811,13 +957,11 @@ describe("LLM native integration", function()
     it("applies extra_headers callback " .. case .. " to the actual request", function()
       local endpoint, get_request = fake_openai(chat_reply())
       local callbacks = 0
-      stream_reply({
-        _name = "gateway",
-        _protocol = "openai",
+      configure_provider("gateway", {
+        __inherited_from = "openai",
         endpoint = endpoint,
         model = "test-model",
-        api_key_name = "TEST_KEY",
-        parse_api_key = function() return "default-key" end,
+        api_key_name = "cmd:echo default-key",
         extra_headers = function(headers)
           callbacks = callbacks + 1
           assert.same("Bearer default-key", headers.Authorization)
@@ -829,7 +973,8 @@ describe("LLM native integration", function()
           headers.Authorization = "Gateway override-key"
           return headers
         end,
-      }, { { role = "user", content = "hello" } })
+      })
+      stream_reply(Providers.gateway, { { role = "user", content = "hello" } })
       local headers = get_request():match("^(.-)\r\n\r\n"):lower()
       assert.same(1, callbacks)
       if case == "modify" then
@@ -854,14 +999,13 @@ describe("LLM native integration", function()
       anthropic_reply(blocks, "tool_use"),
       anthropic_reply({ { type = "text", text = "done" } }, "end_turn"),
     })
-    local provider = {
-      _name = "claude",
-      _protocol = "claude",
+    configure_provider("claude", {
       endpoint = endpoint,
       model = "test-model",
       extra_request_body = { max_tokens = 1024 },
-      parse_api_key = function() return "test-key" end,
-    }
+      api_key_name = "cmd:echo test-key",
+    })
+    local provider = Providers.claude
     local messages = { { role = "user", content = "hello" } }
     local history, reason = stream_reply(provider, messages)
     assert.same("tool_use", reason)
@@ -912,13 +1056,12 @@ describe("LLM native integration", function()
         { candidates = { { content = { role = "model", parts = { { text = "done" } } }, finishReason = "STOP" } } },
       }),
     })
-    local provider = {
-      _name = "gemini",
-      _protocol = "gemini",
+    configure_provider("gemini", {
       endpoint = endpoint,
       model = "gemini-3-flash-preview",
-      parse_api_key = function() return "test-key" end,
-    }
+      api_key_name = "cmd:echo test-key",
+    })
+    local provider = Providers.gemini
     local messages = { { role = "user", content = "hello" } }
     local history, reason = stream_reply(provider, messages)
     assert.same("tool_use", reason)
@@ -1013,14 +1156,13 @@ describe("LLM native integration", function()
           return sse(events)
         end
         local endpoint, get_request = fake_openai({ response(output), response({ text_output }) })
-        local provider = {
-          _name = "openai",
-          _protocol = "openai",
+        configure_provider("openai", {
           endpoint = endpoint,
           model = "gpt-5.6-sol",
           use_response_api = true,
-          parse_api_key = function() return "test-key" end,
-        }
+          api_key_name = "cmd:echo test-key",
+        })
+        local provider = Providers.openai
         local messages = { { role = "user", content = "hello" } }
         local history, reason = stream_reply(provider, messages)
         assert.same("tool_use", reason)
@@ -1094,14 +1236,13 @@ describe("LLM native integration", function()
         },
       },
     }))
-    local history = stream_reply({
-      _name = "openai",
-      _protocol = "openai",
+    configure_provider("openai", {
       endpoint = endpoint,
       model = "test-model",
       use_response_api = true,
-      parse_api_key = function() return "test-key" end,
-    }, { { role = "user", content = "hello" } })
+      api_key_name = "cmd:echo test-key",
+    })
+    local history = stream_reply(Providers.openai, { { role = "user", content = "hello" } })
     local tools = History.get_pending_tools(history)
     assert.same({ "call-1", "call-2" }, vim.tbl_map(function(item) return item.id end, tools))
   end)
@@ -1130,14 +1271,13 @@ describe("LLM native integration", function()
         },
       },
     }))
-    stream_reply({
-      _name = "openai",
-      _protocol = "openai",
+    configure_provider("openai", {
       endpoint = endpoint,
       model = "test-model",
       use_response_api = true,
-      parse_api_key = function() return "test-key" end,
-    }, {
+      api_key_name = "cmd:echo test-key",
+    })
+    stream_reply(Providers.openai, {
       { role = "user", content = "question" },
       { role = "assistant", content = "let me check", phase = "commentary" },
       { role = "user", content = "continue" },
@@ -1173,14 +1313,13 @@ describe("LLM native integration", function()
     }))
     local stopped
     local generated = {}
-    local request = RigClient.start({
-      _name = "openai",
-      _protocol = "openai",
+    configure_provider("openai", {
       endpoint = endpoint,
       model = "test-model",
       use_response_api = true,
-      parse_api_key = function() return "test-key" end,
-    }, {
+      api_key_name = "cmd:echo test-key",
+    })
+    local request = RigClient.start(Providers.openai, {
       system_prompt = "Be concise.",
       messages = { { role = "user", content = "hello" } },
       tools = { { name = "lookup", description = "Look something up", param = { fields = {} } } },
@@ -1212,13 +1351,13 @@ describe("LLM native integration", function()
     local chunks = {}
     local messages = {}
     local stopped
-    local request = RigClient.start({
-      _name = "private_gateway",
-      _protocol = "openai",
+    configure_provider("private_gateway", {
+      __inherited_from = "openai",
       endpoint = endpoint,
       model = "test-model",
-      parse_api_key = function() return "test-key" end,
-    }, {
+      api_key_name = "cmd:echo test-key",
+    })
+    local request = RigClient.start(Providers.private_gateway, {
       system_prompt = "Be concise.",
       messages = { { role = "user", content = "hello" } },
       tools = {
@@ -1281,15 +1420,15 @@ describe("LLM native integration", function()
     local tool_calls = 0
     local stopped
     Config.mode = "legacy"
-    local provider = {
-      _name = "deepseek",
-      _protocol = "openai",
+    configure_provider("deepseek", {
+      __inherited_from = "openai",
       dialect = "deepseek",
       endpoint = endpoint,
       model = "deepseek-flash",
       use_response_api = false,
-      parse_api_key = function() return "test-key" end,
-    }
+      api_key_name = "cmd:echo test-key",
+    })
+    local provider = Providers.deepseek
     local request = Llm._stream({
       provider = provider,
       prompt_opts = {
@@ -1376,15 +1515,14 @@ describe("LLM native integration", function()
       ),
       Message:new("user", { type = "tool_result", tool_use_id = "edit-1", content = "edited successfully" }),
     }, nil, false)
-    local provider = {
-      _name = "openai",
-      _protocol = "openai",
+    configure_provider("openai", {
       endpoint = endpoint,
       model = "test-model",
       use_response_api = true,
       support_previous_response_id = true,
-      parse_api_key = function() return "test-key" end,
-    }
+      api_key_name = "cmd:echo test-key",
+    })
+    local provider = Providers.openai
     local session_ctx = { previous_response_id = "resp-previous" }
     local Path = require("avante.path")
     local stub = require("luassert.stub")
@@ -1427,15 +1565,13 @@ describe("LLM native integration", function()
     }))
     local chunks = {}
     local stopped
-    local request = RigClient.start({
-      _name = "openai",
-      _protocol = "openai",
-      dialect = "openai",
+    configure_provider("openai", {
       endpoint = endpoint,
       model = "test-model",
       use_response_api = true,
-      parse_api_key = function() return "test-key" end,
-    }, {
+      api_key_name = "cmd:echo test-key",
+    })
+    local request = RigClient.start(Providers.openai, {
       system_prompt = "Be concise.",
       messages = { { role = "user", content = "hello" } },
     }, {

@@ -2,11 +2,14 @@ local Copilot = require("avante.providers.copilot")
 local RigClient = require("avante.libs.rig_client")
 
 describe("Copilot authentication through Rig", function()
+  before_each(function()
+    require("avante.config").setup({})
+    rawset(require("avante.providers"), "copilot", nil)
+  end)
+
   it("passes a private credential directory without reading plugin credentials", function()
     local input = RigClient._build_request(
-      vim.tbl_extend("force", Copilot, {
-        _name = "copilot",
-        _protocol = "copilot",
+      vim.tbl_extend("force", require("avante.providers").copilot, {
         auth_type = "subscription",
         model = "gpt-6-luna",
         endpoint = "https://api.githubcopilot.com",
@@ -41,12 +44,14 @@ describe("Copilot authentication through Rig", function()
         }
       end,
     }
-    local request = RigClient.start({
-      _name = "copilot",
-      _protocol = "copilot",
-      model = "gpt-6-luna",
-      get_session_token = function() error("authentication belongs in Rust") end,
-    }, { system_prompt = "system", messages = {} }, { on_stop = function(result) stopped = result end })
+    local request = RigClient.start(
+      vim.tbl_extend("force", require("avante.providers").copilot, {
+        model = "gpt-6-luna",
+        get_session_token = function() error("authentication belongs in Rust") end,
+      }),
+      { system_prompt = "system", messages = {} },
+      { on_stop = function(result) stopped = result end }
+    )
     local scheduled = false
     vim.schedule(function() scheduled = true end)
     assert.is_true(vim.wait(200, function() return scheduled end, 1))

@@ -165,6 +165,23 @@
 ---
 ---@brief ]]
 
+---Avante abstracts away the following common generation parameters accepted in
+---`extra_request_body`; they will be translated to each provider's request fields:
+---- `temperature`, `top_p`; `max_tokens`, `max_completion_tokens` and
+---  `max_output_tokens` are aliases for the output-token limit.
+---- `reasoning_effort`: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`.
+---- `seed`: a non-negative integer; `stop`: a string or a list of strings.
+---- `parallel_tool_calls`: a boolean; `service_tier`: `auto`, `default`, `flex`,
+---  `priority`; `verbosity`: `low`, `medium`, `high`.
+---- `cache`: `none`, `short`, `long`.
+---
+---Other parameters are forwarded as is, such as:
+---- `prompt_cache_key`: a prompt-cache routing key for OpenAI and ChatGPT.
+---- `reasoning`: reasoning settings for APIs such as OpenAI and DeepSeek Responses.
+---- `thinking`: thinking settings for APIs such as DeepSeek Chat and Claude Messages.
+---- `generationConfig`: generation settings for Gemini.
+---@alias avante.ExtraRequestBody table<string, any>
+
 ---NOTE: user will be merged with defaults and
 ---we add a default var_accessor for this table to config values.
 

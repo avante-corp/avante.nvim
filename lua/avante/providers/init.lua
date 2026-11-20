@@ -265,6 +265,11 @@ M = setmetatable(M, {
   end,
 })
 
+function M.check()
+  if require("avante.api").is_acp_provider() then return end
+  require("avante.libs.rig_client").check_provider(M[Config.provider])
+end
+
 function M.setup()
   vim.g.avante_login = false
 
@@ -295,6 +300,7 @@ function M.refresh(provider_name)
     ---@type AvanteProviderFunctor | AvanteBedrockProviderFunctor
     local p = M[Config.provider]
     E.setup({ provider = p, refresh = true })
+    M.check()
   end
   if sidebar and sidebar:is_open() then
     if provider_changed then

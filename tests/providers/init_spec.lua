@@ -45,7 +45,7 @@ describe("providers", function()
     package.loaded["avante.providers"] = nil
   end)
 
-  it("resets the sidebar chat after switching providers", function()
+  it("checks the selected provider and resets the sidebar chat after switching providers", function()
     local reset = 0
     package.loaded["avante"] = {
       get = function()
@@ -56,8 +56,15 @@ describe("providers", function()
       end,
     }
 
-    require("avante.providers").refresh("test_claude")
+    local checked = {}
+    local check_stub = stub(require("avante.libs.rig_client"), "check_provider").invokes(
+      function(provider) checked[#checked + 1] = { Config.provider, provider._name } end
+    )
+    local ok, err = pcall(function() require("avante.providers").refresh("test_claude") end)
+    check_stub:revert()
 
+    assert.is_true(ok, err)
+    assert.same({ { "test_claude", "test_claude" } }, checked)
     assert.are.same("test_claude", Config.provider)
     assert.are.same(1, reset)
   end)
@@ -137,8 +144,13 @@ describe("providers", function()
   it("keeps internal provider identity out of parsed user configuration", function()
     local Providers = require("avante.providers")
     local provider = Providers.test_openai
+    local config = Config.get_provider_config("test_openai")
     local parsed = Providers.parse_config(provider)
 
+    assert.same("openai", config.__inherited_from)
+    assert.is_nil(config._name)
+    assert.is_nil(config._protocol)
+    assert.is_nil(config._dialect)
     assert.same("test_openai", provider._name)
     assert.same("openai", provider._protocol)
     assert.is_nil(parsed._name)
