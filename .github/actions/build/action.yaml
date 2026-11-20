@@ -38,8 +38,9 @@ runs:
 
     - uses: actions/checkout@v7.0.1
 
-    - uses: dtolnay/rust-toolchain@1.99.0
+    - uses: dtolnay/rust-toolchain@master
       with:
+        toolchain: 1.100.1
         targets: ${{ inputs.rust_target }}
 
     - uses: Swatinem/rust-cache@v2.9.2
