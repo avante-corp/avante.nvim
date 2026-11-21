@@ -3960,9 +3960,7 @@ function Sidebar:create_selected_files_container()
     },
     buf_options = vim.tbl_deep_extend("force", buf_options, {
       modifiable = false,
-      swapfile = false,
       buftype = "nofile",
-      bufhidden = "wipe",
       filetype = "AvanteSelectedFiles",
     }),
     win_options = vim.tbl_deep_extend("force", base_win_options, {
