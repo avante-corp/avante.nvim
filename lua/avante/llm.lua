@@ -345,7 +345,7 @@ function M.generate_prompts(opts)
   local selected_files = opts.selected_files or {}
   -- Binary files cannot be rendered into the text prompt; skip them instead of failing the whole render.
   local function skip_binary(filepath)
-    Utils.warn("I can't send unsupported file: " .. filepath .. " (see `:h avante-upload`)", { once = true })
+    Utils.warn("Not sending binary unsupported file: " .. filepath .. " (see `:h avante-upload`)", { once = true })
   end
   if opts.selected_filepaths then
     for _, filepath in ipairs(opts.selected_filepaths) do
@@ -1311,7 +1311,8 @@ function M._continue_stream_acp(opts, acp_client, session_id)
   end)
 end
 
----@protected
+-- should be @protected but used in sidebar.lua
+---@nodoc
 ---@param opts AvanteLLMStreamOptions
 ---@return table?
 function M._stream(opts)

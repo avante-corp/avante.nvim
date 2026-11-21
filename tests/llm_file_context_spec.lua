@@ -151,7 +151,9 @@ describe("selected file context", function()
 
         assert.matches("main.cpp", context(prompt), nil, true)
         assert.is_nil(context(prompt):find("doc.pdf", 1, true))
-        assert.stub(Utils.warn).was_called_with("Not sending binary file to the model: doc.pdf", { once = true })
+        assert
+          .stub(Utils.warn)
+          .was_called_with("Not sending binary unsupported file: doc.pdf (see `:h avante-upload`)", { once = true })
       end)
     end
 
@@ -165,7 +167,9 @@ describe("selected file context", function()
       for _, message in ipairs(prompt.messages) do
         assert.is_nil(tostring(message.content):find("bad \255 byte", 1, true))
       end
-      assert.stub(Utils.warn).was_called_with("Not sending binary file to the model: main.cpp", { once = true })
+      assert
+        .stub(Utils.warn)
+        .was_called_with("Not sending binary unsupported file: main.cpp (see `:h avante-upload`)", { once = true })
     end)
   end)
 

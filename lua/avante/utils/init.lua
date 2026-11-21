@@ -1442,7 +1442,7 @@ function M.is_text(str, allow_truncated)
   local i, len = 1, #str
   while i <= len do
     local c = byte(str, i)
-    local n
+    local n ---@type integer
     if c < 0x80 then
       n = 0
     elseif c >= 0xC2 and c <= 0xDF then
