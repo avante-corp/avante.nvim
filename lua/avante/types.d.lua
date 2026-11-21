@@ -353,7 +353,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field on_start AvanteLLMStartCallback
 ---@field on_chunk? AvanteLLMChunkCallback
 ---@field on_stop AvanteLLMStopCallback
----@field on_memory_summarize? AvanteLLMMemorySummarizeCallback
+---@field on_memory_summarize? AvanteLLMMemorySummarizeCallback See 'pending_compaction_history_messages'
 ---@field on_tool_log? fun(tool_id: string, tool_name: string, log: string, state: AvanteLLMToolUseState): nil
 ---@field set_tool_use_store? fun(tool_id: string, key: string, value: any): nil
 ---@field get_history_messages? fun(opts?: { all?: boolean }): avante.HistoryMessage[]
