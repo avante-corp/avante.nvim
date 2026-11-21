@@ -15,8 +15,8 @@
 --- For slash commands, triggered with `/`, see |*avante-slashcommands|.
 ---
 --- Shortcuts, triggered with `#`, expand configured prompt templates:
---->
----   require("avante").setup({
+--->lua
+---   vim.g.avante = {
 ---     shortcuts = {
 ---       {
 ---         name = "refactor",
@@ -24,7 +24,7 @@
 ---         prompt = "Please refactor this code following best practices.",
 ---       },
 ---     },
----   })
+---   }
 ---<
 ---
 ---@brief ]]
@@ -46,6 +46,7 @@ function MentionsSource:new(get_mentions)
   return instance
 end
 
+--- Available for "AvanteInput" and "AvantePromptInput" filetypes
 function MentionsSource:is_available()
   return vim.bo.filetype == "AvanteInput" or vim.bo.filetype == "AvantePromptInput"
 end

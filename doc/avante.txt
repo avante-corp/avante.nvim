@@ -1761,8 +1761,8 @@ avante completion sources                                    *avante-completion*
  For slash commands, triggered with `/`, see |*avante-slashcommands|.
 
  Shortcuts, triggered with `#`, expand configured prompt templates:
->
-   require("avante").setup({
+>lua
+   vim.g.avante = {
      shortcuts = {
        {
          name = "refactor",
@@ -1770,7 +1770,7 @@ avante completion sources                                    *avante-completion*
          prompt = "Please refactor this code following best practices.",
        },
      },
-   })
+   }
 <
 
 
@@ -1790,6 +1790,7 @@ MentionsSource:new({get_mentions})                       *avante-completion:new*
 
 
 MentionsSource:is_available()                   *avante-completion:is_available*
+     Available for "AvanteInput" and "AvantePromptInput" filetypes
 
 
                                   *avante-completion.get_position_encoding_kind*
