@@ -17,7 +17,6 @@ local LLMTools = require("avante.llm_tools")
 local History = require("avante.history")
 local HistoryRender = require("avante.history.render")
 local AcpReplay = require("avante.history.acp_replay")
-local ACPConfirmAdapter = require("avante.ui.acp_confirm_adapter")
 local log = require("avante.utils.log")
 
 ---@class avante.LLM
@@ -921,6 +920,7 @@ function M._stream_acp(opts)
           end
 
           local description = HistoryRender.get_tool_display_name(message)
+          local ACPConfirmAdapter = require("avante.ui.acp_confirm_adapter")
           local acp_mapped_options = ACPConfirmAdapter.map_acp_options(options)
           LLMToolHelpers.confirm(description, function(ok, reason, option_id)
             if request.cancelled or request.finished or reason == LLMToolHelpers.CANCEL_TOKEN then
