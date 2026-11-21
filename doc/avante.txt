@@ -36,6 +36,7 @@ Slash commands ································�
 avante completion sources ·································· |avante-completion|
 avante RAG service ········································ |avante-rag-service|
 Render LLM conversation ······························· |avante-messages-render|
+Stream manager ···················································· |avante-llm|
 avante tools ···················································· |avante-tools|
 Custom tools ············································· |avante-custom-tools|
 Avante bash ················································ |avante-tools-bash|
@@ -2167,6 +2168,97 @@ M.message_to_text({message}, {messages})
 
 
 ==============================================================================
+Stream manager                                                      *avante-llm*
+
+A central module of avante in charge of coordinating other modules to submit informatiuon and handle the stream.
+
+                                                                 *avante-upload*
+An LLM accepts text or often images. Some providers exceptionnaly accepts other formats
+like pdfs for openai.
+Avante warns you when it does not support sending a type of file
+
+avante.LLM                                                          *avante.LLM*
+
+
+                                                   *avante-llm.summarize_memory*
+M.summarize_memory({prev_memory}, {history_messages}, {cb})
+
+    Parameters: ~
+        {prev_memory}       (string|nil)
+        {history_messages}  (avante.HistoryMessage[])
+        {cb}                (fun(memory:avante.ChatMemory|nil,failure?:AvanteLLMStopCallbackOptions):nil)
+
+
+M.generate_todos({user_input}, {cb})                 *avante-llm.generate_todos*
+
+    Parameters: ~
+        {user_input}  (string)
+        {cb}          (fun(error:string|nil):nil)
+
+
+avante.AgentLoopOptions                                *avante.AgentLoopOptions*
+
+    Fields: ~
+        {system_prompt}     (string)
+        {user_input}        (string)
+        {tools}             (AvanteLLMTool[])
+        {on_complete}       (fun(error:string|nil):nil)
+        {session_ctx?}      (avante.SessionContext)
+        {on_tool_log?}      (fun(tool_id:string,tool_name:string,log:string,state:AvanteLLMToolUseState):nil)
+        {on_start?}         (fun():nil)
+        {on_chunk?}         (fun(chunk:string):nil)
+        {on_messages_add?}  (fun(messages:avante.HistoryMessage[]):nil)
+
+
+M.agent_loop({opts})                                     *avante-llm.agent_loop*
+
+    Parameters: ~
+        {opts}  (avante.AgentLoopOptions)
+
+
+M.generate_prompts({opts})                         *avante-llm.generate_prompts*
+
+    Parameters: ~
+        {opts}  (AvanteGeneratePromptsOptions)
+
+    Returns: ~
+        (AvantePromptOptions)
+
+
+M.calculate_tokens({opts})                         *avante-llm.calculate_tokens*
+
+    Parameters: ~
+        {opts}  (AvanteGeneratePromptsOptions)
+
+    Returns: ~
+        (integer)
+
+
+M.request({opts})                                           *avante-llm.request*
+
+    Parameters: ~
+        {opts}  (avante.LLMRequestOpts)  @return table?
+
+
+                                     *avante-llm._load_acp_session_and_continue*
+M._load_acp_session_and_continue({opts}, {acp_client}, {session_id})
+
+    Parameters: ~
+        {opts}        (AvanteLLMStreamOptions)
+        {acp_client}  (avante.acp.ACPClient)
+        {session_id}  (string)
+
+
+M.stream({opts})                                             *avante-llm.stream*
+
+    Parameters: ~
+        {opts}  (AvanteLLMStreamOptions)
+
+
+M.cancel_inflight_request()                 *avante-llm.cancel_inflight_request*
+
+
+==============================================================================
 avante tools                                                      *avante-tools*
 
 
@@ -3040,6 +3132,29 @@ M.read_file_from_buf_or_disk({filepath})
         (string[]|nil)  lines
         (string|nil)    error
         (string|nil)    errname
+
+
+M.is_text({str}, {allow_truncated?})                      *avante-utils.is_text*
+    Whether `str` is valid UTF-8 text without NUL bytes.
+    Strings failing this cannot be sent to the prompt templates or to providers as text.
+
+    Parameters: ~
+        {str}               (string)
+        {allow_truncated?}  (boolean)  accept a multi-byte sequence cut off at the end, for prefixes of larger content
+
+    Returns: ~
+        (boolean)
+
+
+M.is_binary_file({filepath})                       *avante-utils.is_binary_file*
+    Whether the file at `filepath` looks binary, judging from its first bytes.
+    Returns false when the file cannot be read, so callers report the read error themselves.
+
+    Parameters: ~
+        {filepath}  (string)  absolute path
+
+    Returns: ~
+        (boolean)
 
 
 M.icons_enabled()                                   *avante-utils.icons_enabled*

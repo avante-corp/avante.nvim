@@ -1,3 +1,13 @@
+---@mod avante-llm Stream manager
+---@brief [[
+---A central module of avante in charge of coordinating other modules to submit informatiuon and handle the stream.
+---@brief ]]
+---@tag avante-upload
+---@brief [[
+---An LLM accepts text or often images. Some providers exceptionnaly accepts other formats
+---like pdfs for openai.
+---Avante warns you when it does not support sending a type of file
+---@brief ]]
 local api = vim.api
 local fn = vim.fn
 local uv = vim.uv
@@ -335,7 +345,7 @@ function M.generate_prompts(opts)
   local selected_files = opts.selected_files or {}
   -- Binary files cannot be rendered into the text prompt; skip them instead of failing the whole render.
   local function skip_binary(filepath)
-    Utils.warn("Not sending binary file to the model: " .. filepath, { once = true })
+    Utils.warn("I can't send unsupported file: " .. filepath .. " (see `:h avante-upload`)", { once = true })
   end
   if opts.selected_filepaths then
     for _, filepath in ipairs(opts.selected_filepaths) do
@@ -651,6 +661,7 @@ local function acp_context(opts)
   return opts.acp_context
 end
 
+---@protected
 ---@param opts AvanteLLMStreamOptions
 function M._stream_acp(opts)
   Utils.debug("use ACP", Config.provider)
@@ -1102,6 +1113,7 @@ function M._stream_acp(opts)
   M._continue_stream_acp(opts, acp_client, session_id)
 end
 
+---@private
 ---@param opts AvanteLLMStreamOptions
 ---@param acp_client avante.acp.ACPClient
 function M._create_acp_session_and_continue(opts, acp_client)
@@ -1193,6 +1205,7 @@ function M._load_acp_session_and_continue(opts, acp_client, session_id)
   end, load_opts)
 end
 
+---@private
 ---@param opts AvanteLLMStreamOptions
 ---@param acp_client avante.acp.ACPClient
 ---@param session_id string
@@ -1298,6 +1311,7 @@ function M._continue_stream_acp(opts, acp_client, session_id)
   end)
 end
 
+---@protected
 ---@param opts AvanteLLMStreamOptions
 ---@return table?
 function M._stream(opts)
@@ -1642,6 +1656,7 @@ local function _merge_response(first_response, second_response, opts)
   M._stream(opts)
 end
 
+---@private
 ---@param opts AvanteLLMStreamOptions
 ---@param Provider1 AvanteProviderFunctor
 ---@param Provider2 AvanteProviderFunctor
