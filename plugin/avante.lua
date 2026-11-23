@@ -216,34 +216,6 @@ api.nvim_create_user_command(
     complete = cmdparse.make_parser_completer(function() return switch_provider end),
   }
 )
-api.nvim_create_user_command(
-  "AvanteSwitchSelectorProvider",
-  function(opts) require("avante.api").switch_selector_provider(vim.trim(opts.args or "")) end,
-  {
-    nargs = 1,
-    desc = "avante: switch selector provider",
-  }
-)
-api.nvim_create_user_command(
-  "AvanteSwitchInputProvider",
-  function(opts) require("avante.api").switch_input_provider(vim.trim(opts.args or "")) end,
-  {
-    nargs = 1,
-    desc = "avante: switch input provider",
-    ---@param line string
-    ---@return string[]
-    complete = function(_, line, _)
-      local prefix = line:match("AvanteSwitchInputProvider%s*(.*)$") or ""
-      local providers = { "native", "dressing", "snacks" }
-      return vim.tbl_filter(
-        ---@param key string
-        ---@return boolean
-        function(key) return key:find(prefix, 1, true) == 1 end,
-        providers
-      )
-    end,
-  }
-)
 api.nvim_create_user_command("AvanteClear", function(opts)
   local arg = vim.trim(opts.args or "")
   arg = arg == "" and "history" or arg
