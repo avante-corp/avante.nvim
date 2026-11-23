@@ -10,10 +10,10 @@ function M.show(input)
   }
 
   -- Note: Native vim.ui.input doesn't support concealing
-  -- For password input, users should use dressing or snacks providers
+  -- For password input, users should use the snacks provider
   if input.conceal then
     vim.notify_once(
-      "Native input provider doesn't support concealed input. Consider using 'fzf-lua' or 'snacks' provider for password input.",
+      "Native input provider doesn't support concealed input. Consider using 'snacks' provider for password input.",
       vim.log.levels.WARN
     )
   end

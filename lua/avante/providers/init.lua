@@ -215,7 +215,6 @@ function E.setup(opts)
         "TelescopePrompt",
         "gitcommit",
         "gitrebase",
-        "DressingInput",
         "snacks_input",
         "noice",
       }

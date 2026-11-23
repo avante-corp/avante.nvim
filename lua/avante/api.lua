@@ -22,24 +22,6 @@ local function is_generating()
   return true, sidebar
 end
 
----@param target_provider avante.SelectorProvider
-function M.switch_selector_provider(target_provider)
-  require("avante.config").override({
-    selector = {
-      provider = target_provider,
-    },
-  })
-end
-
----@param target_provider avante.InputProvider
-function M.switch_input_provider(target_provider)
-  require("avante.config").override({
-    input = {
-      provider = target_provider,
-    },
-  })
-end
-
 ---@param provider_name avante.ProviderName the provider to switch to
 ---@param save_choice? boolean Persist the provider as the startup choice
 function M.switch_provider(provider_name, save_choice)

@@ -192,7 +192,6 @@
 
 ---@alias avante.InputProvider
 ---| '"native"'
----| '"dressing"'
 ---| '"snacks"'
 ---| `fun(input: avante.ui.Input): nil`
 

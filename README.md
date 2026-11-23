@@ -1036,7 +1036,6 @@ The following key bindings are available for use with `avante.nvim`:
 | `:AvanteShowRepoMap`               | Show repo map for project's structure                                                                       |                                                     |
 | `:Avante toggle`                   | Toggle the Avante sidebar (`:AvanteToggle` is a deprecated alias)                                             |                                                     |
 | `:AvanteModels [--all] [--no-cache] [--timeout ms] [query]` | Show model list; `--no-cache` fetches fresh lists, `--timeout` overrides the list timeout in milliseconds, and `query` prefills the selector |                                                     |
-| `:AvanteSwitchSelectorProvider`    | Switch avante selector provider (e.g. native, telescope, fzf_lua, mini_pick, snacks)                        |                                                     |
 
 
 ## Fast Apply
