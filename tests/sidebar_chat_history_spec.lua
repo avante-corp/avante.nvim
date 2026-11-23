@@ -62,6 +62,17 @@ describe("Sidebar chat history", function()
     assert.equals("/project-b", sidebar.chat_history_project_root)
   end)
 
+  it("keeps the active request's chat while generating", function()
+    local sidebar = fake_sidebar({ filename = "mine.json" }, project)
+    sidebar.is_generating = true
+    latest = "theirs.json"
+
+    sidebar:reload_chat_history()
+
+    assert.same({}, loaded)
+    assert.equals("mine.json", sidebar.chat_history.filename)
+  end)
+
   it("falls back to the latest chat before any chat is loaded", function()
     local sidebar = fake_sidebar(nil, nil)
 

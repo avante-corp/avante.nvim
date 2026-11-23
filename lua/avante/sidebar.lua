@@ -1942,7 +1942,11 @@ function Sidebar:initialize()
     if stat == nil or stat.type == "file" then self.file_selector:add_selected_file(filepath) end
   end
 
-  self:reload_chat_history(HistoryStorage.get_latest_filename(self.code.bufnr, false))
+  if self.is_generating then
+    self:reload_chat_history()
+  else
+    self:reload_chat_history(HistoryStorage.get_latest_filename(self.code.bufnr, false))
+  end
 
   return self
 end
