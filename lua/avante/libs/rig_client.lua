@@ -49,6 +49,7 @@ local M = {}
 ---@field message string
 ---@field status? integer
 ---@field retryAfter? integer
+---@field retryable boolean
 
 ---@class avante.llm.NativeContentDelta
 ---@field type "content_delta"
@@ -430,6 +431,22 @@ function M.copilot_models(timeout) return list_models("copilot", M.copilot_home(
 
 function M.chatgpt_models() return list_models("chatgpt") end
 
+---@param headers table<string, string>
+---@return integer|nil
+function M.claude_rate_limit_reset(headers)
+  local native, err = load_native()
+  if not native then
+    Utils.warn(tostring(err))
+    return
+  end
+  local ok, seconds = pcall(native.claude_rate_limit_reset, headers)
+  if not ok then
+    Utils.warn(tostring(seconds))
+    return
+  end
+  return seconds
+end
+
 ---@param provider AvanteProviderFunctor
 ---@param prompt_opts AvantePromptOptions
 ---@param handler_opts AvanteHandlerOptions
@@ -634,7 +651,7 @@ function M.start(provider, prompt_opts, handler_opts, on_response_headers, sessi
     elseif event.type == "error" then
       ---@cast event avante.llm.NativeError
       cleanup()
-      if event.status == 429 then
+      if event.status == 429 and event.retryable then
         notify_stop({ reason = "rate_limit", retry_after = event.retryAfter or 10 })
       else
         notify_stop({ reason = "error", error = event.message })

@@ -11,7 +11,7 @@ use rig::error::ProviderError;
 use rig::http_client::DynHttpClient;
 use rig::operation::Completion;
 use rig::providers::anthropic::AnthropicConfig;
-use rig::providers::cohere::{ChatRoute, CohereConfig};
+use rig::providers::cohere::CohereConfig;
 use rig::providers::gemini::{GeminiConfig, completion::GenerateContent as GeminiGenerateContent};
 use rig::providers::ollama::OllamaConfig;
 use rig::providers::openai::wire::{AZURE, Auth, OPENAI, OpenAiWire, by_name};
@@ -117,10 +117,7 @@ pub(super) fn build_http_model(
             Ok(completion.erase())
         }
         ProtocolInput::Gemini => {
-            let mut api_key =
-                http::HeaderValue::from_str(&key).map_err(|error| error.to_string())?;
-            api_key.set_sensitive(true);
-            let mut config = GeminiConfig::new("");
+            let mut config = GeminiConfig::new(key);
             let use_v1 = provider
                 .base_url
                 .as_deref()
@@ -138,7 +135,6 @@ pub(super) fn build_http_model(
                 completion.wire,
                 GeminiTransport {
                     http: completion.transport,
-                    api_key,
                     use_v1,
                 },
             )
@@ -149,7 +145,7 @@ pub(super) fn build_http_model(
             if let Some(base_url) = &provider.base_url {
                 config = config.with_base_url(trim_suffix(base_url, "/v2"));
             }
-            Ok(Model::new(config.completion(model).with_route(ChatRoute::Native), http).erase())
+            Ok(config.connect(http).native_completion(model).erase())
         }
         ProtocolInput::Ollama => {
             let mut config = OllamaConfig::new().with_api_key(key);
@@ -213,11 +209,10 @@ pub(super) fn build_http_model(
     }
 }
 
-// shortcut: Rig hardcodes v1beta and query-key auth; remove when it supports v1 and header auth.
+// shortcut: Rig hardcodes v1beta; remove when it supports the v1 route.
 #[derive(Clone, Debug)]
 struct GeminiTransport {
     http: DynHttpClient,
-    api_key: http::HeaderValue,
     use_v1: bool,
 }
 
@@ -233,20 +228,10 @@ impl Transport<GeminiGenerateContent> for GeminiTransport {
             };
             url.set_path(&format!("{prefix}/v1/models/{model}"));
         }
-        let query: Vec<_> = url
-            .query_pairs()
-            .filter(|(name, _)| name != "key")
-            .map(|(name, value)| (name.into_owned(), value.into_owned()))
-            .collect();
-        url.query_pairs_mut().clear().extend_pairs(query);
         *payload.request.uri_mut() = match url.as_str().parse() {
             Ok(uri) => uri,
             Err(error) => return Opening::failed(ProviderError::request(error)),
         };
-        payload
-            .request
-            .headers_mut()
-            .insert("x-goog-api-key", self.api_key.clone());
         <DynHttpClient as Transport<GeminiGenerateContent>>::send(&self.http, payload, exchange)
     }
 }
