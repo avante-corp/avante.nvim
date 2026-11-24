@@ -1,13 +1,12 @@
 //! `ChatGPT` subscription login and inference through Rig's native OAuth provider.
-use super::{Event, Events, ProviderInput, push, run_until_cancelled};
+use super::{Event, Events, ProviderInput, auth_error, push, run_until_cancelled};
 use rig::driver::DynModel;
+use rig::error::ProviderError;
 use rig::operation::Completion;
+use rig::providers::auth::{AuthContext, DeviceCodeHandler, FileTokenStore};
 use rig::providers::chatgpt::{
     DIALECT,
-    auth::{
-        AuthContext, AuthSource, Authenticator, DeviceCodeHandler, FileTokenStore, SignInMethod,
-        SignInPrompt, SignedOut,
-    },
+    auth::{AuthSource, Authenticator, SignInMethod, SignInPrompt, SignedOut},
 };
 use rig::providers::openai::OpenAIConfig;
 use std::collections::HashMap;
@@ -30,6 +29,7 @@ fn authenticator(home: &str, events: &Events) -> Authenticator {
                 DeviceCodeHandler::new(|_| {}),
                 false, // Inference must never start an interactive sign-in.
             )
+            .with_app_name("Avante")
         })
         .clone();
     let events = Arc::clone(events);
@@ -60,18 +60,18 @@ pub(super) async fn connect(
     provider: &ProviderInput,
     events: &Events,
     http: rig::http_client::DynHttpClient,
-) -> Result<DynModel<Completion>, String> {
+) -> Result<DynModel<Completion>, Box<ProviderError>> {
     let auth = authenticator(
         provider
             .auth_home
             .as_deref()
-            .ok_or("missing ChatGPT credential directory")?,
+            .ok_or_else(|| ProviderError::request("missing ChatGPT credential directory"))?,
         events,
     );
     let context = auth
         .auth_context(&http)
         .await
-        .map_err(|error| format!("ChatGPT authentication: {error}. Run :Avante chatgpt login"))?;
+        .map_err(|error| auth_error("ChatGPT", error))?;
     Ok(config(context)
         .connect(http)
         .completion(&provider.model)
@@ -93,7 +93,7 @@ pub(super) async fn authenticate(
             .connect_timeout(Duration::from_secs(30))
             .read_timeout(Duration::from_secs(120))
             .build()
-            .map_err(|error| error.to_string())?;
+            .map_err(ProviderError::request)?;
         let http = rig::http_client::DynHttpClient::new(rig_reqwest::ReqwestClient::from(client));
         let auth = authenticator(&home, &events);
         if action == "login" {
@@ -115,10 +115,10 @@ pub(super) async fn authenticate(
                 );
             })
             .await
-            .map_err(|error| error.to_string())?;
-            Ok("ChatGPT signed in.".to_owned())
+            .map_err(|error| auth_error("ChatGPT", error))?;
+            Ok::<_, Box<ProviderError>>("ChatGPT signed in.".to_owned())
         } else {
-            match auth.sign_out(&http).await.map_err(|error| error.to_string())? {
+            match auth.sign_out(&http).await.map_err(|error| auth_error("ChatGPT", error))? {
                 SignedOut::Forgotten { revoked: Err(_) } => Ok(
                     "ChatGPT credentials removed locally; server revocation could not be confirmed.".to_owned(),
                 ),
@@ -135,14 +135,7 @@ pub(super) async fn authenticate(
                 complete: true,
             },
         ),
-        Some(Err(message)) => push(
-            &events,
-            Event::Error {
-                message,
-                status: None,
-                retry_after: None,
-            },
-        ),
+        Some(Err(error)) => push(&events, Event::from(&error.report())),
     }
 }
 
@@ -150,7 +143,7 @@ pub(super) async fn authenticate(
 mod tests {
     use super::*;
     use crate::{AuthInput, Input, PendingEvent, ProtocolInput, RouteInput};
-    use rig::providers::chatgpt::auth::TokenStore;
+    use rig::providers::auth::TokenStore;
     use rig::wire::{Body, Mode, Wire};
     use serde_json::{Value, json};
 
@@ -301,7 +294,10 @@ mod tests {
         let Err(error) = result else {
             panic!("missing credentials must fail")
         };
-        assert!(error.contains(":Avante chatgpt login"), "{error}");
+        assert!(
+            error.to_string().contains(":Avante chatgpt login"),
+            "{error}"
+        );
         assert!(captured.lock().unwrap().is_none());
         assert!(events.lock().unwrap().is_empty());
         std::fs::remove_dir_all(home).unwrap();
@@ -340,7 +336,10 @@ mod tests {
         let Err(error) = connect(&provider, &events, http).await else {
             panic!("logout must clear cached credentials")
         };
-        assert!(error.contains(":Avante chatgpt login"), "{error}");
+        assert!(
+            error.to_string().contains(":Avante chatgpt login"),
+            "{error}"
+        );
         std::fs::remove_dir_all(home).unwrap();
     }
 }

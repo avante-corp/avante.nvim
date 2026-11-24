@@ -1,13 +1,15 @@
 //! Copilot device login, session exchange and inference through Rig.
-use super::{Event, Events, ProviderInput, RouteInput, push, run_until_cancelled};
+use super::{Event, Events, ProviderInput, RouteInput, auth_error, push, run_until_cancelled};
 use rig::driver::DynModel;
+use rig::error::ProviderError;
 use rig::http_client::{DynHttpClient, HttpClientExt};
 use rig::operation::Completion;
+use rig::providers::auth::{AuthContext, DeviceCodeHandler, FileTokenStore, TokenStore};
 use rig::providers::copilot::{
     DIALECT,
-    auth::{AuthContext, AuthSource, Authenticator, DeviceCodeHandler, FileTokenStore, TokenStore},
-    model_listing::Models,
+    auth::{AuthSource, Authenticator},
 };
+use rig::providers::openai::wire::Models;
 use rig::providers::openai::{OpenAIConfig, Route};
 use rig::wire::{Mode, Wire};
 use serde_json::{Value, json};
@@ -70,23 +72,11 @@ async fn context(
     events: &Events,
     http: &DynHttpClient,
     login: bool,
-) -> Result<AuthContext, String> {
+) -> Result<AuthContext, Box<ProviderError>> {
     authenticator(home, events, login)
         .auth_context(http)
         .await
-        .map_err(|error| {
-            // GitHub's failed response body can contain credentials; keep it out of Lua notifications.
-            let detail = match error {
-                rig::providers::copilot::auth::AuthError::Http(error) => {
-                    error.non_success_status().map_or_else(
-                        || "HTTP transport failed".to_owned(),
-                        |status| format!("HTTP {status}"),
-                    )
-                }
-                error => error.to_string(),
-            };
-            format!("Copilot authentication: {detail}. Run :Avante copilot login")
-        })
+        .map_err(|error| Box::new(auth_error("Copilot", error)))
 }
 
 fn config(context: AuthContext, route: Option<RouteInput>) -> Result<OpenAIConfig, String> {
@@ -122,13 +112,14 @@ pub(super) async fn connect(
     provider: &ProviderInput,
     events: &Events,
     http: DynHttpClient,
-) -> Result<DynModel<Completion>, String> {
+) -> Result<DynModel<Completion>, Box<ProviderError>> {
     let home = provider
         .auth_home
         .as_deref()
-        .ok_or("missing Copilot credential directory")?;
+        .ok_or_else(|| ProviderError::request("missing Copilot credential directory"))?;
     let context = context(home, events, &http, false).await?;
-    let mut completion = config(context, provider.route)?
+    let mut completion = config(context, provider.route)
+        .map_err(ProviderError::Provider)?
         .connect(http)
         .completion(&provider.model);
     completion.wire = super::rig_compat::with_openai_facts(completion.wire, &provider.model);
@@ -156,20 +147,20 @@ pub(super) async fn authenticate(
     }
     let work = async {
         if action == "login" {
-            let http = client(Duration::from_secs(120))?;
+            let http = client(Duration::from_secs(120)).map_err(ProviderError::Provider)?;
             let context = context(&home, &events, &http, true).await?;
-            config(context, None)?;
-            Ok("Copilot signed in.".to_owned())
+            config(context, None).map_err(ProviderError::Provider)?;
+            Ok::<_, Box<ProviderError>>("Copilot signed in.".to_owned())
         } else {
             let store = FileTokenStore::new(home);
             let _held = store
                 .lock("copilot")
                 .await
-                .map_err(|error| error.to_string())?;
+                .map_err(|error| ProviderError::Provider(error.to_string()))?;
             store
                 .delete("copilot")
                 .await
-                .map_err(|error| error.to_string())?;
+                .map_err(|error| ProviderError::Provider(error.to_string()))?;
             Ok("Copilot credentials removed locally. Revoke GitHub authorization in your account settings if needed.".to_owned())
         }
     };
@@ -182,14 +173,7 @@ pub(super) async fn authenticate(
                 complete: true,
             },
         ),
-        Some(Err(message)) => push(
-            &events,
-            Event::Error {
-                message,
-                status: None,
-                retry_after: None,
-            },
-        ),
+        Some(Err(error)) => push(&events, Event::from(&error.report())),
     }
 }
 
@@ -201,14 +185,16 @@ pub(super) async fn list_models(home: &str, timeout: u64) -> Result<Vec<Value>, 
 }
 
 async fn models(home: &str, http: &DynHttpClient) -> Result<Vec<Value>, String> {
-    let context = context(home, &Events::default(), http, false).await?;
+    let context = context(home, &Events::default(), http, false)
+        .await
+        .map_err(|error| error.to_string())?;
     let wire = Models::new(config(context, None)?);
     let encoded = wire
         .encode(None, Mode::Unary)
         .map_err(|error| error.to_string())?;
     // Rig's normalized listing omits policy and token limits used by Avante's picker.
     let response = http
-        .send::<_, Vec<u8>>(encoded.request.map(|_| Vec::<u8>::new()))
+        .send(encoded.request.map(|_| rig::http_client::Bytes::new()))
         .await
         .map_err(|error| {
             error.non_success_status().map_or_else(
@@ -281,13 +267,10 @@ mod tests {
     }
 
     impl HttpClientExt for TestHttp {
-        fn send<T, U>(
+        fn send(
             &self,
-            request: Request<T>,
-        ) -> impl Future<Output = rig::http_client::Result<Response<LazyBody<U>>>> + Send + 'static
-        where
-            T: Into<Bytes> + Send,
-            U: From<Bytes> + Send + 'static,
+            request: Request<Bytes>,
+        ) -> impl Future<Output = rig::http_client::Result<Response<LazyBody>>> + Send + 'static
         {
             let (parts, _) = request.into_parts();
             self.requests.lock().unwrap().push(CapturedRequest {
@@ -303,8 +286,7 @@ mod tests {
             async move {
                 match response {
                     Ok(body) => {
-                        let body: LazyBody<U> =
-                            Box::pin(async move { Ok(U::from(Bytes::from(body))) });
+                        let body: LazyBody = Box::pin(async move { Ok(Bytes::from(body)) });
                         Ok(Response::new(body))
                     }
                     Err((status, body)) => Err(rig::http_client::Error::non_success_with_details(
@@ -315,22 +297,17 @@ mod tests {
                 }
             }
         }
-        fn send_multipart<U>(
+        fn send_multipart(
             &self,
             _: Request<MultipartForm>,
-        ) -> impl Future<Output = rig::http_client::Result<Response<LazyBody<U>>>> + Send + 'static
-        where
-            U: From<Bytes> + Send + 'static,
+        ) -> impl Future<Output = rig::http_client::Result<Response<LazyBody>>> + Send + 'static
         {
             std::future::ready(Err(rig::http_client::Error::StreamEnded))
         }
-        fn send_streaming<T>(
+        fn send_streaming(
             &self,
-            _: Request<T>,
-        ) -> impl Future<Output = rig::http_client::Result<StreamingResponse>> + Send
-        where
-            T: Into<Bytes> + Send,
-        {
+            _: Request<Bytes>,
+        ) -> impl Future<Output = rig::http_client::Result<StreamingResponse>> + Send {
             std::future::ready(Err(rig::http_client::Error::StreamEnded))
         }
     }
@@ -551,7 +528,7 @@ mod tests {
         let Err(error) = result else {
             panic!("expected login requirement");
         };
-        assert!(error.contains(":Avante copilot login"));
+        assert!(error.to_string().contains(":Avante copilot login"));
         assert!(fake.requests.lock().unwrap().is_empty());
         assert!(events.lock().unwrap().is_empty());
         std::fs::remove_dir_all(provider.auth_home.unwrap()).unwrap();
@@ -572,9 +549,48 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert!(error.contains("401"));
-        assert!(!error.contains("private-github-token"));
+        assert!(error.to_string().contains("401"));
+        assert!(!error.to_string().contains("private-github-token"));
+        let report = serde_json::to_value(error.report()).unwrap();
+        assert_eq!(report["http_status"], 401);
+        assert_eq!(report["retryable"], false);
         std::fs::remove_dir_all(provider.auth_home.unwrap()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn inference_preserves_refresh_failures_without_exposing_credentials() {
+        let provider = provider();
+        let home = provider.auth_home.as_deref().unwrap();
+        FileTokenStore::new(home)
+            .save(
+                "copilot",
+                r#"{"github_token":"private-github-token","expires_at":1}"#,
+            )
+            .await
+            .unwrap();
+        let fake = TestHttp::new([Err((
+            http::StatusCode::SERVICE_UNAVAILABLE,
+            "private-reply".into(),
+        ))]);
+        let events = Events::default();
+        let Err(error) = connect(&provider, &events, DynHttpClient::new(fake)).await else {
+            panic!("refresh must fail");
+        };
+        crate::report_error(&events, &error.report(), &provider);
+        let event = serde_json::to_value(
+            &crate::drain_events(&events, &mut std::collections::HashMap::new())[0],
+        )
+        .unwrap();
+        assert_eq!(event["status"], 503);
+        assert_eq!(event["retryable"], true);
+        assert!(!event.to_string().contains("private"));
+        assert!(
+            !event["message"]
+                .as_str()
+                .unwrap()
+                .contains(":Avante copilot login")
+        );
+        std::fs::remove_dir_all(home).unwrap();
     }
 
     #[tokio::test]

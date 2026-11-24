@@ -16,6 +16,7 @@ use rig::completion::{
 };
 use rig::driver::DynModel;
 use rig::effect::{EffectId, EffectKind};
+use rig::error::{ErrorReport, ProviderError};
 use rig::http_client::middleware::HttpMiddleware;
 use rig::message::{
     CallId, ImageMediaType, MimeType, Native, Origin, Reasoning as MessageReasoning, StopReason,
@@ -342,11 +343,26 @@ enum Event {
         status: Option<u16>,
         #[serde(rename = "retryAfter", skip_serializing_if = "Option::is_none")]
         retry_after: Option<u64>,
+        retryable: bool,
     },
     Aborted {
         message: String,
     },
     Cancelled,
+}
+
+impl From<&ErrorReport> for Event {
+    fn from(error: &ErrorReport) -> Self {
+        if matches!(error.kind, rig::error::ErrorKind::Cancelled) {
+            return Self::Cancelled;
+        }
+        Self::Error {
+            message: error.to_string(),
+            status: error.http_status,
+            retry_after: retry_after(error),
+            retryable: error.retryable,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -522,6 +538,7 @@ fn run_worker_guarded(events: &Events, worker: impl FnOnce()) {
                 ),
                 status: None,
                 retry_after: None,
+                retryable: false,
             },
         );
     }
@@ -796,13 +813,15 @@ async fn bedrock_runtime(
 async fn build_model(
     provider: &ProviderInput,
     events: &Events,
-) -> Result<DynModel<Completion>, String> {
+) -> Result<DynModel<Completion>, Box<ProviderError>> {
     let model = provider.model.as_str();
     if matches!(provider.auth, Some(AuthInput::Copilot)) {
-        return copilot::connect(provider, events, build_http(provider, events)?).await;
+        let http = build_http(provider, events).map_err(ProviderError::Provider)?;
+        return copilot::connect(provider, events, http).await;
     }
     if matches!(provider.auth, Some(AuthInput::Chatgpt)) {
-        return chatgpt::connect(provider, events, build_http(provider, events)?).await;
+        let http = build_http(provider, events).map_err(ProviderError::Provider)?;
+        return chatgpt::connect(provider, events, http).await;
     }
     if matches!(provider.protocol, ProtocolInput::Bedrock) {
         let settings = provider
@@ -810,7 +829,8 @@ async fn build_model(
             .as_ref()
             .expect("Bedrock settings were validated");
         return Ok(bedrock_runtime(settings, provider.proxy.as_deref())
-            .await?
+            .await
+            .map_err(ProviderError::Provider)?
             .completion(model)
             .erase());
     }
@@ -823,7 +843,7 @@ async fn build_model(
         if let Some(location) = settings.location {
             builder = builder.with_location(location);
         }
-        let client = builder.build().map_err(|error| error.to_string())?;
+        let client = builder.build().map_err(ProviderError::request)?;
         return Ok(Model::new(
             rig_vertexai::completion::GenerateContent::new(model),
             StreamingVertex(client),
@@ -831,7 +851,8 @@ async fn build_model(
         .erase());
     }
 
-    build_http_model(provider, build_http(provider, events)?)
+    let http = build_http(provider, events).map_err(ProviderError::Provider)?;
+    build_http_model(provider, http).map_err(|error| Box::new(ProviderError::Provider(error)))
 }
 
 fn value_items(value: Value) -> Result<Vec<Value>, String> {
@@ -1270,48 +1291,76 @@ fn completion_request(
     Ok(request)
 }
 
+fn ceil_seconds(wait: Duration) -> u64 {
+    wait.as_secs()
+        .saturating_add(u64::from(wait.subsec_nanos() > 0))
+}
+
 fn retry_after(error: &rig::error::ErrorReport) -> Option<u64> {
     error
-        .provider_response
-        .as_ref()?
-        .headers
-        .as_ref()?
-        .get("retry-after")?
-        .to_str()
-        .ok()?
-        .parse()
-        .ok()
+        .retry_after(std::time::SystemTime::now())
+        .map(ceil_seconds)
 }
 
-fn report_error(events: &Events, error: &rig::error::ErrorReport, provider: &ProviderInput) {
-    if matches!(error.kind, rig::error::ErrorKind::Cancelled) {
-        push(events, Event::Cancelled);
-        return;
-    }
-    let mut message = error.to_string();
-    if matches!(provider.auth, Some(AuthInput::Subscription)) {
-        message = message.replace("/claude-cloak login", ":Avante claude login");
-    }
-    // Gemini includes its API key in request URLs, which transport errors can echo.
-    if let Some(key) = provider.api_key.as_deref().filter(|key| !key.is_empty()) {
-        message = message.replace(key, "[REDACTED]");
-    }
-    push(
-        events,
-        Event::Error {
-            message,
-            status: error.http_status,
-            retry_after: retry_after(error),
-        },
-    );
+fn claude_rate_limit_reset(mut headers: http::HeaderMap) -> Option<u64> {
+    // Some gateways send a token reset and remaining count without a limit.
+    headers
+        .entry("anthropic-ratelimit-tokens-limit")
+        .or_insert(http::HeaderValue::from_static("0"));
+    let limits = rig::error::RateLimits::from_headers(&headers, std::time::SystemTime::now());
+    limits.tokens?.resets_in.map(ceil_seconds)
 }
 
-async fn build_handler(provider: &ProviderInput, events: &Events) -> Result<ErasedHandler, String> {
+fn auth_error(provider: &str, error: rig::providers::auth::AuthError) -> ProviderError {
+    use rig::providers::auth::AuthError;
+    // Auth replies can echo credentials; expose the status without the response body.
+    let detail = match &error {
+        AuthError::Http(source) | AuthError::Reply { source, .. } => {
+            source.non_success_status().map_or_else(
+                || "HTTP transport failed".to_owned(),
+                |status| format!("HTTP {status}"),
+            )
+        }
+        _ => error.to_string(),
+    };
+    let mut report = rig::client::signed_in::failed_sign_in(error);
+    report.message = if report.retryable {
+        format!("{provider} authentication: {detail}")
+    } else {
+        format!(
+            "{provider} authentication: {detail}. Run :Avante {} login",
+            provider.to_ascii_lowercase()
+        )
+    };
+    ProviderError::Relayed(Box::new(report))
+}
+
+fn report_error(events: &Events, error: &ErrorReport, provider: &ProviderInput) {
+    let mut event = Event::from(error);
+    if let Event::Error { message, .. } = &mut event {
+        if matches!(provider.auth, Some(AuthInput::Subscription)) {
+            *message = message.replace("/claude-cloak login", ":Avante claude login");
+        }
+        // Custom transports and provider errors may echo credentials.
+        if let Some(key) = provider.api_key.as_deref().filter(|key| !key.is_empty()) {
+            *message = message.replace(key, "[REDACTED]");
+        }
+    }
+    push(events, event);
+}
+
+async fn build_handler(
+    provider: &ProviderInput,
+    events: &Events,
+) -> Result<ErasedHandler, Box<ProviderError>> {
     if matches!(provider.auth, Some(AuthInput::Subscription)) {
         #[cfg(any(target_os = "linux", target_os = "macos"))]
-        return claude_cloak::connect(provider, events);
+        return claude_cloak::connect(provider, events)
+            .map_err(|error| Box::new(ProviderError::Provider(error)));
         #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-        return Err("Claude Pro/Max requires Linux or macOS".to_owned());
+        return Err(Box::new(ProviderError::Provider(
+            "Claude Pro/Max requires Linux or macOS".to_owned(),
+        )));
     }
     let model = build_model(provider, events).await?;
     Ok(ErasedHandler::new(ModelAdapter::new(
@@ -1332,15 +1381,8 @@ async fn run(input: Input, events: Events, mut cancelled: watch::Receiver<bool>)
     };
     let model = match model {
         Ok(model) => model,
-        Err(message) => {
-            push(
-                &events,
-                Event::Error {
-                    message,
-                    status: None,
-                    retry_after: None,
-                },
-            );
+        Err(error) => {
+            report_error(&events, &error.report(), &input.provider);
             return;
         }
     };
@@ -1354,6 +1396,7 @@ async fn run(input: Input, events: Events, mut cancelled: watch::Receiver<bool>)
                     message,
                     status: None,
                     retry_after: None,
+                    retryable: false,
                 },
             );
             return;
@@ -1472,6 +1515,7 @@ async fn run(input: Input, events: Events, mut cancelled: watch::Receiver<bool>)
                         message,
                         status: None,
                         retry_after: None,
+                        retryable: false,
                     },
                 );
                 return;
@@ -1483,6 +1527,7 @@ async fn run(input: Input, events: Events, mut cancelled: watch::Receiver<bool>)
                         message: format!("unsupported provider stop reason: {other:?}"),
                         status: None,
                         retry_after: None,
+                        retryable: false,
                     },
                 );
                 return;
@@ -1499,6 +1544,7 @@ async fn run(input: Input, events: Events, mut cancelled: watch::Receiver<bool>)
                     message: format!("invalid JSON arguments for tool {}", call.function.name),
                     status: None,
                     retry_after: None,
+                    retryable: false,
                 },
             );
             return;
@@ -1572,6 +1618,7 @@ where
                             message: error.to_string(),
                             status: None,
                             retry_after: None,
+                            retryable: false,
                         },
                     ),
                 }
@@ -1594,6 +1641,22 @@ fn input_from_lua(lua: &Lua, input: LuaValue) -> LuaResult<Input> {
 #[mlua::lua_module]
 fn avante_llm(lua: &Lua) -> LuaResult<LuaTable> {
     let exports = lua.create_table()?;
+    exports.set(
+        "claude_rate_limit_reset",
+        lua.create_function(|_, headers: BTreeMap<String, String>| {
+            let mut parsed = http::HeaderMap::new();
+            for (name, value) in headers {
+                let name = name
+                    .parse::<http::HeaderName>()
+                    .map_err(LuaError::external)?;
+                if !name.as_str().starts_with("anthropic-ratelimit-") {
+                    continue;
+                }
+                parsed.insert(name, value.parse().map_err(LuaError::external)?);
+            }
+            Ok(claude_rate_limit_reset(parsed))
+        })?,
+    )?;
     exports.set(
         "start",
         lua.create_function(|lua, input: LuaValue| start(input_from_lua(lua, input)?))?,
@@ -1698,6 +1761,126 @@ mod tests {
     use std::time::Duration;
     use tokio::sync::mpsc;
 
+    #[test]
+    fn auth_errors_keep_retry_metadata_without_exposing_http_replies() {
+        use rig::providers::auth::AuthError;
+
+        for provider in ["ChatGPT", "Copilot"] {
+            for (status, code, retryable) in [
+                (401, "invalid_token", false),
+                (429, "rate_limit_exceeded", true),
+                (429, "insufficient_quota", false),
+                (503, "unavailable", true),
+            ] {
+                for reply in [false, true] {
+                    let mut headers = http::HeaderMap::new();
+                    headers.insert("retry-after", http::HeaderValue::from_static("1.5"));
+                    let source = rig::http_client::Error::non_success_with_details(
+                        http::StatusCode::from_u16(status).unwrap(),
+                        headers,
+                        json!({"error": {"code": code, "message": "private-token"}}).to_string(),
+                    );
+                    let error = if reply {
+                        AuthError::Reply {
+                            message: "private-reply".into(),
+                            source,
+                        }
+                    } else {
+                        AuthError::Http(source)
+                    };
+                    let report = auth_error(provider, error).report();
+                    let event = serde_json::to_value(Event::from(&report)).unwrap();
+                    assert_eq!(event["status"], status);
+                    assert_eq!(event["retryable"], retryable);
+                    assert_eq!(event["retryAfter"], 2);
+                    assert!(!event.to_string().contains("private"));
+                    let command = format!(":Avante {} login", provider.to_ascii_lowercase());
+                    assert_eq!(report.message.contains(&command), !retryable);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn auth_errors_require_explicit_login_without_http_metadata() {
+        for provider in ["ChatGPT", "Copilot"] {
+            let error = auth_error(
+                provider,
+                rig::providers::auth::AuthError::Message("not signed in".into()),
+            );
+            let event = serde_json::to_value(Event::from(&error.report())).unwrap();
+            assert_eq!(event["retryable"], false);
+            assert!(event["status"].is_null());
+            assert!(event.get("retryAfter").is_none());
+            assert!(
+                event["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains(&format!(":Avante {} login", provider.to_ascii_lowercase()))
+            );
+        }
+    }
+
+    #[test]
+    fn reports_rigs_retry_verdict_for_rate_limits_and_spent_quota() {
+        for (code, retryable) in [("rate_limit_exceeded", true), ("insufficient_quota", false)] {
+            let error = rig::error::ProviderError::from_http_response(
+                http::StatusCode::TOO_MANY_REQUESTS,
+                serde_json::json!({"error": {"code": code, "message": "busy"}}).to_string(),
+            )
+            .report();
+            let events = Events::default();
+            report_error(&events, &error, &provider("openai", None));
+            let event =
+                serde_json::to_value(drain_events(&events, &mut HashMap::new()).remove(0)).unwrap();
+            assert_eq!(event["status"], 429);
+            assert_eq!(event["retryable"], retryable, "{event}");
+        }
+    }
+
+    #[test]
+    fn retry_after_reads_provider_hints_and_rounds_up_to_seconds() {
+        for (headers, message, expected) in [
+            (vec![("retry-after", "7")], "busy", Some(7)),
+            (vec![("retry-after", "1.5")], "busy", Some(2)),
+            (
+                vec![("retry-after-ms", "1500"), ("retry-after", "7")],
+                "busy",
+                Some(2),
+            ),
+            (vec![("retry-after-ms", "1")], "busy", Some(1)),
+            (
+                vec![("retry-after", "Sun, 06 Nov 1994 08:49:37 GMT")],
+                "busy",
+                Some(0),
+            ),
+            (
+                vec![],
+                r#"{"error":{"details":[{"retryDelay":"1.5s"}]}}"#,
+                Some(2),
+            ),
+            (vec![], "Please try again in 1.5s.", Some(2)),
+            (vec![], "busy", None),
+        ] {
+            let headers = headers
+                .into_iter()
+                .map(|(name, value)| {
+                    (
+                        http::header::HeaderName::from_static(name),
+                        http::HeaderValue::from_static(value),
+                    )
+                })
+                .collect();
+            let error = rig::error::ProviderError::from_http_response(
+                http::StatusCode::TOO_MANY_REQUESTS,
+                message,
+            )
+            .with_response_headers(Some(headers))
+            .report();
+            assert_eq!(retry_after(&error), expected, "{error:?}");
+        }
+    }
+
     pub(super) fn prompt() -> PromptInput {
         PromptInput {
             system_prompt: "You are concise.".to_owned(),
@@ -1779,7 +1962,7 @@ mod tests {
 
     #[test]
     fn http_times_out_stalled_headers_and_body() {
-        use rig::http_client::{HttpClientExt, NoBody};
+        use rig::http_client::{Bytes, HttpClientExt};
         use std::io::{Read, Write};
         use std::net::TcpListener;
 
@@ -1818,7 +2001,10 @@ mod tests {
                     Duration::from_millis(200),
                 )
                 .unwrap();
-                let request = http::Request::builder().uri(url).body(NoBody).unwrap();
+                let request = http::Request::builder()
+                    .uri(url)
+                    .body(Bytes::new())
+                    .unwrap();
                 let result = tokio::time::timeout(Duration::from_secs(2), async {
                     let response = client.send_streaming(request).await?;
                     response.into_body().next().await.unwrap().map(|_| ())
@@ -1835,7 +2021,7 @@ mod tests {
 
     #[tokio::test]
     async fn http_read_timeout_resets_when_streaming_data_arrives() {
-        use rig::http_client::{HttpClientExt, NoBody};
+        use rig::http_client::{Bytes, HttpClientExt};
         use std::io::{Read, Write};
         use std::net::TcpListener;
 
@@ -1866,7 +2052,10 @@ mod tests {
             Duration::from_millis(300),
         )
         .unwrap();
-        let request = http::Request::builder().uri(url).body(NoBody).unwrap();
+        let request = http::Request::builder()
+            .uri(url)
+            .body(Bytes::new())
+            .unwrap();
         let body = tokio::time::timeout(Duration::from_secs(3), async {
             let response = client.send_streaming(request).await.unwrap();
             let mut stream = response.into_body();

@@ -107,6 +107,7 @@ pub(super) async fn authenticate(
                 message,
                 status: None,
                 retry_after: None,
+                retryable: false,
             },
         ),
     }

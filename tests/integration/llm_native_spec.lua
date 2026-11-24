@@ -231,6 +231,9 @@ describe("LLM native integration", function()
   for _, case in ipairs({
     { name = "defaults to 10 seconds without Retry-After", headers = {}, expected = 10 },
     { name = "respects Retry-After", headers = { ["Retry-After"] = "7" }, expected = 7 },
+    { name = "rounds fractional seconds up", headers = { ["Retry-After"] = "1.5" }, expected = 2 },
+    { name = "respects millisecond hints", headers = { ["retry-after-ms"] = "1500" }, expected = 2 },
+    { name = "rounds a millisecond up", headers = { ["retry-after-ms"] = "1" }, expected = 1 },
   }) do
     it("native rate limiting " .. case.name, function()
       local endpoint = fake_openai('{"error":{"message":"rate limited","type":"rate_limit_error"}}', {
@@ -254,6 +257,68 @@ describe("LLM native integration", function()
       assert.is_true(vim.wait(10000, function() return stopped ~= nil end, 10), "native request timed out")
       assert.same("rate_limit", stopped.reason)
       assert.same(case.expected, stopped.retry_after)
+    end)
+  end
+
+  it("does not retry an exhausted quota reported as HTTP 429", function()
+    local endpoint = fake_openai('{"error":{"message":"Quota exhausted","code":"insufficient_quota"}}', {
+      status = "429 Too Many Requests",
+      headers = { ["Retry-After"] = "7" },
+    })
+    local stopped
+    configure_provider("openai", {
+      api_key_name = "cmd:echo test-key",
+      model = "custom-chat-model",
+      endpoint = endpoint,
+    })
+    RigClient.start(Providers.openai, {
+      system_prompt = "Be concise.",
+      messages = { { role = "user", content = "hello" } },
+    }, {
+      on_stop = function(result) stopped = result end,
+    })
+
+    assert.is_true(vim.wait(10000, function() return stopped ~= nil end, 10), "native request timed out")
+    assert.same("error", stopped.reason)
+    assert.matches("Quota exhausted", stopped.error, 1, true)
+    assert.is_nil(stopped.retry_after)
+  end)
+
+  for _, case in ipairs({
+    { name = "continues with a small positive budget", remaining = "1", reset = "1.5" },
+    { name = "rounds token resets up without an allowance limit", remaining = "0", reset = "1.5", expected = 2 },
+    { name = "reads millisecond resets", remaining = "0", reset = "20ms", expected = 1 },
+    { name = "ignores request resets while tokens remain", remaining = "1", request_reset = "2.5" },
+    {
+      name = "does not substitute a request reset for an exhausted token budget",
+      remaining = "0",
+      request_reset = "2.5",
+    },
+    { name = "prefers the token reset", remaining = "0", reset = "1.5", request_reset = "2.5", expected = 2 },
+    { name = "ignores an expired reset", remaining = "0", reset = "Sun, 06 Nov 1994 08:49:37 GMT", expected = 0 },
+    { name = "keeps RFC 3339 support", remaining = "0", reset = "1994-11-06T09:49:37+01:00", expected = 0 },
+    { name = "ignores a malformed token reset", remaining = "0", reset = "invalid", request_reset = "2.5" },
+    { name = "ignores missing allowance headers" },
+    {
+      name = "uses Anthropic resets when a gateway also reports OpenAI limits",
+      remaining = "0",
+      reset = "1.5",
+      expected = 2,
+      headers = {
+        ["x-ratelimit-limit-tokens"] = "50000",
+        ["x-ratelimit-remaining-tokens"] = "20000",
+        ["x-ratelimit-reset-tokens"] = "99",
+      },
+    },
+  }) do
+    it("Claude limit handling " .. case.name, function()
+      local sleep =
+        require("avante.providers.claude"):get_rate_limit_sleep_time(vim.tbl_extend("force", case.headers or {}, {
+          ["anthropic-ratelimit-tokens-remaining"] = case.remaining,
+          ["anthropic-ratelimit-tokens-reset"] = case.reset,
+          ["anthropic-ratelimit-requests-reset"] = case.request_reset,
+        }))
+      assert.same(case.expected, sleep)
     end)
   end
 
