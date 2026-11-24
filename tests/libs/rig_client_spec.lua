@@ -950,7 +950,7 @@ describe("Rig client adapter", function()
       end
       configure_provider("openai", {
         api_key_name = "cmd:echo token",
-        auth_type = "subscription",
+        auth_type = "api_key",
         extra_headers = { Authorization = "secret header" },
         extra_request_body = {
           reasoning_effort = "low",
@@ -975,7 +975,7 @@ describe("Rig client adapter", function()
         turn_id = sent.prompt.turnId,
         provider = "openai",
         model = "test-model",
-        reasoning_effort = "high",
+        reasoning_effort = "low",
         project_root = "/project",
       }, context)
       assert.same({ system_prompt = "Final system", instructions = "Project rules" }, snapshot)

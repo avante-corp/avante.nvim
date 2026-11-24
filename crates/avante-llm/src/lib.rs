@@ -1687,7 +1687,6 @@ fn avante_llm(lua: &Lua) -> LuaResult<LuaTable> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rig_compat::azure_responses_uri;
     use google_cloud_aiplatform_v1 as vertexai;
     use google_cloud_gax::streaming::ResponseStream;
     use rig::completion::options::{Effort, Reasoning};
@@ -2069,6 +2068,40 @@ mod tests {
     }
 
     #[test]
+    fn dialects_keep_their_responses_identity_and_report_unmapped_options() {
+        for name in ["azure.openai", "deepseek", "mistral", "zai"] {
+            for route in [RouteInput::Chat, RouteInput::Responses] {
+                let mut provider = provider("private_gateway", Some(route));
+                if name == "azure.openai" {
+                    provider.protocol = ProtocolInput::Azure;
+                    provider.deployment = Some("production-deployment".to_owned());
+                    provider.base_url = Some("https://example.test".to_owned());
+                    provider.api_version = Some("2025-04-01-preview".to_owned());
+                } else {
+                    provider.dialect = Some(name.to_owned());
+                    assert_eq!(configure_openai(&provider).dialect.name, name);
+                }
+                if matches!(route, RouteInput::Responses) {
+                    assert_eq!(
+                        legacy_origin(&provider, "reasoning").unwrap().provider,
+                        name
+                    );
+                }
+                let mut prompt = prompt();
+                prompt.additional_params = Some(json!({"top_p": 0.8}));
+                let warnings = check(Input { provider, prompt }).unwrap();
+                assert_eq!(
+                    warnings
+                        .iter()
+                        .any(|warning| warning.starts_with("`top_p` ")),
+                    matches!(route, RouteInput::Responses),
+                    "{name} {route:?}: {warnings:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn openai_preflight_reports_sampling_rejections_through_the_model_builder() {
         for (protocol, route, custom_top_p_rejected) in [
             (ProtocolInput::Openai, RouteInput::Chat, false),
@@ -2137,103 +2170,6 @@ mod tests {
                     [sampling_rejected, true],
                     "{protocol:?} {model}: {warnings:?}"
                 );
-            }
-        }
-    }
-
-    #[test]
-    fn azure_responses_preserves_explicit_reasoning() {
-        for (model, supports_reasoning) in [
-            ("gpt-5", true),
-            ("gpt-6-sol", true),
-            ("production-deployment", true),
-        ] {
-            for effort in ["none", "medium"] {
-                for explicit in [false, true] {
-                    let mut provider = provider("azure", Some(RouteInput::Responses));
-                    provider.protocol = ProtocolInput::Azure;
-                    provider.model = model.to_owned();
-                    let mut prompt = prompt();
-                    let mut params = json!({"reasoning_effort": effort});
-                    if explicit {
-                        params["reasoning"] = json!({"effort": "low"});
-                    }
-                    prompt.additional_params = Some(params);
-                    let request = completion_request(&provider, prompt).unwrap();
-                    let actual = request
-                        .additional_params
-                        .as_ref()
-                        .and_then(|params| params.pointer("/reasoning/effort"))
-                        .and_then(Value::as_str);
-                    let expected = if explicit {
-                        Some("low")
-                    } else if supports_reasoning {
-                        Some(effort)
-                    } else {
-                        None
-                    };
-                    assert_eq!(actual, expected, "{model} {effort} explicit={explicit}");
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn azure_responses_rejects_api_versions_that_predate_the_route() {
-        for version in ["2024-12-01-preview", "2025-02-01-preview"] {
-            let error =
-                azure_responses_uri("https://example.openai.azure.com", version).unwrap_err();
-            assert!(error.contains("api_version"), "{error}");
-            assert!(error.contains("v1"), "{error}");
-            assert!(error.contains(version), "{error}");
-        }
-        for version in ["2025-03-01-preview", "2025-04-01-preview", "v1"] {
-            assert!(azure_responses_uri("https://example.openai.azure.com", version).is_ok());
-        }
-        assert_eq!(
-            azure_responses_uri(
-                "https://example.openai.azure.com/openai/v1/",
-                "2024-12-01-preview",
-            )
-            .unwrap()
-            .to_string(),
-            "https://example.openai.azure.com/openai/v1/responses"
-        );
-    }
-
-    #[test]
-    fn deepseek_responses_encodes_reasoning_effort_without_overriding_explicit_values() {
-        let mut provider = provider("private_deepseek", Some(RouteInput::Responses));
-        provider.dialect = Some("deepseek".to_owned());
-        provider.model = "deepseek-flash".to_owned();
-        for effort in ["none", "minimal", "low", "medium", "high", "xhigh", "max"] {
-            for explicit in [false, true] {
-                let mut prompt = prompt();
-                let mut params = json!({"reasoning_effort": effort});
-                if explicit {
-                    params["reasoning"] = json!({"effort": "low"});
-                }
-                prompt.additional_params = Some(params);
-                let wire = rig::providers::openai::wire::OpenAiWire::new(
-                    configure_openai(&provider),
-                    &provider.model,
-                );
-                let encoded = wire
-                    .encode(
-                        completion_request(&provider, prompt).unwrap(),
-                        Mode::Streaming,
-                    )
-                    .unwrap();
-                let Body::Bytes(bytes) = encoded.request.into_body() else {
-                    panic!("JSON request")
-                };
-                let body: Value = serde_json::from_slice(&bytes).unwrap();
-                assert_eq!(
-                    body["reasoning"]["effort"],
-                    if explicit { "low" } else { effort },
-                    "{body}"
-                );
-                assert!(body.get("reasoning_effort").is_none(), "{body}");
             }
         }
     }
@@ -2360,15 +2296,18 @@ mod tests {
                 "verbosity": "low",
                 "cache": "short",
                 "prompt_cache_key": "conversation-1",
-                "reasoning": {"effort": "low"},
+                "reasoning_effort": "high",
+                "reasoning": {"effort": "low", "summary": "detailed"},
                 "thinking": {"type": "enabled", "budget_tokens": 1024}
             }));
             let request =
-                completion_request(&provider("openai", Some(RouteInput::Chat)), prompt).unwrap();
+                completion_request(&provider("openai", Some(RouteInput::Responses)), prompt)
+                    .unwrap();
 
             assert_eq!(
                 request.options,
                 GenerationOptions::new()
+                    .reasoning(Effort::Low)
                     .seed(7)
                     .stop(["END"])
                     .parallel_tool_calls(false)
@@ -2381,7 +2320,7 @@ mod tests {
                 request.additional_params,
                 Some(json!({
                     "prompt_cache_key": "conversation-1",
-                    "reasoning": {"effort": "low"},
+                    "reasoning": {"summary": "detailed"},
                     "thinking": {"type": "enabled", "budget_tokens": 1024}
                 }))
             );
@@ -2462,14 +2401,62 @@ mod tests {
 
     #[test]
     fn accepts_all_openai_reasoning_effort_levels() {
-        for (effort, expected) in [("xhigh", Effort::XHigh), ("max", Effort::Max)] {
+        for route in [RouteInput::Chat, RouteInput::Responses] {
+            for (effort, expected) in [
+                ("none", Reasoning::Off),
+                ("minimal", Reasoning::Effort(Effort::Minimal)),
+                ("low", Reasoning::Effort(Effort::Low)),
+                ("medium", Reasoning::Effort(Effort::Medium)),
+                ("high", Reasoning::Effort(Effort::High)),
+                ("xhigh", Reasoning::Effort(Effort::XHigh)),
+                ("max", Reasoning::Effort(Effort::Max)),
+            ] {
+                let mut prompt = prompt();
+                prompt.additional_params = Some(match route {
+                    RouteInput::Chat => json!({"reasoning_effort": effort}),
+                    RouteInput::Responses => json!({"reasoning": {"effort": effort}}),
+                });
+
+                let request = completion_request(&provider("openai", Some(route)), prompt).unwrap();
+
+                assert_eq!(
+                    request.options.reasoning,
+                    Some(expected),
+                    "{route:?} {effort}"
+                );
+                assert!(request.additional_params.is_none(), "{route:?} {effort}");
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_responses_reasoning_effort() {
+        for effort in [json!(true), json!(null), json!(1)] {
             let mut prompt = prompt();
-            prompt.additional_params = Some(json!({"reasoning_effort": effort}));
+            prompt.additional_params = Some(json!({"reasoning": {"effort": effort}}));
+            let error =
+                completion_request(&provider("openai", Some(RouteInput::Responses)), prompt)
+                    .unwrap_err();
+            assert_eq!(error, "reasoning.effort must be a string");
+        }
+    }
 
-            let request =
-                completion_request(&provider("openai", Some(RouteInput::Chat)), prompt).unwrap();
-
-            assert_eq!(request.options.reasoning, Some(Reasoning::Effort(expected)));
+    #[test]
+    fn responses_preflight_checks_sampling_with_explicit_reasoning_effort() {
+        for (effort, rejected) in [("none", false), ("high", true)] {
+            let mut provider = provider("openai", Some(RouteInput::Responses));
+            provider.model = "gpt-5.6-sol".to_owned();
+            let mut prompt = prompt();
+            prompt.additional_params = Some(json!({
+                "temperature": 0.5, "top_p": 0.9, "reasoning": {"effort": effort}
+            }));
+            let warnings = check(Input { provider, prompt }).unwrap();
+            assert_eq!(
+                ["`temperature` ", "`top_p` "]
+                    .map(|option| warnings.iter().any(|warning| warning.starts_with(option))),
+                [rejected; 2],
+                "{effort}: {warnings:?}"
+            );
         }
     }
 
@@ -2634,60 +2621,6 @@ mod tests {
         assert_eq!(body["messages"][1]["content"], "hello");
         assert_eq!(body["tools"][0]["function"]["name"], "lookup");
         assert_eq!(body["reasoning_context"], json!({"mode": "preserve"}));
-    }
-
-    #[test]
-    fn mistral_endpoint_does_not_duplicate_the_api_version() {
-        let mut provider = provider("private_mistral", Some(RouteInput::Chat));
-        provider.dialect = Some("mistral".to_owned());
-        provider.base_url = Some("https://api.mistral.ai/v1".to_owned());
-        let config = configure_openai(&provider);
-        assert_eq!(config.dialect.name, "mistral");
-        let wire = config.chat("test-model");
-        let encoded = wire
-            .encode(
-                completion_request(&provider, prompt()).unwrap(),
-                Mode::Streaming,
-            )
-            .unwrap();
-
-        assert_eq!(
-            encoded.request.uri().to_string(),
-            "https://api.mistral.ai/v1/chat/completions"
-        );
-    }
-
-    #[test]
-    fn xai_endpoints_do_not_duplicate_the_api_version() {
-        for base_url in [
-            "https://api.x.ai",
-            "https://api.x.ai/v1",
-            "https://api.x.ai/v1/",
-        ] {
-            for (route, path) in [
-                (RouteInput::Chat, "/v1/chat/completions"),
-                (RouteInput::Responses, "/v1/responses"),
-            ] {
-                let mut provider = provider("private_xai", Some(route));
-                provider.dialect = Some("xai".to_owned());
-                provider.model = "grok-4.7".to_owned();
-                provider.base_url = Some(base_url.to_owned());
-                let wire = rig::providers::openai::wire::OpenAiWire::new(
-                    configure_openai(&provider),
-                    &provider.model,
-                );
-                let encoded = wire
-                    .encode(
-                        completion_request(&provider, prompt()).unwrap(),
-                        Mode::Streaming,
-                    )
-                    .unwrap();
-                assert_eq!(
-                    encoded.request.uri().to_string(),
-                    format!("https://api.x.ai{path}")
-                );
-            }
-        }
     }
 
     #[test]

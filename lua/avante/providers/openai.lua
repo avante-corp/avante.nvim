@@ -66,8 +66,13 @@ function M:list_models(timeout)
     headers["Authorization"] = "Bearer " .. api_key
   end
 
+  local endpoint = provider_conf.endpoint:gsub("/+$", "")
+  local models_path = "/models"
+  if (self._dialect == "xai" or self._dialect == "mistral") and not endpoint:match("/v1$") then
+    models_path = "/v1/models"
+  end
   local curl = require("avante.utils.curl")
-  local response = curl.get(Utils.url_join(provider_conf.endpoint, "/models"), {
+  local response = curl.get(Utils.url_join(endpoint, models_path), {
     headers = Utils.tbl_override(headers, self.extra_headers),
     proxy = provider_conf.proxy,
     insecure = provider_conf.allow_insecure,
