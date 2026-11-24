@@ -204,6 +204,7 @@ describe("providers", function()
     assert.same("claude", provider._protocol)
     assert.is_nil(provider._dialect)
     assert.is_function(provider.get_rate_limit_sleep_time)
+    assert.same({}, provider.extra_request_body)
   end)
 
   it("keeps built-in dialects and provider defaults while inheriting OpenAI", function()
@@ -212,12 +213,10 @@ describe("providers", function()
       local provider = Providers[name]
       assert.same("openai", Config.providers[name].__inherited_from, name)
       assert.same(name, provider._dialect, name)
-      assert.same(16384, provider.extra_request_body.max_completion_tokens, name)
-      assert.same(name == "moonshot" and "high" or "medium", provider.extra_request_body.reasoning_effort, name)
+      assert.same({}, provider.extra_request_body, name)
       assert.same((name == "deepseek" or name == "moonshot") and 1048576 or 128000, provider.context_window, name)
-      assert.same(name == "xai" or name == "zai", provider.support_previous_response_id, name)
+      assert.same(name == "xai", provider.support_previous_response_id, name)
     end
-    assert.same(4096, Providers.mistral.extra_request_body.max_tokens)
   end)
 
   it("propagates OpenAI configuration through dialect providers with child overrides", function()
@@ -235,9 +234,9 @@ describe("providers", function()
     for _, name in ipairs({ "deepseek", "openrouter", "moonshot", "xai", "zai", "mistral" }) do
       local provider = Providers[name]
       assert.same(1, provider.extra_request_body.max_completion_tokens, name)
-      assert.same(name == "moonshot" and "high" or "low", provider.extra_request_body.reasoning_effort, name)
+      assert.same("low", provider.extra_request_body.reasoning_effort, name)
       assert.same((name == "deepseek" or name == "moonshot") and 1048576 or 1, provider.context_window, name)
-      assert.same(name == "deepseek", provider.use_response_api, name)
+      assert.is_false(provider.use_response_api, name)
       assert.is_false(provider.support_previous_response_id, name)
       assert.same(name, provider._dialect, name)
     end
@@ -255,6 +254,7 @@ describe("providers", function()
       assert.same(Providers[name]._protocol, child._protocol, name)
       assert.same(Providers[name]._dialect, child._dialect, name)
       assert.same(Config.providers[name].model, child.model, name)
+      assert.same({}, child.extra_request_body, name)
     end
   end)
 
@@ -292,10 +292,8 @@ describe("providers", function()
     assert.same({
       temperature = 0.7,
       max_tokens = 8192,
-      max_completion_tokens = 16384,
-      reasoning_effort = "medium",
     }, child.extra_request_body)
-    assert.same("responses", Providers.resolve_api_route(child))
+    assert.same("chat", Providers.resolve_api_route(child))
     assert.is_false(child.support_previous_response_id)
     assert.is_function(child.list_models)
     child.extra_request_body.max_tokens = 1
@@ -346,23 +344,53 @@ describe("providers", function()
   it("uses provider-specific routes without reusing DeepSeek response IDs", function()
     local Providers = require("avante.providers")
 
-    assert.same("responses", Providers.resolve_api_route(Providers.deepseek, nil))
+    assert.same("chat", Providers.resolve_api_route(Providers.cerebras, nil))
+    assert.same("chat", Providers.resolve_api_route(Providers.morph, nil))
+    for _, name in ipairs({ "azure", "deepseek", "zai", "mistral", "openrouter", "qwen" }) do
+      local provider = Providers[name]
+      assert.same("chat", Providers.resolve_api_route(provider), name)
+      Config.providers["private_" .. name] = { __inherited_from = name }
+      local child = Providers["private_" .. name]
+      assert.same("chat", Providers.resolve_api_route(child), name)
+      child.use_response_api = true
+      assert.same("responses", Providers.resolve_api_route(child), name)
+    end
     assert.is_false(Providers.deepseek.support_previous_response_id)
-    assert.same("chat", Providers.resolve_api_route(Providers.moonshot, nil))
+    assert.same("responses", Providers.resolve_api_route(Providers.moonshot, nil))
+    assert.same("https://open.bigmodel.cn/api/coding/paas/v4", Providers.zai.endpoint)
   end)
 
-  it("selects Responses for GPT-5 and GPT-6 model families", function()
+  it("defaults OpenAI to Responses regardless of the model", function()
     local Providers = require("avante.providers")
-    for _, name in ipairs({ "openai", "copilot" }) do
-      for _, model in ipairs({ "gpt-5", "gpt-6", "gpt-5-mini", "gpt-5.4", "gpt-6-sol", "gpt-5-codex" }) do
-        local provider = vim.deepcopy(Providers[name])
+    assert.is_true(Config.providers.openai.use_response_api)
+    for _, model in ipairs({ "gpt-5", "gpt-6-sol", "custom-model" }) do
+      local provider = vim.deepcopy(Providers.openai)
+      provider.model = model
+      assert.same("responses", Providers.resolve_api_route(provider, nil), model)
+      provider.use_response_api = false
+      assert.same("chat", Providers.resolve_api_route(provider, nil), model)
+    end
+  end)
+
+  it("selects Copilot routes by model unless explicitly overridden", function()
+    local Providers = require("avante.providers")
+    for _, case in ipairs({
+      { route = "responses", models = { "gpt-5", "gpt-6", "gpt-5-mini", "gpt-5.4", "gpt-6-luna", "gpt-5-codex" } },
+      {
+        route = "chat",
+        models = { "custom-chat-model", "gpt-50", "gpt-60", "claude-sonnet-5-5", "other-gpt-5-codex" },
+      },
+    }) do
+      for _, model in ipairs(case.models) do
+        local provider = vim.deepcopy(Providers.copilot)
         provider.model = model
-        assert.same("responses", Providers.resolve_api_route(provider, nil), name .. ": " .. model)
-      end
-      for _, model in ipairs({ "custom-chat-model", "gpt-50", "gpt-60", "claude-sonnet-5-5", "other-gpt-5-codex" }) do
-        local provider = vim.deepcopy(Providers[name])
-        provider.model = model
-        assert.same("chat", Providers.resolve_api_route(provider, nil), name .. ": " .. model)
+        assert.same(case.route, Providers.resolve_api_route(provider), model)
+        for _, enabled in ipairs({ true, false }) do
+          local explicit = vim.deepcopy(Providers.copilot)
+          explicit.model = model
+          explicit.use_response_api = enabled
+          assert.same(enabled and "responses" or "chat", Providers.resolve_api_route(explicit), model)
+        end
       end
     end
   end)

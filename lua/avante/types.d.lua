@@ -149,7 +149,7 @@ vim.g.avante_login = vim.g.avante_login
 ---@field _name? string Internal name from the providers configuration table
 ---@field _protocol? AvanteNativeLLMProtocol Internal native protocol name
 ---@field _dialect? string Internal Rig OpenAI-compatible provider dialect
----@field endpoint? string Endpoint (e.g. "https://api.mistral.ai/v1")
+---@field endpoint? string Endpoint (e.g. "https://api.mistral.ai")
 ---@field extra_request_body? avante.ExtraRequestBody
 ---@field model? string
 ---@field deployment? string Azure deployment name

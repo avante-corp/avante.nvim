@@ -152,12 +152,17 @@ describe("Sidebar request history", function()
     stubs[#stubs + 1] = stub(sidebar, "render_result_header").invokes(
       function() assert.equals("saved-model", restored.providers.openai.model) end
     )
+    local provider = require("avante.providers").openai
+    local original_params = provider.extra_request_body
+    provider.extra_request_body = { reasoning_effort = "low", reasoning = { effort = "medium", summary = "auto" } }
 
     sidebar:reload_chat_history(history.filename, "/project")
+    provider.extra_request_body = original_params
 
     assert.equals("openai", restored.provider)
     assert.equals("saved-model", restored.providers.openai.model)
     assert.equals("high", restored.providers.openai.extra_request_body.reasoning_effort)
+    assert.same({ effort = "high", summary = "auto" }, restored.providers.openai.extra_request_body.reasoning)
 
     sidebar:reload_chat_history(nil, "/project")
     assert.stub(Config.override).was_called(2)

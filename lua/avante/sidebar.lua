@@ -3079,7 +3079,6 @@ function Sidebar:reload_chat_history(filename, project_root)
     elseif not self.is_generating and context and Config.providers[context.provider] then
       local params = vim.deepcopy(Providers[context.provider].extra_request_body or {})
       params.reasoning_effort = context.reasoning_effort
-      -- An existing nested effort takes precedence when building requests.
       if type(params.reasoning) == "table" then params.reasoning.effort = context.reasoning_effort end
       Config.override({
         provider = context.provider,

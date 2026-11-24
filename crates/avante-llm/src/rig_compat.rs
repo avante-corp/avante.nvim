@@ -57,11 +57,6 @@ pub(super) fn configure_openai(provider: &ProviderInput) -> OpenAIConfig {
     };
     let mut config = OpenAIConfig::with_key(dialect, api_key);
     if let Some(base_url) = &provider.base_url {
-        let base_url = if matches!(dialect.name, "mistral" | "xai") {
-            trim_suffix(base_url, "/v1")
-        } else {
-            base_url.to_owned()
-        };
         config = config.with_base_url(base_url);
     }
     config = config.with_route(match provider.route.unwrap_or(RouteInput::Chat) {
@@ -256,7 +251,7 @@ impl Transport<GeminiGenerateContent> for GeminiTransport {
     }
 }
 
-// shortcut: Rig lacks Azure-specific Responses routing, remove when it handles the endpoint and deployment separately from model capabilities.
+// shortcut: Rig lacks Azure Responses routing, remove when it supports the endpoint and deployment separately from model capabilities.
 #[derive(Clone, Debug)]
 struct AzureResponsesTransport {
     http: DynHttpClient,
@@ -286,7 +281,7 @@ impl Transport<OpenAiWire> for AzureResponsesTransport {
     }
 }
 
-pub(super) fn azure_responses_uri(base_url: &str, version: &str) -> Result<http::Uri, String> {
+fn azure_responses_uri(base_url: &str, version: &str) -> Result<http::Uri, String> {
     let mut url = rig_reqwest::reqwest::Url::parse(base_url).map_err(|error| error.to_string())?;
     let base = url.path().trim_end_matches('/');
     let v1 = version == "v1" || base.ends_with("/openai/v1");
@@ -453,27 +448,25 @@ pub(super) fn apply_generation_params(
         if explicit_completion_cap && let Some(cap) = request.max_tokens.take() {
             params.insert("max_completion_tokens".to_owned(), cap.into());
         }
-        let effort = match params.shift_remove("reasoning_effort") {
+        let mut effort = params.shift_remove("reasoning_effort");
+        let mut effort_field = "reasoning_effort";
+        if matches!(provider.route, Some(RouteInput::Responses))
+            && let Some(Value::Object(reasoning)) = params.get_mut("reasoning")
+        {
+            if let Some(value) = reasoning.shift_remove("effort") {
+                effort = Some(value);
+                effort_field = "reasoning.effort";
+            }
+            if reasoning.is_empty() {
+                params.shift_remove("reasoning");
+            }
+        }
+        let effort = match effort {
             Some(Value::String(effort)) => Some(effort),
-            Some(_) => return Err("reasoning_effort must be a string".to_owned()),
+            Some(_) => return Err(format!("{effort_field} must be a string")),
             None => None,
         };
         if let Some(effort) = effort {
-            if matches!(provider.route, Some(RouteInput::Responses))
-                && ((matches!(provider.protocol, ProtocolInput::Azure)
-                    && openai_model.is_none_or(|model| model.reasoning.supported()))
-                    || (matches!(provider.protocol, ProtocolInput::Openai)
-                        && provider.dialect.as_deref() == Some("deepseek")))
-                && let Some(reasoning) = params
-                    .entry("reasoning")
-                    .or_insert_with(|| serde_json::json!({}))
-                    .as_object_mut()
-            {
-                // shortcut: Rig lacks Azure/DeepSeek Responses reasoning mapping, remove when its typed options support both.
-                reasoning
-                    .entry("effort")
-                    .or_insert_with(|| Value::String(effort.clone()));
-            }
             let reasoning = match effort.as_str() {
                 "none" => Reasoning::Off,
                 "minimal" => Reasoning::Effort(Effort::Minimal),
@@ -499,13 +492,7 @@ pub(super) fn apply_generation_params(
     } else if additional_params.is_some() {
         return Err("additionalParams must be a JSON object".to_owned());
     }
-    let reasoning_off = matches!(request.options.reasoning, Some(Reasoning::Off))
-        || request
-            .additional_params
-            .as_ref()
-            .and_then(|params| params.pointer("/reasoning/effort"))
-            .and_then(Value::as_str)
-            == Some("none");
+    let reasoning_off = matches!(request.options.reasoning, Some(Reasoning::Off));
     // Older reasoning model families do not all support summaries.
     if matches!(provider.route, Some(RouteInput::Responses))
         && !reasoning_off

@@ -178,7 +178,6 @@
 ---
 ---Other parameters are forwarded as is, such as:
 ---- `prompt_cache_key`: a prompt-cache routing key for OpenAI and ChatGPT.
----- `reasoning`: reasoning settings for APIs such as OpenAI and DeepSeek Responses.
 ---- `thinking`: thinking settings for APIs such as DeepSeek Chat and Claude Messages.
 ---- `generationConfig`: generation settings for Gemini.
 ---@alias avante.ExtraRequestBody table<string, any>
@@ -476,17 +475,14 @@ M._defaults = {
       endpoint = "https://api.openai.com/v1",
       model = "gpt-6-luna",
       context_window = 128000, -- Context window used to trigger local compaction
-      use_response_api = copilot_use_response_api, -- Automatically switch GPT-5 and GPT-6 models to the Response API
+      use_response_api = true,
       support_previous_response_id = true,
-      extra_request_body = {
-        max_completion_tokens = 16384, -- Increase this to include reasoning tokens (for reasoning models). For Response API, will be converted to max_output_tokens
-        reasoning_effort = "medium", -- none|minimal|low|medium|high|xhigh|max; Responses converts this to reasoning.effort
-        -- background = false, -- Response API only: set to true to start a background task
-      },
+      extra_request_body = {},
     },
     ---@type AvanteSupportedProvider
     cerebras = {
       __inherited_from = "openai",
+      use_response_api = false,
       endpoint = "https://api.cerebras.ai/v1",
       model = "gpt-oss-120b",
       api_key_name = "CEREBRAS_API_KEY",
@@ -498,33 +494,24 @@ M._defaults = {
       proxy = nil, -- [protocol://]host[:port] Use this proxy
       allow_insecure = false, -- Allow insecure server connections
       context_window = 64000, -- Context window used to trigger local compaction
-      use_response_api = copilot_use_response_api, -- Automatically switch GPT-5 and GPT-6 models to the Response API
+      use_response_api = copilot_use_response_api,
       support_previous_response_id = false,
-      -- NOTE: Responses doesn't support frequency_penalty or presence_penalty
-      extra_request_body = {
-        -- temperature is not supported by Response API for reasoning models
-        max_tokens = 20480,
-      },
+      extra_request_body = {},
     },
     ---@type AvanteAzureProvider
     azure = {
-      endpoint = "", -- example: "https://<your-resource-name>.openai.azure.com"
+      endpoint = "",
       deployment = "", -- Azure deployment name (e.g., "my-gpt-6-deployment")
       api_version = "2024-12-01-preview",
-      extra_request_body = {
-        temperature = 0.75,
-        max_completion_tokens = 16384, -- Increase this toinclude reasoning tokens (for reasoning models); but too large default value will not fit for some models (e.g. gpt-5-chat supports at most 16384 completion tokens)
-        reasoning_effort = "medium", -- none|minimal|low|medium|high|xhigh|max, only used for reasoning models
-      },
+      use_response_api = false,
+      extra_request_body = {},
     },
     ---@type AvanteSupportedProvider
     claude = {
       endpoint = "https://api.anthropic.com",
       model = "claude-sonnet-5-5",
       context_window = 200000, -- Context window used to trigger local compaction
-      extra_request_body = {
-        max_tokens = 64000,
-      },
+      extra_request_body = {},
     },
     ---@type AvanteSupportedProvider
     deepseek = {
@@ -532,7 +519,7 @@ M._defaults = {
       endpoint = "https://api.deepseek.com",
       model = "deepseek-flash",
       context_window = 1048576,
-      use_response_api = true,
+      use_response_api = false,
       support_previous_response_id = false,
       api_key_name = "DEEPSEEK_API_KEY",
     },
@@ -544,9 +531,7 @@ M._defaults = {
         "us.anthropic.claude-sonnet-4-6",
         "us.anthropic.claude-opus-4-8",
       },
-      extra_request_body = {
-        max_tokens = 20480,
-      },
+      extra_request_body = {},
       aws_region = "", -- AWS region to use for authentication and bedrock API
       aws_profile = "", -- AWS profile to use for authentication, if unspecified uses default credentials chain
     },
@@ -555,44 +540,28 @@ M._defaults = {
       endpoint = "https://generativelanguage.googleapis.com/v1beta/models",
       model = "gemini-3.6-flash",
       context_window = 1048576,
-      extra_request_body = {
-        generationConfig = {
-          temperature = 0.75,
-        },
-      },
+      extra_request_body = {},
     },
     ---@type AvanteSupportedProvider
     vertex = {
       model = "gemini-3.8-flash",
       context_window = 1048576,
-      extra_request_body = {
-        generationConfig = {
-          temperature = 0.75,
-        },
-      },
+      extra_request_body = {},
     },
     ---@type AvanteSupportedProvider
     cohere = {
       endpoint = "https://api.cohere.com/v2",
       model = "command-r-plus-08-2024",
-      extra_request_body = {
-        temperature = 0.75,
-        max_tokens = 20480,
-      },
+      extra_request_body = {},
     },
     ---@type AvanteSupportedProvider
     ollama = {
       endpoint = "http://127.0.0.1:11434",
-      extra_request_body = {
-        keep_alive = "5m",
-        options = {
-          temperature = 0.75,
-          num_ctx = 20480,
-        },
-      },
+      extra_request_body = {},
     },
     openrouter = {
       __inherited_from = "openai",
+      use_response_api = false,
       support_previous_response_id = false,
       endpoint = "https://openrouter.ai/api/v1",
       api_key_name = "OPENROUTER_API_KEY",
@@ -602,17 +571,13 @@ M._defaults = {
     ["claude-haiku"] = {
       __inherited_from = "claude",
       model = "claude-haiku-4-5-20251001",
-      extra_request_body = {
-        max_tokens = 8192,
-      },
+      extra_request_body = {},
     },
     ---@type AvanteSupportedProvider
     ["claude-opus"] = {
       __inherited_from = "claude",
       model = "claude-opus-4-8",
-      extra_request_body = {
-        max_tokens = 20480,
-      },
+      extra_request_body = {},
     },
     aihubmix = {
       __inherited_from = "openai",
@@ -628,6 +593,7 @@ M._defaults = {
     },
     morph = {
       __inherited_from = "openai",
+      use_response_api = false,
       endpoint = "https://api.morphllm.com/v1",
       model = "auto",
       api_key_name = "MORPH_API_KEY",
@@ -639,37 +605,37 @@ M._defaults = {
       model = "kimi-k3",
       context_window = 1048576,
       api_key_name = "MOONSHOT_API_KEY",
-      extra_request_body = {
-        reasoning_effort = "high",
-      },
+      extra_request_body = {},
     },
     xai = {
       __inherited_from = "openai",
-      endpoint = "https://api.x.ai/v1",
+      endpoint = "https://api.x.ai",
       model = "grok-4.7",
       api_key_name = "XAI_API_KEY",
     },
     zai = {
       __inherited_from = "openai",
+      use_response_api = false,
+      support_previous_response_id = false,
       endpoint = "https://open.bigmodel.cn/api/coding/paas/v4",
       model = "GLM-4.7",
       api_key_name = "GLM_API_KEY",
     },
     qwen = {
       __inherited_from = "openai",
+      use_response_api = false,
       endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1",
       model = "qwen3-coder-plus",
       api_key_name = "DASHSCOPE_API_KEY",
     },
     mistral = {
       __inherited_from = "openai",
+      use_response_api = false,
       support_previous_response_id = false,
-      endpoint = "https://api.mistral.ai/v1",
+      endpoint = "https://api.mistral.ai",
       model = "mistral-large-latest",
       api_key_name = "MISTRAL_API_KEY",
-      extra_request_body = {
-        max_tokens = 4096, -- to avoid using the unsupported max_completion_tokens
-      },
+      extra_request_body = {},
     },
   },
   ---Specify the special dual_boost mode

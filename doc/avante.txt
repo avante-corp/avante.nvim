@@ -358,7 +358,6 @@ avante.ExtraRequestBody                                *avante.ExtraRequestBody*
 
     Other parameters are forwarded as is, such as:
     - `prompt_cache_key`: a prompt-cache routing key for OpenAI and ChatGPT.
-    - `reasoning`: reasoning settings for APIs such as OpenAI and DeepSeek Responses.
     - `thinking`: thinking settings for APIs such as DeepSeek Chat and Claude Messages.
     - `generationConfig`: generation settings for Gemini.
 

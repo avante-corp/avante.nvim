@@ -666,6 +666,7 @@ describe("LLM native integration", function()
     assert.same(128, body.max_completion_tokens)
     assert.is_nil(body.max_tokens)
     assert.same("low", body.reasoning_effort)
+    assert.is_nil(body.reasoning)
   end)
 
   local function azure_responses_reply()
@@ -690,24 +691,60 @@ describe("LLM native integration", function()
   for _, case in ipairs({
     { name = "xai", route = false, path = "/v1/chat/completions" },
     { name = "xai", route = true, path = "/v1/responses", responses = true },
-    { name = "openai", model = "gpt-6-luna", path = "/v1/responses", responses = true },
+    {
+      name = "zai",
+      params = { reasoning_effort = "none", top_p = 0.8 },
+      path = "/api/coding/paas/v4/chat/completions",
+    },
+    {
+      name = "zai",
+      route = false,
+      endpoint = "https://open.bigmodel.cn/api/coding/paas/v4",
+      params = { top_p = 0.8 },
+      path = "/api/coding/paas/v4/chat/completions",
+    },
+    {
+      name = "openai",
+      model = "gpt-6-luna",
+      params = { reasoning = { effort = "low" } },
+      path = "/v1/responses",
+      responses = true,
+    },
     { name = "openai", model = "gpt-6-luna", route = false, path = "/v1/chat/completions" },
-    { name = "deepseek", effort = "none", path = "/responses", responses = true },
-    { name = "deepseek", effort = "max", path = "/responses", responses = true },
-    { name = "moonshot", path = "/v1/chat/completions" },
+    {
+      name = "deepseek",
+      params = { reasoning_effort = "max", top_p = 0.8 },
+      path = "/chat/completions",
+    },
+    {
+      name = "mistral",
+      params = { seed = 7, top_p = 0.8 },
+      path = "/v1/chat/completions",
+    },
+    { name = "moonshot", path = "/v1/responses", responses = true },
     { name = "copilot", path = "/responses", responses = true },
   }) do
-    it("maps provider defaults to the wire for " .. vim.inspect(case), function()
+    it("maps provider request settings to the wire for " .. vim.inspect(case), function()
       local endpoint, get_request = fake_openai(case.responses and azure_responses_reply() or chat_reply())
       Config.providers[case.name] = vim.tbl_extend("force", Config.providers[case.name], {
         api_key_name = "cmd:echo test-key",
       })
       rawset(Providers, case.name, nil)
       local provider = Providers[case.name]
+      if case.endpoint then provider.endpoint = case.endpoint end
       provider.endpoint = provider.endpoint:gsub("^https?://[^/]+", endpoint:gsub("/v1$", ""))
       if case.model then provider.model = case.model end
       if case.route ~= nil then provider.use_response_api = case.route end
-      if case.effort then provider.extra_request_body.reasoning_effort = case.effort end
+      if case.params then
+        provider.extra_request_body = case.params
+        local warnings = require("avante_llm").check(
+          RigClient._build_request(
+            provider,
+            { system_prompt = "system", messages = { { role = "user", content = "hello" } } }
+          )
+        )
+        assert.same({}, warnings)
+      end
       local build_stub
       if case.name == "copilot" then
         local build = RigClient._build_request
@@ -723,123 +760,98 @@ describe("LLM native integration", function()
       assert.is_true(ok, err)
       local raw = get_request()
       assert.same("POST " .. case.path .. " HTTP/1.1", raw:match("^[^\r\n]+"))
+      assert.is_not_nil(raw:lower():find("authorization: bearer test-key\r\n", 1, true))
       local body = vim.json.decode(raw:match("\r\n\r\n(.*)"))
       assert.same(provider.model, body.model)
       if case.name == "moonshot" then
         assert.is_nil(body.temperature)
-        assert.same("high", body.reasoning_effort)
-        assert.same(16384, body.max_tokens)
+        assert.is_nil(body.reasoning_effort)
+        assert.is_nil(body.max_tokens)
         assert.is_nil(body.max_completion_tokens)
       end
       if case.model == "gpt-6-luna" then assert.is_nil(body.temperature) end
-      if case.effort then
-        assert.same(case.effort, body.reasoning.effort)
-        assert.is_nil(body.reasoning_effort)
+      if case.params then
+        if case.params.reasoning then assert.same(case.params.reasoning.effort, body.reasoning.effort) end
+        if case.params.reasoning_effort then
+          assert.is_nil(body.reasoning)
+          if case.params.reasoning_effort == "none" then
+            assert.same("disabled", body.thinking.type)
+            assert.is_nil(body.reasoning_effort)
+          else
+            assert.same("enabled", body.thinking.type)
+            assert.same(case.params.reasoning_effort, body.reasoning_effort)
+          end
+        end
+        if case.params.seed then assert.same(case.params.seed, body.random_seed) end
+        assert.same(case.params.top_p, body.top_p)
+        if case.model == "gpt-6-luna" then assert.same("auto", body.reasoning.summary) end
       end
     end)
   end
 
-  for _, case in ipairs({
-    {
-      name = "preview Azure Responses from a resource endpoint",
-      api_version = "2025-04-01-preview",
-      endpoint_suffix = "",
-      path = "/openai/responses?api-version=2025-04-01-preview",
-    },
-    {
-      name = "v1 Azure Responses from a resource endpoint",
-      api_version = "v1",
-      endpoint_suffix = "",
-      path = "/openai/v1/responses",
-    },
-    {
-      name = "v1 Azure Responses from an endpoint already containing openai/v1",
-      api_version = "v1",
-      endpoint_suffix = "/openai/v1",
-      path = "/openai/v1/responses",
-    },
-  }) do
-    it("routes " .. case.name, function()
-      local endpoint, get_request = fake_openai(azure_responses_reply())
-      configure_provider("private_azure", {
-        api_key_name = "cmd:echo test-key",
-        __inherited_from = "azure",
-        endpoint = endpoint:gsub("/v1$", "") .. case.endpoint_suffix,
-        model = "gpt-6-luna",
-        deployment = "production-deployment",
-        api_version = case.api_version,
-        use_response_api = true,
-        extra_request_body = { max_completion_tokens = 128, reasoning_effort = "low" },
-      })
-      stream_reply(Providers.private_azure, { { role = "user", content = "hello" } })
-      local raw = get_request()
-      assert.same("POST " .. case.path .. " HTTP/1.1", raw:match("^[^\r\n]+"))
-      local body = vim.json.decode(raw:match("\r\n\r\n(.*)"))
-      assert.same("production-deployment", body.model)
-      assert.same(128, body.max_output_tokens)
-      assert.same("low", body.reasoning.effort)
-      assert.same("auto", body.reasoning.summary)
-    end)
-  end
-
-  for _, case in ipairs({
-    { model = "gpt-6-luna", effort = "medium" },
-    { model = "gpt-6-luna-2026-09-15", effort = "medium" },
-    { model = "gpt-6-sol", effort = "medium" },
-  }) do
-    it("applies " .. case.model .. " capabilities to Azure Responses with a deployment alias", function()
-      local endpoint, get_request = fake_openai(azure_responses_reply())
-      configure_provider("private_azure", {
-        api_key_name = "cmd:echo test-key",
-        __inherited_from = "azure",
-        endpoint = endpoint:gsub("/v1$", ""),
-        model = case.model,
-        deployment = "production-deployment",
-        api_version = "2025-04-01-preview",
-        use_response_api = true,
-        extra_request_body = vim.deepcopy(Config.providers.azure.extra_request_body),
-      })
-      stream_reply(Providers.private_azure, { { role = "user", content = "hello" } })
-      local raw = get_request()
-      local body = vim.json.decode(raw:match("\r\n\r\n(.*)"))
-      assert.same("production-deployment", body.model)
-      assert.same(case.temperature, body.temperature)
-      if case.effort then
-        assert.same(case.effort, body.reasoning.effort)
-      else
-        assert.is_nil(body.reasoning)
-      end
-    end)
-  end
-
-  it("rejects the default Azure Chat API version for Responses before sending a request", function()
+  it("maps options through the default Azure Chat route", function()
+    local endpoint, get_request = fake_openai(chat_reply())
     configure_provider("private_azure", {
       api_key_name = "cmd:echo test-key",
       __inherited_from = "azure",
-      endpoint = "http://127.0.0.1:1",
+      endpoint = endpoint:gsub("/v1$", ""),
       model = "custom-chat-model",
       deployment = "production-deployment",
-      api_version = Config.providers.azure.api_version,
-      use_response_api = true,
-      extra_request_body = vim.deepcopy(Config.providers.azure.extra_request_body),
+      extra_request_body = { max_completion_tokens = 128, top_p = 0.8, seed = 7 },
     })
-    local input = RigClient._build_request(
-      Providers.private_azure,
-      { system_prompt = "Be concise.", messages = { { role = "user", content = "hello" } } }
+    local warnings = require("avante_llm").check(
+      RigClient._build_request(
+        Providers.private_azure,
+        { system_prompt = "system", messages = { { role = "user", content = "hello" } } }
+      )
     )
-    local native = require("avante_llm")
-    local ok, error = pcall(native.request_headers, input)
-    assert.is_false(ok)
-    assert.matches('api_version = "v1"', tostring(error), nil, true)
-    local request = native.start(input)
-    local failure
-    assert.is_true(vim.wait(10000, function()
-      for _, event in ipairs(request:poll()) do
-        if event.type == "error" then failure = event end
-      end
-      return failure ~= nil
-    end, 10))
-    assert.matches('api_version = "v1"', failure.message, nil, true)
+    assert.same({}, warnings)
+    stream_reply(Providers.private_azure, { { role = "user", content = "hello" } })
+    local raw = get_request()
+    assert.same(
+      "POST /openai/deployments/production-deployment/chat/completions?api-version="
+        .. Config.providers.azure.api_version
+        .. " HTTP/1.1",
+      raw:match("^[^\r\n]+")
+    )
+    assert.is_not_nil(raw:lower():find("api-key: test-key\r\n", 1, true))
+    local body = vim.json.decode(raw:match("\r\n\r\n(.*)"))
+    assert.same(128, body.max_completion_tokens)
+    assert.same(0.8, body.top_p)
+    assert.same(7, body.seed)
+    assert.is_nil(body.reasoning)
+    assert.is_nil(body.max_output_tokens)
+  end)
+
+  it("routes Azure Responses through Rig with an explicit API base", function()
+    local endpoint, get_request = fake_openai(azure_responses_reply())
+    configure_provider("private_azure", {
+      api_key_name = "cmd:echo test-key",
+      __inherited_from = "azure",
+      endpoint = endpoint:gsub("/v1$", "/openai/v1"),
+      model = "gpt-6-luna",
+      deployment = "production-deployment",
+      api_version = "v1",
+      use_response_api = true,
+      extra_request_body = { max_completion_tokens = 128 },
+    })
+    local warnings = require("avante_llm").check(
+      RigClient._build_request(
+        Providers.private_azure,
+        { system_prompt = "system", messages = { { role = "user", content = "hello" } } }
+      )
+    )
+    assert.same({}, warnings)
+    stream_reply(Providers.private_azure, { { role = "user", content = "hello" } })
+    local raw = get_request()
+    assert.same("POST /openai/v1/responses HTTP/1.1", raw:match("^[^\r\n]+"))
+    assert.is_not_nil(raw:lower():find("api-key: test-key\r\n", 1, true))
+    local body = vim.json.decode(raw:match("\r\n\r\n(.*)"))
+    assert.same("production-deployment", body.model)
+    assert.same(128, body.max_output_tokens)
+    assert.is_nil(body.reasoning.effort)
+    assert.same("auto", body.reasoning.summary)
+    assert.is_nil(body.reasoning_effort)
   end)
 
   for _, case in ipairs({
@@ -1355,6 +1367,7 @@ describe("LLM native integration", function()
       __inherited_from = "openai",
       endpoint = endpoint,
       model = "test-model",
+      use_response_api = false,
       api_key_name = "cmd:echo test-key",
     })
     local request = RigClient.start(Providers.private_gateway, {
