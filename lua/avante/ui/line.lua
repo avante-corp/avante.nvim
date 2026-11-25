@@ -27,9 +27,7 @@ function M:set_highlights(ns_id, bufnr, line, offset)
     if type(highlight) == "function" then
       highlight = highlight() --[[@as string?]]
     end
-    if highlight then
-      vim.highlight.range(bufnr, ns_id, highlight, { line, col_start }, { line, col_start + #text })
-    end
+    if highlight then vim.hl.range(bufnr, ns_id, highlight, { line, col_start }, { line, col_start + #text }) end
     col_start = col_start + #text
   end
 end
