@@ -32,11 +32,6 @@ M.param = {
       type = "string",
     },
   },
-  usage = {
-    path = "File path here",
-    old_str = "old str here",
-    new_str = "new str here",
-  },
 }
 
 ---@type AvanteLLMToolReturn[]

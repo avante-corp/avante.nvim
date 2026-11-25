@@ -34,11 +34,6 @@ M.param = {
       type = "string",
     },
   },
-  usage = {
-    path = "The path to the file to modify",
-    insert_line = "The line number after which to insert the text (0 for beginning of file)",
-    new_str = "The text to insert",
-  },
 }
 
 ---@type AvanteLLMToolReturn[]

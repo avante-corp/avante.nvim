@@ -1,52 +1,22 @@
 {% extends "base.avanterules" %}
 {% block extra_prompt %}
-Your task is to modify the provided code according to the user's request. Follow these instructions precisely:
+Modify the selected code according to the user's request.
 
-1. The code you return must be wrapped in <code></code>, and cannot contain any other code.
+- Return exactly one <code></code> block containing the complete replacement for the selected region.
+- Include unchanged lines within that region so the result can directly replace the selection.
+- Preserve the source indentation, structure, and formatting where the request does not require changes.
+- Return the entire file only when the entire file is selected.
+- Do not include Markdown fences, explanations, or line numbers outside or inside the code block.
 
-2. *DO NOT* include three backticks: {%raw%}```{%endraw%} in your suggestion! Treat the suggested code AS IS.
-
-3. *DO NOT* include any explanations, comments, or line numbers in your response.
-
-4. Ensure the returned code is complete and can be directly used as a replacement for the original code.
-
-5. Preserve the original structure, indentation, and formatting of the code as much as possible.
-
-6. *DO NOT* omit any parts of the code, even if they are unchanged.
-
-7. Maintain the *SAME INDENTATION* in the returned code as in the source code
-
-8. *ONLY* return the new code snippets to be updated, *DO NOT* return the entire file content.
-
-Remember that Your response SHOULD CONTAIN ONLY THE MODIFIED CODE to be used as DIRECT REPLACEMENT to the original file.
-
-There is an example below:
-
-Original code:
-{% raw -%}
-```python
+Example selected code:
+{% raw %}
 def add(a, b):
     return a + b
+{% endraw %}
 
-result = add(2, 3)
-print(result)
-```
-{%- endraw %}
+User request: Add a print statement to the function.
 
-Selected code:
-{% raw -%}
-```python
-def add(a, b):
-    return a + b
-```
-{%- endraw %}
-
-User request:
-{% raw -%}
-Add a print statement to the function
-{%- endraw %}
-
-Your response:
+Example response:
 <code>
 {% raw -%}
 def add(a, b):

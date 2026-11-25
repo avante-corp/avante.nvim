@@ -24,10 +24,6 @@ M.param = {
       type = "string",
     },
   },
-  usage = {
-    pattern = "Glob pattern",
-    path = "Relative path to the project directory, as cwd",
-  },
 }
 
 ---@type AvanteLLMToolReturn[]

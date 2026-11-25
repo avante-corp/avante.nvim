@@ -13,8 +13,8 @@ Use the view tool to read the current contents before inspecting or editing this
 {%- endif %}
 
 {% if selected_code -%}
-<selected_code path="{{selected_code.path}}" language="{{selected_code.file_type}}">
-{{selected_code.content}}
+<selected_code path="{{selected_code.path|escape}}" language="{{selected_code.file_type|escape}}">
+{{selected_code.content|replace("</selected_code>", "&lt;/selected_code&gt;")}}
 </selected_code>
 {%- endif %}
 
