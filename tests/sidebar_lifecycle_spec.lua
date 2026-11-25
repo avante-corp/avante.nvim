@@ -93,6 +93,41 @@ describe("Sidebar active request lifecycle", function()
     assert.equals(0, filetype_events)
   end)
 
+  local function get_result_buffer_text()
+    return table.concat(vim.api.nvim_buf_get_lines(sidebar.containers.result.bufnr, 0, -1, false), "\n")
+  end
+
+  it("normalizes a single-line formula", function()
+    local formula = [[\mathbf q=R(\theta)\mathbf p+\mathbf t]]
+
+    sidebar:update_content("\\[\n" .. formula .. "\n\\]")
+
+    local expected = "$$\n" .. formula .. "\n$$"
+
+    assert.matches(expected, get_result_buffer_text(), nil, true)
+  end)
+
+  it("normalizes a multiline matrix", function()
+    sidebar:update_content([=[
+\[
+A = \begin{bmatrix}
+1 & 2 \\
+3 & 4
+\end{bmatrix}
+\]
+]=])
+
+    local expected = [=[
+$$
+A = \begin{bmatrix}
+1 & 2 \\
+3 & 4
+\end{bmatrix}
+$$
+]=]
+    assert.matches(expected, get_result_buffer_text(), nil, true)
+  end)
+
   for _, entry in ipairs({
     { name = "Ask", open = function() Api.ask({ question = "other project", floating = false }) end },
     { name = "Toggle", open = function() Avante.toggle_sidebar({}) end },

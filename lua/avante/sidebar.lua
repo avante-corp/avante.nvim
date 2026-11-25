@@ -2025,6 +2025,32 @@ function Sidebar:update_content(content, opts)
     end
   end
 
+  -- Convert standalone \[ and \] outside code fences to $$; formula content may span multiple lines.
+  ---@type string?
+  local fence_end_pattern
+  ---@type integer?
+  local math_start_line
+  for i, line in ipairs(history_lines) do
+    local text = tostring(line)
+    local delimiter = vim.trim(text)
+    ---@type string?
+    local fence = text:match("^%s*(```+)") or text:match("^%s*(~~~+)")
+    if fence_end_pattern then
+      if text:match(fence_end_pattern) then fence_end_pattern = nil end
+    elseif fence then
+      fence_end_pattern = "^%s*" .. fence .. fence:sub(1, 1) .. "*%s*$"
+      math_start_line = nil
+    elseif delimiter == "\\[" then
+      math_start_line = i
+    elseif delimiter == "\\]" and math_start_line then
+      local opening_line = tostring(history_lines[math_start_line]):gsub("\\%[", "$$")
+      local closing_line = text:gsub("\\%]", "$$")
+      history_lines[math_start_line] = Line:new({ { opening_line } })
+      history_lines[i] = Line:new({ { closing_line } })
+      math_start_line = nil
+    end
+  end
+
   if not Utils.is_valid_container(self.containers.result) then return end
 
   self:clear_state()
