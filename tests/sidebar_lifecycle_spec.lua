@@ -97,6 +97,14 @@ describe("Sidebar active request lifecycle", function()
     return table.concat(vim.api.nvim_buf_get_lines(sidebar.containers.result.bufnr, 0, -1, false), "\n")
   end
 
+  it("normalizes inline formulas", function()
+    sidebar:update_content([[Distance: \(d_i=D(\mathbf q_i^0)\); gradient: \(\mathbf g_i=\nabla D(\mathbf q_i^0)\).]])
+
+    local expected = [[Distance: $d_i=D(\mathbf q_i^0)$; gradient: $\mathbf g_i=\nabla D(\mathbf q_i^0)$.]]
+
+    assert.matches(expected, get_result_buffer_text(), nil, true)
+  end)
+
   it("normalizes a single-line formula", function()
     local formula = [[\mathbf q=R(\theta)\mathbf p+\mathbf t]]
 

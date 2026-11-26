@@ -2025,7 +2025,7 @@ function Sidebar:update_content(content, opts)
     end
   end
 
-  -- Convert standalone \[ and \] outside code fences to $$; formula content may span multiple lines.
+  -- Convert \(...\) to $...$ and standalone \[ and \] to $$ outside code fences.
   ---@type string?
   local fence_end_pattern
   ---@type integer?
@@ -2048,6 +2048,9 @@ function Sidebar:update_content(content, opts)
       history_lines[math_start_line] = Line:new({ { opening_line } })
       history_lines[i] = Line:new({ { closing_line } })
       math_start_line = nil
+    else
+      local normalized, replacements = text:gsub("\\%((.-)\\%)", "$%1$")
+      if replacements > 0 then history_lines[i] = Line:new({ { normalized } }) end
     end
   end
 
