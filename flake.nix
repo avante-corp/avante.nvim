@@ -195,6 +195,25 @@
 
             luaRcContent = builtins. readFile ./contrib/init.lua;
           };
+
+          avante-autoclose = pkgs.writeShellApplication {
+            name = "avante-autoclose";
+            runtimeInputs = [];
+            text = ''
+              set -ex
+
+              avante "$@"
+              '';
+
+            # nativeBuildInputs = [
+            #   pkgs.makeWrapper
+            # ];
+            # # close avante on first answer
+            # patchPhase = ''
+            #   wrapPro
+            #
+            #   '';
+          };
         in
         rustPackages // {
           inherit ragService;
@@ -216,6 +235,8 @@
               pkgs.ripgrep
               pkgs.cacert
               pkgs.dockerTools.fakeNss
+
+              (pkgs.writeTextDir "root/.config/nvim/init.lua" (builtins.readFile ./contrib/init.lua))
 
               # inspect-ai tries to inject or access those
               pkgs.gnutar
