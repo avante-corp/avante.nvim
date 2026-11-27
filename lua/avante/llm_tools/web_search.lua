@@ -27,6 +27,7 @@
 
 local Config = require("avante.config")
 local Utils = require("avante.utils")
+local curl = require("avante.utils.curl")
 
 ---@alias WebSearchProviderName
 ---| '"tavily"'
@@ -75,12 +76,6 @@ local function encode_query(query_params)
   return query_string
 end
 
----@param resp { body: string }
----@param formatter WebSearchResponseFormatter
----@return string? result
----@return string? error
-local function format_response(resp, formatter) return formatter(vim.json.decode(resp.body)) end
-
 ---@param method string
 ---@param url string
 ---@param request_opts table
@@ -89,20 +84,25 @@ local function format_response(resp, formatter) return formatter(vim.json.decode
 ---@return string? result
 ---@return string? error
 local function request(method, url, request_opts, opts, formatter)
-  if Config.web_search_engine.proxy then return nil, "web_search_engine.proxy is not supported by vim.net" end
-  -- vim.net.request calls back from a fast event; on_complete may call nvim APIs, so leave it first.
-  local on_response = vim.schedule_wrap(function(err, resp)
-    if err then
-      opts.on_complete(nil, err)
-      return
-    end
-    assert(resp)
-    local result, format_err = format_response(resp, formatter)
-    opts.on_complete(result, format_err)
-  end)
-  --- TODO: Remove this suppression when the vendored Neovim 0.12 runtime annotations include the method overload.
-  ---@diagnostic disable-next-line: redundant-parameter, param-type-mismatch
-  vim.net.request(method, url, request_opts, on_response)
+  local send = method == "GET" and curl.get or curl.post
+  local curl_opts = vim.tbl_extend("force", request_opts, {
+    proxy = Config.web_search_engine.proxy,
+    callback = vim.schedule_wrap(function(resp)
+      local ok, result, format_err = pcall(function()
+        if resp.status < 200 or resp.status >= 300 then
+          return nil, string.format("Search returned HTTP status %d", resp.status)
+        end
+        return formatter(vim.json.decode(resp.body))
+      end)
+      if not ok then
+        result, format_err = nil, tostring(result)
+      end
+      opts.on_complete(result, format_err)
+    end),
+    on_error = vim.schedule_wrap(function(err) opts.on_complete(nil, err.message) end),
+  })
+  local ok, err = pcall(send, url, curl_opts)
+  if not ok then opts.on_complete(nil, tostring(err)) end
   return nil, nil
 end
 
