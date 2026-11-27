@@ -1,5 +1,6 @@
 local stub = require("luassert.stub")
 local Config = require("avante.config")
+local Curl = require("avante.utils.curl")
 local Utils = require("avante.utils")
 local WebSearch = require("avante.llm_tools.web_search")
 
@@ -8,10 +9,11 @@ describe("web_search_firecrawl", function()
     Config.setup()
     local parse = stub(Utils.environment, "parse", function() return "test-key" end)
     local request = stub(
-      vim.net,
-      "request",
-      function(_, _, _, on_response)
-        on_response(nil, {
+      Curl,
+      "post",
+      function(url, opts)
+        opts.callback({
+          status = 200,
           body = vim.json.encode({
             success = true,
             data = { web = { { url = "https://neovim.io/", title = "Neovim", description = "Vim-based editor" } } },
@@ -23,12 +25,11 @@ describe("web_search_firecrawl", function()
     local result
     WebSearch.web_search_firecrawl.func({ query = "neovim" }, { on_complete = function(r) result = r end })
 
-    local method, url, opts = unpack(request.calls[1].refs)
+    local url, opts = unpack(request.calls[1].refs)
     local body = vim.json.decode(opts.body)
     parse:revert()
     request:revert()
     assert.is_true(vim.wait(1000, function() return result ~= nil end), "web search did not complete")
-    assert.equals("POST", method)
     assert.equals("https://api.firecrawl.dev/v2/search", url)
     assert.equals("Bearer test-key", opts.headers["Authorization"])
     assert.are.same({ query = "neovim", limit = 10, sources = { "web" }, origin = "avante" }, body)
@@ -38,16 +39,16 @@ describe("web_search_firecrawl", function()
     )
   end)
 end)
-
 describe("web_search_outcrawl", function()
   it("posts the query and maps hits to title, url and snippet", function()
     Config.setup()
     local parse = stub(Utils.environment, "parse", function() return "test-key" end)
     local request = stub(
-      vim.net,
-      "request",
-      function(_, _, _, on_response)
-        on_response(nil, {
+      Curl,
+      "post",
+      function(url, opts)
+        opts.callback({
+          status = 200,
           body = vim.json.encode({
             hits = { { url = "https://neovim.io/", title = "Neovim", snippet = "Vim-based editor", rank = 1 } },
             usage = { credits = "0.5" },
@@ -59,12 +60,11 @@ describe("web_search_outcrawl", function()
     local result
     WebSearch.web_search_outcrawl.func({ query = "neovim" }, { on_complete = function(r) result = r end })
 
-    local method, url, opts = unpack(request.calls[1].refs)
+    local url, opts = unpack(request.calls[1].refs)
     local body = vim.json.decode(opts.body)
     parse:revert()
     request:revert()
     assert.is_true(vim.wait(1000, function() return result ~= nil end), "web search did not complete")
-    assert.equals("POST", method)
     assert.equals("https://api.outcrawl.ai/v1/search", url)
     assert.equals("Bearer test-key", opts.headers["Authorization"])
     assert.are.same({ query = "neovim", limit = 10 }, body)
