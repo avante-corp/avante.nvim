@@ -442,6 +442,27 @@ function M.resolve_api_route(provider_conf, ctx, protocol)
   return M.resolve_use_response_api(provider_conf, ctx) and "responses" or "chat"
 end
 
+-- Protocols whose APIs read base64 PDF documents. OpenAI-compatible protocols only
+-- qualify on endpoints known to accept file parts; local servers usually reject them.
+local pdf_protocols = { claude = true, gemini = true, vertex = true, bedrock = true, azure = true }
+local pdf_openai_hosts = { ["api.openai.com"] = true, ["openrouter.ai"] = true }
+
+---Whether attached PDFs can be sent to `provider` as documents.
+---Providers that cannot get the text extracted locally instead. Set `support_pdf` to override.
+---@param provider AvanteDefaultBaseProvider | nil
+---@return boolean
+function M.support_pdf(provider)
+  if not provider then return false end
+  if provider.support_pdf ~= nil then return provider.support_pdf == true end
+  local protocol = provider._protocol or provider._name
+  if pdf_protocols[protocol] then return true end
+  if protocol ~= "openai" then return false end
+  -- ChatGPT subscriptions use their own backend, which takes no files.
+  if provider.auth_type == "subscription" then return false end
+  local host = type(provider.endpoint) == "string" and provider.endpoint:match("^%w+://([^/:]+)")
+  return host ~= nil and pdf_openai_hosts[host] == true
+end
+
 ---@param provider_name avante.ProviderName
 ---@return AvanteSupportedProvider
 function M.get_config(provider_name) return Config.get_provider_config(provider_name or Config.provider) end

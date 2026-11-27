@@ -19,8 +19,9 @@ use rig::effect::{EffectId, EffectKind};
 use rig::error::{ErrorReport, ProviderError};
 use rig::http_client::middleware::HttpMiddleware;
 use rig::message::{
-    CallId, ImageMediaType, MimeType, Native, Origin, Reasoning as MessageReasoning, StopReason,
-    ToolName, ToolResult, ToolResultContent, UserContent,
+    CallId, DocumentMediaType, ImageMediaType, MimeType, Native, Origin,
+    Reasoning as MessageReasoning, StopReason, ToolName, ToolResult, ToolResultContent,
+    UserContent,
 };
 use rig::operation::Completion;
 use rig::providers::openai::wire::{AZURE, by_name};
@@ -129,6 +130,8 @@ struct PromptInput {
     messages: Vec<AvanteMessage>,
     #[serde(default)]
     image_paths: Vec<String>,
+    #[serde(default)]
+    document_paths: Vec<String>,
     #[serde(default)]
     tools: Vec<ToolInput>,
     #[serde(default)]
@@ -1214,6 +1217,7 @@ fn messages(prompt: &PromptInput, provider: &ProviderInput) -> Result<Vec<Messag
             role => return Err(format!("unsupported message role: {role}")),
         }
     }
+    append_documents(&mut messages, &prompt.document_paths)?;
     append_images(&mut messages, &prompt.image_paths)?;
     let has_tool_results = messages.iter().skip(continuation_start).any(|message| {
         matches!(message, Message::User { content } if content.iter().any(|item| matches!(item, UserContent::ToolResult(_))))
@@ -1222,6 +1226,29 @@ fn messages(prompt: &PromptInput, provider: &ProviderInput) -> Result<Vec<Messag
         messages.drain(1..continuation_start);
     }
     Ok(messages)
+}
+
+/// Attach PDFs as base64 document content to the last user message.
+fn append_documents(messages: &mut Vec<Message>, paths: &[String]) -> Result<(), String> {
+    let mut documents = Vec::with_capacity(paths.len());
+    for path in paths {
+        let bytes =
+            std::fs::read(path).map_err(|error| format!("read document {path}: {error}"))?;
+        // Anthropic shows the title to the model, which helps it tell several PDFs apart.
+        let title = Path::new(path)
+            .file_name()
+            .map(|name| serde_json::json!({ "title": name.to_string_lossy() }));
+        let mut document = UserContent::document_base64(
+            base64::engine::general_purpose::STANDARD.encode(bytes),
+            Some(DocumentMediaType::PDF),
+        );
+        if let UserContent::Document(document) = &mut document {
+            document.additional_params = title;
+        }
+        documents.push(document);
+    }
+    extend_last_user_message(messages, documents);
+    Ok(())
 }
 
 fn append_images(messages: &mut Vec<Message>, paths: &[String]) -> Result<(), String> {
@@ -1251,16 +1278,23 @@ fn append_images(messages: &mut Vec<Message>, paths: &[String]) -> Result<(), St
             None,
         ));
     }
+    extend_last_user_message(messages, images);
+    Ok(())
+}
+
+fn extend_last_user_message(messages: &mut Vec<Message>, parts: Vec<UserContent>) {
+    if parts.is_empty() {
+        return;
+    }
     if let Some(Message::User { content }) = messages
         .iter_mut()
         .rev()
         .find(|message| matches!(message, Message::User { .. }))
     {
-        content.extend(images);
+        content.extend(parts);
     } else {
-        messages.push(Message::User { content: images });
+        messages.push(Message::User { content: parts });
     }
-    Ok(())
 }
 
 fn completion_request(
@@ -1893,6 +1927,7 @@ mod tests {
                 content: Value::String("hello".to_owned()),
             }],
             image_paths: Vec::new(),
+            document_paths: Vec::new(),
             tools: vec![ToolInput {
                 name: "lookup".to_owned(),
                 description: "Look something up".to_owned(),
@@ -1931,6 +1966,29 @@ mod tests {
             panic!("expected an image, got {content:?}")
         };
         assert_eq!(image.media_type, Some(ImageMediaType::JPEG));
+    }
+
+    #[test]
+    fn append_documents_sends_pdfs_with_their_name() {
+        let path = temp_file("report.pdf", b"%PDF-1.7\n\0\xff");
+        let mut messages = vec![Message::user("summarize")];
+        append_documents(&mut messages, &[path]).unwrap();
+        let Message::User { content } = &messages[0] else {
+            panic!("expected a user message")
+        };
+        let UserContent::Document(document) = content.last().unwrap() else {
+            panic!("expected a document, got {content:?}")
+        };
+        assert_eq!(document.media_type, Some(DocumentMediaType::PDF));
+        assert_eq!(
+            document.additional_params,
+            Some(json!({ "title": "report.pdf" }))
+        );
+        assert!(matches!(
+            &document.data,
+            rig::message::DocumentData::File(rig::message::DocumentSourceKind::Base64(data))
+                if data == "JVBERi0xLjcKAP8="
+        ));
     }
 
     pub(super) fn provider(name: &str, route: Option<RouteInput>) -> ProviderInput {
@@ -2875,6 +2933,7 @@ mod tests {
                 },
             ],
             image_paths: Vec::new(),
+            document_paths: Vec::new(),
             tools: Vec::new(),
             turn_id: "test-turn".to_owned(),
             additional_params: Some(json!({"previous_response_id": "resp_1"})),
@@ -3018,6 +3077,7 @@ mod tests {
                 },
             ],
             image_paths: Vec::new(),
+            document_paths: Vec::new(),
             tools: Vec::new(),
             turn_id: "test-turn".to_owned(),
             additional_params: Some(json!({"previous_response_id": "resp_2"})),
@@ -3086,6 +3146,7 @@ mod tests {
                 },
             ],
             image_paths: Vec::new(),
+            document_paths: Vec::new(),
             tools: Vec::new(),
             turn_id: "test-turn".to_owned(),
             additional_params: Some(json!({"previous_response_id": "resp_1"})),
@@ -3190,6 +3251,7 @@ mod tests {
                 },
             ],
             image_paths: Vec::new(),
+            document_paths: Vec::new(),
             tools: Vec::new(),
             turn_id: "test-turn".to_owned(),
             additional_params: Some(json!({"previous_response_id": "resp_2"})),
@@ -3235,6 +3297,7 @@ mod tests {
                 },
             ],
             image_paths: Vec::new(),
+            document_paths: Vec::new(),
             tools: Vec::new(),
             turn_id: "test-turn".to_owned(),
             additional_params: None,
@@ -3348,6 +3411,7 @@ mod tests {
                 }]),
             }],
             image_paths: Vec::new(),
+            document_paths: Vec::new(),
             tools: Vec::new(),
             turn_id: "test-turn".to_owned(),
             additional_params: None,
@@ -3391,6 +3455,7 @@ mod tests {
                 }]),
             }],
             image_paths: Vec::new(),
+            document_paths: Vec::new(),
             tools: Vec::new(),
             turn_id: "test-turn".to_owned(),
             additional_params: None,
@@ -3658,6 +3723,7 @@ mod tests {
                 }]),
             }],
             image_paths: Vec::new(),
+            document_paths: Vec::new(),
             tools: Vec::new(),
             turn_id: "test-turn".to_owned(),
             additional_params: None,

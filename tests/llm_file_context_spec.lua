@@ -141,25 +141,66 @@ describe("selected file context", function()
 
   describe("binary files", function()
     local pdf_path
-    before_each(function()
-      pdf_path = root .. "/doc.pdf"
-      local file = assert(io.open(pdf_path, "wb"))
-      file:write("%PDF-1.7\n%\226\227\207\211\n1 0 obj\n<< /Length 4 >>\nstream\n\0\255\254\128\nendstream\n")
+    local function write(path, content)
+      local file = assert(io.open(path, "wb"))
+      file:write(content)
       file:close()
+    end
+    before_each(function()
+      write(root .. "/blob.bin", "\127ELF\2\1\1\0\0\255\254\128")
+      pdf_path = root .. "/doc.pdf"
+      write(pdf_path, "%PDF-1.7\n%\226\227\207\211\n1 0 obj\n<< /Length 4 >>\nstream\n\0\255\254\128\nendstream\n")
       stubs[#stubs + 1] = stub(Utils, "warn")
     end)
 
     for _, mode in ipairs({ "agentic", "legacy" }) do
       it("are skipped with a warning instead of breaking the render in " .. mode .. " mode", function()
-        local prompt = generate({ mode = mode, selected_filepaths = { "main.cpp", "doc.pdf" } })
+        local prompt = generate({ mode = mode, selected_filepaths = { "main.cpp", "blob.bin" } })
 
         assert.matches("main.cpp", context(prompt), nil, true)
+        assert.is_nil(context(prompt):find("blob.bin", 1, true))
+        assert.stub(Utils.warn).was_called_with("Not sending binary file to the model: blob.bin", { once = true })
+      end)
+    end
+
+    for _, mode in ipairs({ "agentic", "legacy" }) do
+      it("that are PDFs are sent as documents to providers reading them in " .. mode .. " mode", function()
+        local prompt = generate({ mode = mode, selected_filepaths = { "main.cpp", "doc.pdf", "doc.pdf" } })
+
+        assert.same({ pdf_path }, prompt.document_paths)
         assert.is_nil(context(prompt):find("doc.pdf", 1, true))
         assert
           .stub(Utils.warn)
           .was_called_with("Not sending binary unsupported file: doc.pdf (see `:h avante-upload`)", { once = true })
       end)
+
+      it("that are PDFs get their text inlined for other providers in " .. mode .. " mode", function()
+        stubs[#stubs + 1] = stub(Utils, "pdf_to_text").returns("Quarterly revenue grew")
+
+        local prompt = generate({
+          mode = mode,
+          provider = { _protocol = "ollama", model = "llama" },
+          selected_filepaths = { "doc.pdf" },
+        })
+
+        assert.same({}, prompt.document_paths)
+        assert.matches("doc.pdf", context(prompt), nil, true)
+        assert.matches("Quarterly revenue grew", context(prompt), nil, true)
+        assert.stub(Utils.pdf_to_text).was_called_with(pdf_path)
+      end)
     end
+
+    it("that are PDFs are skipped with the reason when their text cannot be extracted", function()
+      stubs[#stubs + 1] = stub(Utils, "pdf_to_text").returns(nil, "pdftotext is not installed")
+
+      local prompt =
+        generate({ provider = { _protocol = "ollama", model = "llama" }, selected_filepaths = { "doc.pdf" } })
+
+      assert.same({}, prompt.document_paths)
+      assert
+        .stub(Utils.warn)
+        .was_called_with("Not sending PDF doc.pdf to the model: pdftotext is not installed", { once = true })
+    end)
 
     for _, mode in ipairs({ "agentic", "legacy" }) do
       it("that are images are sent as image content in " .. mode .. " mode", function()
