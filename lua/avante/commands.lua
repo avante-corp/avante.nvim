@@ -98,7 +98,7 @@
 ---         Switch AI provider. Pass `--save` to restore the choice on startup,
 ---         overriding the configured default provider. Without it, the switch
 ---         only affects the current session. ACP providers are included by default; pass `--acp false` to hide them.
----         The optional filter prefills the selector input without removing providers.
+---         An exact provider name switches immediately; other filters prefill the selector.
 ---
 ---                                                     *:AvanteShowRepoMap*
 --- :AvanteShowRepoMap

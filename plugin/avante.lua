@@ -180,6 +180,10 @@ switch_provider:set_execute(function(data)
   table.sort(providers)
   ---@type string
   local filter = data.namespace.filter or ""
+  if vim.tbl_contains(providers, filter) then
+    require("avante.api").switch_provider(filter, data.namespace.save == true)
+    return
+  end
   local items = vim.tbl_map(
     ---@param provider_name string
     ---@return avante.ui.SelectorItem
