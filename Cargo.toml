@@ -9,10 +9,6 @@ license = "Apache-2.0"
 version = "0.5.0"
 
 [workspace.dependencies]
-avante-tokenizers = { path = "crates/avante-tokenizers" }
-avante-templates = { path = "crates/avante-templates" }
-avante-repo-map = { path = "crates/avante-repo-map" }
-avante-html2md = { path = "crates/avante-html2md" }
 agent-client-protocol = { version = "=5.4.0", features = ["process"] }
 aws-config = "1"
 aws-sdk-bedrockruntime = { version = "1.124.0", default-features = false, features = ["rt-tokio", "default-https-client"] }

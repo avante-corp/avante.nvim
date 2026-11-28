@@ -28,7 +28,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.100.1
 
       - uses: googleapis/release-please-action@v5.0.0
         id: release
