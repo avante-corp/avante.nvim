@@ -4,14 +4,16 @@ describe("AvanteSwitchProvider exact selection", function()
   local Config = require("avante.config")
   local api = require("avante.api")
   local selector = require("avante.ui.selector")
-  local original_providers, original_acp_providers
+  local original_providers, original_acp_providers, original_selector
   local switch_stub, selector_stub, selector_opts
 
   before_each(function()
     vim.cmd("runtime plugin/avante.lua")
-    original_providers, original_acp_providers = Config.providers, Config.acp_providers
+    original_providers, original_acp_providers, original_selector =
+      Config.providers, Config.acp_providers, Config.selector
     Config.providers = { claude = {}, openai = {} }
     Config.acp_providers = { codex = { command = "codex-acp" } }
+    Config.selector = { provider = "native", provider_opts = {} }
     selector_opts = nil
     switch_stub = stub(api, "switch_provider")
     selector_stub = stub(selector, "new").invokes(function(_, opts)
@@ -23,7 +25,8 @@ describe("AvanteSwitchProvider exact selection", function()
   after_each(function()
     switch_stub:revert()
     selector_stub:revert()
-    Config.providers, Config.acp_providers = original_providers, original_acp_providers
+    Config.providers, Config.acp_providers, Config.selector =
+      original_providers, original_acp_providers, original_selector
   end)
 
   it("switches directly to an exact ACP provider", function()
