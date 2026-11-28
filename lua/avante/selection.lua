@@ -131,6 +131,7 @@ function Selection:submit_input(input)
   local code_content = table.concat(code_lines, "\n")
 
   local full_response = ""
+  local has_code_block = false
   local start_line = self.selection.range.start.lnum
   local finish_line = self.selection.range.finish.lnum
 
@@ -155,6 +156,7 @@ function Selection:submit_input(input)
     for _, line in ipairs(response_lines_) do
       if line:match("^<code>") then
         in_code_block = true
+        has_code_block = true
         line_processed = line:gsub("^<code>", ""):gsub("</code>.*$", "")
         if line_processed ~= "" then table.insert(response_lines, line_processed) end
       elseif line:match("</code>") then
@@ -165,6 +167,8 @@ function Selection:submit_input(input)
         table.insert(response_lines, line)
       end
     end
+    -- Text before <code> (or a prose-only reply) would otherwise replace the selection with nothing.
+    if not has_code_block then return end
     if #response_lines == 1 then
       local first_line = response_lines[1]
       local first_line_indentation = Utils.get_indentation(first_line)
@@ -195,6 +199,9 @@ function Selection:submit_input(input)
     if self.prompt_input then self.prompt_input:stop_spinner() end
     vim.defer_fn(function() self:close_editing_input() end, 0)
     Utils.debug("full response:", full_response)
+    if not has_code_block then
+      Utils.warn("Avante returned no code, selection left unchanged", { title = "Avante" })
+    end
   end
 
   local filetype = api.nvim_get_option_value("filetype", { buf = self.code_bufnr })

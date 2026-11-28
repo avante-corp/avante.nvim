@@ -98,13 +98,13 @@ describe("llm._continue_stream_acp", function()
     }, client.prompts[1].prompt)
   end)
 
-  it("sends only the generated instruction for internal flows without a submitted message", function()
+  it("sends the system prompt and context for internal flows without a submitted message", function()
     local generate_stub = stub(llm, "generate_prompts").returns({
       system_prompt = "SYSTEM",
       messages = {
-        { role = "user", content = "OLD_CONTEXT" },
-        { role = "assistant", content = "OLD_REPLY" },
-        { role = "user", content = "EDIT_INSTRUCTION" },
+        { role = "user", content = "SELECTED_CODE" },
+        { role = "assistant", content = "SKIPPED_REPLY" },
+        { role = "user", content = { "DIAGNOSTICS", { type = "text", text = "EDIT_INSTRUCTION" } } },
       },
     })
     local client = fake_client()
@@ -117,7 +117,12 @@ describe("llm._continue_stream_acp", function()
     }, client, "s1")
 
     generate_stub:revert()
-    assert.same({ { type = "text", text = "EDIT_INSTRUCTION" } }, client.prompts[1].prompt)
+    assert.same({
+      { type = "text", text = "SYSTEM" },
+      { type = "text", text = "SELECTED_CODE" },
+      { type = "text", text = "DIAGNOSTICS" },
+      { type = "text", text = "EDIT_INSTRUCTION" },
+    }, client.prompts[1].prompt)
   end)
 
   it("uses the submitted project's instruction file for an internal ACP request", function()
@@ -158,7 +163,7 @@ describe("llm._continue_stream_acp", function()
     vim.uv.fs_rmdir(other_root)
 
     assert.is_true(ok, err)
-    assert.same({ { type = "text", text = "EDIT_INSTRUCTION\nORIGINAL_PROJECT_RULES\n" } }, client.prompts[1].prompt)
+    assert.same({ type = "text", text = "EDIT_INSTRUCTION\nORIGINAL_PROJECT_RULES\n" }, client.prompts[1].prompt[2])
   end)
 
   it("recreates a missing session through the connected SDK client without wrapping history", function()

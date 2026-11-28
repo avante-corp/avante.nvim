@@ -1250,16 +1250,16 @@ function M._continue_stream_acp(opts, acp_client, session_id)
   end
 
   if not current_message then
-    -- Some internal flows submit through `instructions` without adding a history message.
+    -- Internal flows (e.g. inline edit) submit through `instructions` without a history message.
+    -- Their system prompt and context messages (selected code, output format) are the task, so send them all.
     local prompt_opts = M.generate_prompts(opts)
-    for i = #prompt_opts.messages, 1, -1 do
-      local message = prompt_opts.messages[i]
+    local content = { prompt_opts.system_prompt }
+    for _, message in ipairs(prompt_opts.messages) do
       if message.role == "user" then
-        current_message = message
-        break
+        vim.list_extend(content, type(message.content) == "table" and message.content or { message.content })
       end
     end
-    if not current_message and #prompt == 0 then current_message = { content = prompt_opts.system_prompt } end
+    current_message = { content = content }
   end
 
   if current_message then
